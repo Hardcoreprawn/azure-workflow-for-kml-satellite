@@ -189,7 +189,7 @@ The models should provide:
 
 - `model_validate(...)` for runtime boundary checks;
 - `model_dump(mode="json", exclude_none=True)` for blob serialization;
-- JSON Schema generation for future `docs/schemas/enrichment-manifest-v2.schema.json`.
+- JSON Schema generation for `docs/schemas/enrichment-manifest-v2.schema.json`.
 
 This gives us a documented data contract without forcing a broad pipeline
 rewrite in the first slice.
@@ -221,7 +221,8 @@ rewrite in the first slice.
 
 ### Slice 4: Schema And Cleanup
 
-- Generate/check in `docs/schemas/enrichment-manifest-v2.schema.json`.
+- Keep `docs/schemas/enrichment-manifest-v2.schema.json` in sync with
+  `EnrichmentManifestV2.model_json_schema()`.
 - Remove or isolate obsolete top-level fallback guesses.
 - Update operations/API docs if external response payloads change.
 

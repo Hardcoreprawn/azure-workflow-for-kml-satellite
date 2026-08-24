@@ -1,0 +1,236 @@
+{
+  "$defs": {
+    "CenterPoint": {
+      "additionalProperties": true,
+      "description": "AOI center point in latitude/longitude order for display and enrichments.",
+      "properties": {
+        "lat": {
+          "title": "Lat",
+          "type": "number"
+        },
+        "lon": {
+          "title": "Lon",
+          "type": "number"
+        }
+      },
+      "required": [
+        "lat",
+        "lon"
+      ],
+      "title": "CenterPoint",
+      "type": "object"
+    },
+    "PerAoiEnrichment": {
+      "additionalProperties": true,
+      "description": "Canonical enrichment evidence for one AOI within a run.",
+      "properties": {
+        "aoi_index": {
+          "title": "Aoi Index",
+          "type": "integer"
+        },
+        "area_ha": {
+          "default": 0.0,
+          "title": "Area Ha",
+          "type": "number"
+        },
+        "bbox": {
+          "items": {},
+          "title": "Bbox",
+          "type": "array"
+        },
+        "center": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CenterPoint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "change_detection": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Change Detection"
+        },
+        "coords": {
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "title": "Coords",
+          "type": "array"
+        },
+        "errors": {
+          "items": {},
+          "title": "Errors",
+          "type": "array"
+        },
+        "eudr": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Eudr"
+        },
+        "frame_plan": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Frame Plan",
+          "type": "array"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "ndvi_raster_paths": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Ndvi Raster Paths",
+          "type": "array"
+        },
+        "ndvi_stats": {
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Ndvi Stats",
+          "type": "array"
+        },
+        "plot_area_ha": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plot Area Ha"
+        },
+        "source_geometry_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Geometry Type"
+        },
+        "weather_daily": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Weather Daily",
+          "type": "array"
+        }
+      },
+      "required": [
+        "aoi_index"
+      ],
+      "title": "PerAoiEnrichment",
+      "type": "object"
+    },
+    "RunSummary": {
+      "additionalProperties": true,
+      "description": "Run-level enrichment summary, not canonical parcel evidence.",
+      "properties": {
+        "aoi_count": {
+          "default": 0,
+          "title": "Aoi Count",
+          "type": "integer"
+        },
+        "frame_plan": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Frame Plan",
+          "type": "array"
+        },
+        "multi_region": {
+          "default": false,
+          "title": "Multi Region",
+          "type": "boolean"
+        }
+      },
+      "title": "RunSummary",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "description": "Boundary contract for new enrichment manifest writes.",
+  "properties": {
+    "per_aoi_enrichment": {
+      "items": {
+        "$ref": "#/$defs/PerAoiEnrichment"
+      },
+      "title": "Per Aoi Enrichment",
+      "type": "array"
+    },
+    "run": {
+      "additionalProperties": true,
+      "title": "Run",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "enrichment-manifest/v2",
+      "default": "enrichment-manifest/v2",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "summary": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "title": "EnrichmentManifestV2",
+  "type": "object"
+}

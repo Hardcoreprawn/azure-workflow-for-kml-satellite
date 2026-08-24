@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from treesight.models.enrichment_manifest import (
     ENRICHMENT_MANIFEST_V2_SCHEMA,
     EnrichmentManifestV2,
@@ -261,6 +264,13 @@ class TestEnrichmentManifest:
 
 
 class TestEnrichmentManifestV2:
+    def test_checked_in_json_schema_matches_model(self):
+        schema_path = Path("docs/schemas/enrichment-manifest-v2.schema.json")
+        checked_in = json.loads(schema_path.read_text())
+        generated = EnrichmentManifestV2.model_json_schema()
+
+        assert checked_in == generated
+
     def test_single_aoi_manifest_contract(self):
         manifest = EnrichmentManifestV2.model_validate(
             {
