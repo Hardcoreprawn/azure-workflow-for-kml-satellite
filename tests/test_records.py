@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from treesight.models.enrichment_manifest import (
     ENRICHMENT_MANIFEST_V2_SCHEMA,
     EnrichmentManifestV2,
@@ -294,6 +296,10 @@ class TestEnrichmentManifestV2:
         assert len(manifest.per_aoi_enrichment) == 1
         assert manifest.per_aoi_enrichment[0].aoi_index == 0
         assert manifest.per_aoi_enrichment[0].name == "Solo Farm"
+
+    def test_schema_version_is_required_for_v2_writes(self):
+        with pytest.raises(ValueError, match="schema_version"):
+            EnrichmentManifestV2.model_validate({"per_aoi_enrichment": []})
 
     def test_per_aoi_entry_allows_open_evidence_bags(self):
         entry = PerAoiEnrichment.model_validate(

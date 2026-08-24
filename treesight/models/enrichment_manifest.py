@@ -53,7 +53,7 @@ class PerAoiEnrichment(BaseModel):
 class EnrichmentManifestV2(BaseModel):
     """Boundary contract for new enrichment manifest writes."""
 
-    schema_version: Literal["enrichment-manifest/v2"] = ENRICHMENT_MANIFEST_V2_SCHEMA
+    schema_version: Literal["enrichment-manifest/v2"]
     run: dict[str, Any] = Field(default_factory=dict)
     summary: RunSummary | None = None
     per_aoi_enrichment: list[PerAoiEnrichment] = Field(default_factory=list)
