@@ -17,8 +17,8 @@ on:
         required: false
         default: ""
   schedule:
-    # Daily at 08:00 UTC (after the weekly security scans have refreshed alerts).
-    - cron: "0 8 * * *"
+    # Weekly Monday 08:00 UTC (after the weekly security scans have refreshed alerts).
+    - cron: "0 8 * * 1"
 
 permissions:
   contents: read
