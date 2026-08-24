@@ -13,7 +13,11 @@ from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_
 from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 
 from . import bp
-from ._status import _durable_status_payload
+from ._status import (
+    _durable_status_payload,
+    _fetch_instance_telemetry_hint,
+    _needs_telemetry_recovery,
+)
 from .history import _build_analysis_history_response
 
 
@@ -58,7 +62,8 @@ async def _build_orchestrator_status_response(
     if not status:
         return func.HttpResponse(json.dumps({"error": "not found"}), status_code=404, mimetype="application/json")
 
-    result = _durable_status_payload(status)
+    telemetry_hint = _fetch_instance_telemetry_hint(instance_id) if _needs_telemetry_recovery(status) else None
+    result = _durable_status_payload(status, telemetry_hint=telemetry_hint)
     return func.HttpResponse(
         json.dumps(result, default=str),
         status_code=200,

@@ -26,7 +26,7 @@ Production API base URL: `https://{productionHost}/api`
 | POST | /api/billing/portal | anonymous | — | Stripe portal redirect |
 | POST | /api/billing/webhook | anonymous | — | Stripe webhook |
 | POST | /api/contact-form | anonymous | — | Contact form |
-| GET | /api/orchestrator/{id} | anonymous | 200/404 | Durable diagnostics |
+| GET | /api/orchestrator/{id} | anonymous | 200/404 | Durable diagnostics (with telemetry-backed phase recovery when Durable status is stale) |
 | GET | /api/analysis/history | SWA session | 401 | Analysis history (`scope=user` default, `scope=org` for portfolio summary) |
 | POST | /api/analysis/notes | SWA session | 401/403/404 | Save/delete a parcel note on a run (owner or org member only) |
 | POST | /api/analysis/override | SWA session | 401/403/404 | Record or revert a human determination override (reason required, min 20 chars) |

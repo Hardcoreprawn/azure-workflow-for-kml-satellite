@@ -206,6 +206,12 @@ Operational checks:
 1. Query failed orchestration runs by instance_id.
 2. Correlate instance_id with activity logs.
 3. Verify artifact presence in output blob container.
+4. `/api/orchestrator/{instance_id}` and `/api/analysis/history` now attempt
+   telemetry-backed phase recovery when Durable status appears stale
+   (especially long-lived `Running/ingestion` states). This requires either
+   `LOG_ANALYTICS_WORKSPACE_ID` or `APPINSIGHTS_WORKSPACE_ID` app settings.
+   Without those settings, APIs fall back to Durable history + stale-run
+   classification only.
 
 If startup evidence is missing, query for `logger=function_app` first to confirm
 the startup logging installer ran before config validation and replay-store setup.

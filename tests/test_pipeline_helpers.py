@@ -5,7 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-from blueprints.pipeline._status import _normalize_runtime_status_payload
+from blueprints.pipeline._status import (
+    _needs_telemetry_recovery,
+    _normalize_runtime_status_payload,
+)
 
 
 def test_stalled_payload_preserves_existing_phase():
@@ -43,3 +46,41 @@ def test_stalled_payload_falls_back_when_phase_unknown():
     assert custom is not None
     assert custom["phase"] == "queued"
     assert custom["step"] == "no_recent_updates"
+
+
+def test_telemetry_hint_prevents_false_stalled_classification():
+    """Recent telemetry activity keeps long-running runs active."""
+    stale = datetime.now(UTC) - timedelta(hours=2)
+    status = SimpleNamespace(
+        runtime_status=SimpleNamespace(value="Running"),
+        custom_status={"phase": "ingestion", "step": "preparing_aois"},
+        last_updated_time=stale,
+        history=None,
+    )
+
+    runtime, custom = _normalize_runtime_status_payload(
+        status,
+        telemetry_hint={
+            "phase": "acquisition",
+            "step": "searching",
+            "outcome": "active",
+            "observed_at": datetime.now(UTC),
+        },
+    )
+
+    assert runtime == "Running"
+    assert custom is not None
+    assert custom["phase"] == "acquisition"
+    assert custom["step"] == "searching"
+
+
+def test_needs_telemetry_recovery_for_stale_ingestion_run():
+    stale = datetime.now(UTC) - timedelta(hours=2)
+    status = SimpleNamespace(
+        runtime_status=SimpleNamespace(value="Running"),
+        custom_status={"phase": "ingestion", "step": "preparing_aois"},
+        last_updated_time=stale,
+        history=None,
+    )
+
+    assert _needs_telemetry_recovery(status) is True

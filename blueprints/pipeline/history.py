@@ -18,7 +18,11 @@ from treesight.constants import DEFAULT_PROVIDER, PIPELINE_PAYLOADS_CONTAINER
 from treesight.security.orgs import get_user_org
 from treesight.storage import cosmos as _cosmos_mod
 
-from ._status import _durable_status_payload
+from ._status import (
+    _durable_status_payload,
+    _fetch_instance_telemetry_hint,
+    _needs_telemetry_recovery,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -358,7 +362,10 @@ async def _build_analysis_history_entry(
         with contextlib.suppress(Exception):
             status = await client.get_status(instance_id)
             if status:
-                status_payload = _durable_status_payload(status)
+                telemetry_hint = (
+                    _fetch_instance_telemetry_hint(instance_id) if _needs_telemetry_recovery(status) else None
+                )
+                status_payload = _durable_status_payload(status, telemetry_hint=telemetry_hint)
 
     runtime_status = record.get("status", "submitted")
     if status_payload and status_payload.get("runtimeStatus"):

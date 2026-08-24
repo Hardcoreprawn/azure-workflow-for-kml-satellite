@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -331,6 +331,52 @@ class TestAnalysisSubmissionRoutes:
         )
 
         with patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True):
+            resp = asyncio.run(_build_orchestrator_status_response(req, client))
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["runtimeStatus"] == "Running"
+        assert data["customStatus"]["phase"] == "acquisition"
+        assert data["customStatus"]["step"] == "searching"
+
+    def test_orchestrator_status_uses_telemetry_hint_for_stale_run(self):
+        from blueprints.pipeline.diagnostics import _build_orchestrator_status_response
+
+        stale = datetime.now(UTC) - timedelta(hours=2)
+
+        client = _HistoryDurableClient(
+            {
+                "demo-run": _FakeDurableStatus(
+                    "demo-run",
+                    runtime_status="Running",
+                    created_time=stale,
+                    last_updated_time=stale,
+                    custom_status={"phase": "ingestion", "step": "preparing_aois"},
+                )
+            }
+        )
+        req = func.HttpRequest(
+            method="GET",
+            url="/api/orchestrator/demo-run",
+            headers={"Origin": TEST_LOCAL_ORIGIN},
+            params={},
+            route_params={"instance_id": "demo-run"},
+            body=b"",
+        )
+
+        with (
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
+            patch("blueprints.pipeline.diagnostics._needs_telemetry_recovery", return_value=True),
+            patch(
+                "blueprints.pipeline.diagnostics._fetch_instance_telemetry_hint",
+                return_value={
+                    "phase": "acquisition",
+                    "step": "searching",
+                    "outcome": "active",
+                    "observed_at": datetime.now(UTC),
+                },
+            ),
+        ):
             resp = asyncio.run(_build_orchestrator_status_response(req, client))
 
         assert resp.status_code == 200
