@@ -6,11 +6,6 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import blueprints.pipeline._status as status_module
-from blueprints.pipeline._status import (
-    _fetch_instance_telemetry_hint,
-    _needs_telemetry_recovery,
-    _normalize_runtime_status_payload,
-)
 from treesight import config
 
 
@@ -24,7 +19,7 @@ def test_stalled_payload_preserves_existing_phase():
         history=None,
     )
 
-    runtime, custom = _normalize_runtime_status_payload(status)
+    runtime, custom = status_module._normalize_runtime_status_payload(status)
 
     assert runtime == "Stalled"
     assert custom is not None
@@ -43,7 +38,7 @@ def test_stalled_payload_falls_back_when_phase_unknown():
         history=None,
     )
 
-    runtime, custom = _normalize_runtime_status_payload(status)
+    runtime, custom = status_module._normalize_runtime_status_payload(status)
 
     assert runtime == "Stalled"
     assert custom is not None
@@ -61,7 +56,7 @@ def test_telemetry_hint_prevents_false_stalled_classification():
         history=None,
     )
 
-    runtime, custom = _normalize_runtime_status_payload(
+    runtime, custom = status_module._normalize_runtime_status_payload(
         status,
         telemetry_hint={
             "phase": "acquisition",
@@ -86,7 +81,7 @@ def test_needs_telemetry_recovery_for_stale_ingestion_run():
         history=None,
     )
 
-    assert _needs_telemetry_recovery(status) is True
+    assert status_module._needs_telemetry_recovery(status) is True
 
 
 def test_fetch_instance_telemetry_hint_does_not_fail_on_trace_error(monkeypatch):
@@ -106,7 +101,7 @@ def test_fetch_instance_telemetry_hint_does_not_fail_on_trace_error(monkeypatch)
         ],
     )
 
-    hint = _fetch_instance_telemetry_hint("inst-1")
+    hint = status_module._fetch_instance_telemetry_hint("inst-1")
 
     assert hint is not None
     assert hint["outcome"] == "active"
@@ -129,7 +124,7 @@ def test_fetch_instance_telemetry_hint_marks_exception_as_failed(monkeypatch):
         ],
     )
 
-    hint = _fetch_instance_telemetry_hint("inst-2")
+    hint = status_module._fetch_instance_telemetry_hint("inst-2")
 
     assert hint is not None
     assert hint["outcome"] == "failed"
@@ -146,6 +141,6 @@ def test_fetch_instance_telemetry_hint_clamps_lookback_minutes(monkeypatch):
 
     monkeypatch.setattr(status_module, "_query_logs_workspace", _fake_query)
 
-    _fetch_instance_telemetry_hint("inst-3")
+    status_module._fetch_instance_telemetry_hint("inst-3")
 
     assert "ago(1m)" in captured_query["value"]
