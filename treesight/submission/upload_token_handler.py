@@ -21,6 +21,7 @@ from treesight.security.redact import redact_user_id as _redact
 
 logger = logging.getLogger(__name__)
 
+
 class UploadTokenHandler:
     """Orchestrates the upload-token minting pipeline.
 
@@ -174,9 +175,7 @@ class UploadTokenHandler:
             content_type=self._content_type,
         )
         if storage_err is not None or not sas_url:
-            error = storage_err or self._error_response(
-                502, "Storage service temporarily unavailable", req=self.req
-            )
+            error = storage_err or self._error_response(502, "Storage service temporarily unavailable", req=self.req)
             try:
                 self._finalize_run(org_id=self._org_id, instance_id=self._submission_id, status="failed")
             except Exception:
