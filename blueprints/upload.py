@@ -23,30 +23,25 @@ from azure.storage.blob import (
 )
 
 from treesight.billing.accounting import (
+    FinalizeStatus,
     MemberCapExceededError,
     OrgNotFoundError,
     QuotaExhaustedError,
     reserve_run,
 )
 from treesight.config import STORAGE_ACCOUNT_NAME, STORAGE_CONNECTION_STRING
-from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
+from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, SAS_TOKEN_EXPIRY_MINUTES
 from treesight.security.orgs import create_org, get_user_org
 from treesight.security.redact import redact_user_id as _redact
 from treesight.storage import cosmos as _cosmos_mod
 from treesight.storage.client import get_blob_service_client
+from treesight.submission.upload_token_handler import UploadTokenHandler
 
 from ._helpers import _requested_org_id, cors_headers, error_response, require_auth
 
 logger = logging.getLogger(__name__)
 
 bp = func.Blueprint()
-
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
-_SAS_TOKEN_EXPIRY_MINUTES = 15
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -157,7 +152,7 @@ def _mint_sas_url(
     upload-token response includes ``contentType`` so the client can do this.
     """
     now = datetime.datetime.now(datetime.UTC)
-    expiry = now + datetime.timedelta(minutes=_SAS_TOKEN_EXPIRY_MINUTES)
+    expiry = now + datetime.timedelta(minutes=SAS_TOKEN_EXPIRY_MINUTES)
 
     if not STORAGE_ACCOUNT_NAME:
         sas_token = generate_blob_sas(
@@ -350,6 +345,17 @@ def _requested_parcel_count(body: dict, *, default: int = 1) -> int:
     return 0
 
 
+def _release_reservation(*, org_id: str, instance_id: str, status: FinalizeStatus) -> None:
+    """Release a quota reservation by calling finalize_run with a failure status.
+
+    Uses a lazy import so the call site in treesight.billing.accounting is
+    patchable in tests without a module-level import binding.
+    """
+    from treesight.billing.accounting import finalize_run
+
+    finalize_run(org_id=org_id, instance_id=instance_id, status=status)
+
+
 def _resolve_user_org_from_auth(
     req: func.HttpRequest,
     user_id: str,
@@ -373,6 +379,100 @@ def _resolve_user_org_from_auth(
         )
 
 
+def _ensure_user_org(
+    req: func.HttpRequest,
+    user_id: str,
+    active_org: dict | None,
+) -> tuple[dict | None, func.HttpResponse | None]:
+    """Resolve or auto-create a personal org for the user.
+
+    Combines :func:`_resolve_user_org_from_auth` with auto-creation so the
+    route only needs a single injected callable.  Returns ``(org, None)`` on
+    success or ``(None, error_response)`` on failure.
+    """
+    user_org, org_resolution_err = _resolve_user_org_from_auth(req, user_id, active_org)
+    if org_resolution_err:
+        return None, org_resolution_err
+
+    if user_org:
+        return user_org, None
+
+    # Auto-create a personal org so existing users aren't blocked.
+    try:
+        from treesight.security.users import get_user
+
+        user_doc = get_user(user_id) or {}
+        email = user_doc.get("email", "")
+        display_name = user_doc.get("display_name", "")
+        org_name = f"{display_name}'s Organisation" if display_name else "My Organisation"
+        new_org = _create_org_with_retry(
+            user_id,
+            org_name,
+            email,
+            org_id=_personal_org_id(user_id),
+        )
+        # Re-read to handle concurrent submissions: if a racing request already
+        # stamped a different org on the user record, adopt that org rather than
+        # the one we just created (avoids split reservations).
+        # Fall back to new_org if the membership query lags the write — Cosmos
+        # cross-partition queries can briefly trail a direct upsert, causing
+        # get_user_org's slow path to return None even though the org exists.
+        user_org = get_user_org(user_id) or new_org
+        if not user_org:
+            logger.error(
+                "Auto-created org for user=%s but association was not persisted",
+                _redact(user_id),
+            )
+            return None, error_response(
+                503,
+                "Unable to set up your organisation. Please try again or contact support.",
+                req=req,
+            )
+        logger.info(
+            "Auto-created personal org for user=%s org_id=%s",
+            _redact(user_id),
+            user_org["org_id"],
+        )
+        return user_org, None
+    except Exception:
+        logger.exception("Failed to auto-create org for user=%s", _redact(user_id))
+        return None, error_response(
+            503,
+            "Unable to set up your organisation. Please try again or contact support.",
+            req=req,
+        )
+
+
+def _build_run_record(
+    *,
+    submission_id: str,
+    user_id: str,
+    blob_name: str,
+    effective_provider: str,
+    submission_context: dict,
+    is_eudr: bool,
+) -> dict:
+    """Assemble the run record dict from resolved submission fields."""
+    from treesight.models.records import RunRecord
+
+    submitted_at = datetime.datetime.now(datetime.UTC).isoformat()
+    ctx = {k: v for k, v in submission_context.items() if k != "provider_name"}
+    run = RunRecord(
+        submission_id=submission_id,
+        instance_id=submission_id,
+        user_id=user_id,
+        submitted_at=submitted_at,
+        kml_blob_name=blob_name,
+        kml_size_bytes=0,
+        submission_prefix="analysis",
+        provider_name=effective_provider,
+        status="submitted",
+        eudr_mode=is_eudr,
+        **ctx,
+    )
+    return run.model_dump(exclude_none=True)
+
+
 @bp.route(route="upload/token", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @require_auth
 def upload_token(
@@ -390,140 +490,33 @@ def upload_token(
         logger.error("Storage is not configured for SAS generation")
         return error_response(503, "Service not configured", req=req)
 
-    # Parse request body early — needed for EUDR entitlement check.
     try:
         body = json.loads(req.get_body()) if req.get_body() else {}
     except (json.JSONDecodeError, UnicodeDecodeError):
         body = {}
 
-    is_eudr = body.get("eudr_mode") is True
-
-    # ── Org-pooled run accounting (reserve_run) ────────────────────
-    user_org, org_resolution_err = _resolve_user_org_from_auth(req, user_id, active_org)
-    if org_resolution_err:
-        return org_resolution_err
-
-    if not user_org:
-        # Auto-create a personal org so existing users aren't blocked.
-        # They can rename or share it from the account dashboard.
-        try:
-            from treesight.security.users import get_user
-
-            user_doc = get_user(user_id) or {}
-            email = user_doc.get("email", "")
-            display_name = user_doc.get("display_name", "")
-            org_name = f"{display_name}'s Organisation" if display_name else "My Organisation"
-            new_org = _create_org_with_retry(
-                user_id,
-                org_name,
-                email,
-                org_id=_personal_org_id(user_id),
-            )
-            # Re-read to handle concurrent submissions: if a racing request already
-            # stamped a different org on the user record, adopt that org rather than
-            # the one we just created (avoids split reservations).
-            # Fall back to new_org if the membership query lags the write — Cosmos
-            # cross-partition queries can briefly trail a direct upsert, causing
-            # get_user_org's slow path to return None even though the org exists.
-            user_org = get_user_org(user_id) or new_org
-            if not user_org:
-                logger.error(
-                    "Auto-created org for user=%s but association was not persisted",
-                    _redact(user_id),
-                )
-                return error_response(
-                    503,
-                    "Unable to set up your organisation. Please try again or contact support.",
-                    req=req,
-                )
-            logger.info(
-                "Auto-created personal org for user=%s org_id=%s",
-                _redact(user_id),
-                user_org["org_id"],
-            )
-        except Exception:
-            logger.exception("Failed to auto-create org for user=%s", _redact(user_id))
-            return error_response(
-                503,
-                "Unable to set up your organisation. Please try again or contact support.",
-                req=req,
-            )
-
-    org_id = user_org["org_id"]
-    submission_id = str(uuid.uuid4())
-    parcel_count = _requested_parcel_count(body, default=1)
-    if parcel_count <= 0:
-        return error_response(400, "parcel_count must be a positive integer", req=req)
-
-    reservation_err = _reserve_run_or_error(org_id, user_id, parcel_count, is_eudr, submission_id, req)
-    if reservation_err:
-        return reservation_err
-
-    ext, content_type = _detect_file_extension(body.get("filename", ""))
-    blob_name = f"analysis/{submission_id}{ext}"
-
-    submission_context = _sanitise_submission_context(body.get("submission_context") or {})
-    effective_provider = _resolve_provider(body, submission_context)
-
-    # Write ticket blob + mint SAS URL
-    sas_url, storage_err = _write_ticket_and_mint_sas(
-        body,
-        user_id,
-        submission_id,
-        blob_name,
-        submission_context,
-        req,
-        org_id=org_id,
-        content_type=content_type,
-    )
-    if storage_err:
-        # On error, we need to release the reservation
-        try:
-            from treesight.billing.accounting import finalize_run
-
-            finalize_run(org_id=org_id, instance_id=submission_id, status="failed")
-        except Exception:
-            logger.exception(
-                "Failed to refund reservation after storage error org=%s instance=%s",
-                org_id,
-                submission_id,
-            )
-        return storage_err
-
-    # Persist submission record only after SAS minting succeeds
-    submitted_at = datetime.datetime.now(datetime.UTC).isoformat()
-    from treesight.models.records import RunRecord
-
-    ctx = {k: v for k, v in submission_context.items() if k != "provider_name"}
-    run = RunRecord(
-        submission_id=submission_id,
-        instance_id=submission_id,
+    handler = UploadTokenHandler(
         user_id=user_id,
-        submitted_at=submitted_at,
-        kml_blob_name=blob_name,
-        kml_size_bytes=0,
-        submission_prefix="analysis",
-        provider_name=effective_provider,
-        status="submitted",
-        eudr_mode=body.get("eudr_mode") is True,
-        **ctx,
+        body=body,
+        req=req,
+        active_org=active_org,
+        ensure_user_org_fn=_ensure_user_org,
+        reserve_run_or_error_fn=_reserve_run_or_error,
+        write_ticket_and_mint_sas_fn=_write_ticket_and_mint_sas,
+        finalize_run_fn=_release_reservation,
+        persist_submission_record_fn=_persist_submission_record,
+        requested_parcel_count_fn=lambda b: _requested_parcel_count(b, default=1),
+        detect_file_extension_fn=_detect_file_extension,
+        sanitise_submission_context_fn=_sanitise_submission_context,
+        resolve_provider_fn=_resolve_provider,
+        build_run_record_fn=_build_run_record,
+        error_response_fn=error_response,
     )
-    _persist_submission_record(submission_id, run.model_dump(exclude_none=True), user_id)
-
-    logger.info("Upload URL minted submission_id=%s blob=%s", submission_id, blob_name)
-
+    payload, err = handler.mint()
+    if err is not None:
+        return err
     return func.HttpResponse(
-        json.dumps(
-            {
-                "submissionId": submission_id,
-                "sasUrl": sas_url,
-                "blobName": blob_name,
-                "container": DEFAULT_INPUT_CONTAINER,
-                "contentType": content_type,
-                "expiresMinutes": _SAS_TOKEN_EXPIRY_MINUTES,
-                "maxBytes": MAX_KML_FILE_SIZE_BYTES,
-            }
-        ),
+        json.dumps(payload),
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),
