@@ -318,10 +318,16 @@ def run_enrichment(
     first_date = frame_plan[0]["start"]
     last_date = frame_plan[-1]["end"]
     acc = ResourceAccumulator()
-    _run_weather_phase(center_lat, center_lon, first_date, last_date, results, acc=acc)
+    from treesight import config
 
-    # 1b/1c. Flood + fire
-    _run_flood_fire_phase(bbox, center_lat, center_lon, results, acc=acc)
+    if config.SAFE_MODE:
+        results["safe_mode"] = True
+        results["skipped"] = ["weather", "flood_fire", "eudr_datasets"]
+    else:
+        _run_weather_phase(center_lat, center_lon, first_date, last_date, results, acc=acc)
+
+        # 1b/1c. Flood + fire
+        _run_flood_fire_phase(bbox, center_lat, center_lon, results, acc=acc)
 
     # Detect multi-region: AOI centroids spanning > MULTI_REGION_THRESHOLD_KM mean
     # union-level imagery and EUDR stats are geographically meaningless (#860).
@@ -331,7 +337,7 @@ def run_enrichment(
         log_phase("enrichment", "multi_region_detected", aoi_count=len(per_aoi_coords or []))
 
     # 1d. EUDR-specific enrichments (WorldCover + WDPA) — skipped for multi-region
-    if eudr_mode and not multi_region:
+    if eudr_mode and not multi_region and not config.SAFE_MODE:
         _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc)
 
     # 2/3. Mosaic registration + NDVI computation — skipped for multi-region
@@ -529,6 +535,17 @@ def enrich_data_sources(
     first_date = frame_plan[0]["start"]
     last_date = frame_plan[-1]["end"]
     acc = ResourceAccumulator()
+    from treesight import config
+
+    if config.SAFE_MODE:
+        results["safe_mode"] = True
+        results["skipped"] = ["weather", "flood_fire", "eudr_datasets"]
+        if eudr_mode:
+            results["eudr_mode"] = True
+            results["eudr_date_start"] = date_start
+        results["resource_usage"] = acc.to_dict()
+        return results
+
     _run_weather_phase(center_lat, center_lon, first_date, last_date, results, acc=acc)
     _run_flood_fire_phase(bbox, center_lat, center_lon, results, acc=acc)
 

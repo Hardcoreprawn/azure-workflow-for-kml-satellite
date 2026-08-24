@@ -704,6 +704,56 @@ class TestCollectPerAoiCoords:
 class TestEnrichDataSources:
     """Verify enrich_data_sources returns weather/flood/fire results."""
 
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_safe_mode_skips_external_data_sources(self, mock_plan, mock_weather, mock_flood, mock_eudr):
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-06-01"}]
+
+        with patch("treesight.config.SAFE_MODE", True):
+            result = enrich_data_sources(COORDS, eudr_mode=True)
+
+        assert result["safe_mode"] is True
+        assert result["skipped"] == ["weather", "flood_fire", "eudr_datasets"]
+        assert result["frame_plan"] == [{"start": "2024-01-01", "end": "2024-06-01"}]
+        assert "center" in result
+        mock_weather.assert_not_called()
+        mock_flood.assert_not_called()
+        mock_eudr.assert_not_called()
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_run_enrichment_safe_mode_preserves_single_aoi_manifest(
+        self, mock_plan, mock_weather, mock_flood, mock_eudr, mock_mosaic, mock_change
+    ):
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-06-01"}]
+        mock_mosaic.return_value = ([{"mean": 0.42}], ["enrichment/p/t/ndvi/2024_spring.tif"])
+        storage = MagicMock()
+
+        with patch("treesight.config.SAFE_MODE", True):
+            result = run_enrichment(
+                COORDS,
+                project_name="p",
+                timestamp="t",
+                output_container="out",
+                storage=storage,
+                per_aoi_coords=[{"name": "Solo", "coords": COORDS, "area_ha": 1}],
+                eudr_mode=True,
+            )
+
+        assert result["safe_mode"] is True
+        assert result["schema_version"] == "enrichment-manifest/v2"
+        assert len(result["per_aoi_enrichment"]) == 1
+        assert result["per_aoi_enrichment"][0]["name"] == "Solo"
+        mock_weather.assert_not_called()
+        mock_flood.assert_not_called()
+        mock_eudr.assert_not_called()
+
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
