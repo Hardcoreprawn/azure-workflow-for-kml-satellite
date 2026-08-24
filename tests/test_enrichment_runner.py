@@ -753,6 +753,49 @@ class TestEnrichDataSources:
         mock_weather.assert_not_called()
         mock_flood.assert_not_called()
         mock_eudr.assert_not_called()
+        mock_mosaic.assert_not_called()
+        mock_change.assert_not_called()
+
+    @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_run_enrichment_safe_mode_skips_multi_aoi_fanout(
+        self,
+        mock_plan,
+        mock_weather,
+        mock_flood,
+        mock_eudr,
+        mock_mosaic,
+        mock_change,
+        mock_enrich_aoi,
+    ):
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-06-01"}]
+        storage = MagicMock()
+
+        with patch("treesight.config.SAFE_MODE", True):
+            result = run_enrichment(
+                COORDS,
+                project_name="p",
+                timestamp="t",
+                output_container="out",
+                storage=storage,
+                per_aoi_coords=[
+                    {"name": "A", "coords": COORDS, "area_ha": 1},
+                    {"name": "B", "coords": COORDS, "area_ha": 2},
+                ],
+            )
+
+        assert len(result["per_aoi_enrichment"]) == 2
+        mock_weather.assert_not_called()
+        mock_flood.assert_not_called()
+        mock_eudr.assert_not_called()
+        mock_mosaic.assert_not_called()
+        mock_change.assert_not_called()
+        mock_enrich_aoi.assert_not_called()
 
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
@@ -844,6 +887,25 @@ class TestEnrichImagery:
         assert result["frame_plan"][0]["label"] == "Spring 2024"
         assert result["frame_plan"][0]["provenance"]["ndvi_scene_id"] == "S2A_123"
 
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_safe_mode_skips_imagery_calls(self, mock_plan, mock_mosaic, mock_change):
+        mock_plan.return_value = [_make_frame()]
+        storage = MagicMock()
+        with patch("treesight.config.SAFE_MODE", True):
+            result = enrich_imagery(
+                COORDS,
+                project_name="p",
+                timestamp="t",
+                output_container="out",
+                storage=storage,
+            )
+
+        assert result["safe_mode"] is True
+        mock_mosaic.assert_not_called()
+        mock_change.assert_not_called()
+
 
 class TestEnrichSingleAoiStep:
     """Verify enrich_single_aoi_step wraps _enrich_single_aoi with error containment."""
@@ -875,6 +937,33 @@ class TestEnrichSingleAoiStep:
         )
         assert result["error"] == "enrichment_failed"
         assert result["name"] == "bad-aoi"
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_safe_mode_skips_external_calls(
+        self, mock_plan, mock_weather, mock_flood, mock_eudr, mock_mosaic, mock_change
+    ):
+        mock_plan.return_value = [_make_frame()]
+        storage = MagicMock()
+        with patch("treesight.config.SAFE_MODE", True):
+            result = enrich_single_aoi_step(
+                {"name": "safe-aoi", "coords": COORDS},
+                project_name="p",
+                timestamp="t",
+                output_container="out",
+                storage=storage,
+            )
+
+        assert result["safe_mode"] is True
+        mock_weather.assert_not_called()
+        mock_flood.assert_not_called()
+        mock_eudr.assert_not_called()
+        mock_mosaic.assert_not_called()
+        mock_change.assert_not_called()
 
 
 class TestEnrichFinalize:

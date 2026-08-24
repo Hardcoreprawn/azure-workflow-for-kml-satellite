@@ -95,6 +95,13 @@ def _enrich_single_aoi(
     if not frame_plan:
         return result
 
+    from treesight import config
+
+    if config.SAFE_MODE:
+        result["safe_mode"] = True
+        result["skipped"] = ["weather", "flood_fire", "eudr_datasets", "imagery", "change_detection"]
+        return result
+
     first_date = frame_plan[0]["start"]
     last_date = frame_plan[-1]["end"]
     aoi_acc = ResourceAccumulator()
@@ -319,10 +326,11 @@ def run_enrichment(
     last_date = frame_plan[-1]["end"]
     acc = ResourceAccumulator()
     from treesight import config
+    safe_mode = config.SAFE_MODE
 
-    if config.SAFE_MODE:
+    if safe_mode:
         results["safe_mode"] = True
-        results["skipped"] = ["weather", "flood_fire", "eudr_datasets"]
+        results["skipped"] = ["weather", "flood_fire", "eudr_datasets", "imagery", "change_detection", "per_aoi"]
     else:
         _run_weather_phase(center_lat, center_lon, first_date, last_date, results, acc=acc)
 
@@ -337,11 +345,11 @@ def run_enrichment(
         log_phase("enrichment", "multi_region_detected", aoi_count=len(per_aoi_coords or []))
 
     # 1d. EUDR-specific enrichments (WorldCover + WDPA) — skipped for multi-region
-    if eudr_mode and not multi_region and not config.SAFE_MODE:
+    if eudr_mode and not multi_region and not safe_mode:
         _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc)
 
     # 2/3. Mosaic registration + NDVI computation — skipped for multi-region
-    if not multi_region:
+    if not multi_region and not safe_mode:
         ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
             bbox,
             coords,
@@ -355,12 +363,12 @@ def run_enrichment(
         )
     else:
         ndvi_stats, ndvi_raster_paths = [], []
-    if not multi_region:
+    if not multi_region and not safe_mode:
         results.setdefault("ndvi_stats", ndvi_stats)
         results.setdefault("ndvi_raster_paths", ndvi_raster_paths)
 
     # 5. Change detection — skipped for multi-region
-    if not multi_region:
+    if not multi_region and not safe_mode:
         _run_change_detection_phase(
             frame_plan,
             ndvi_raster_paths,
@@ -377,7 +385,7 @@ def run_enrichment(
         _run_aoi_metrics_phase(aoi_list, ndvi_stats, results)
 
     # 6b. Per-AOI enrichment — parallel fan-out; each AOI gets weather, NDVI, change detection
-    if per_aoi_coords and len(per_aoi_coords) > 1:
+    if per_aoi_coords and len(per_aoi_coords) > 1 and not safe_mode:
         log_phase("enrichment", "per_aoi_start", aoi_count=len(per_aoi_coords))
         per_aoi_enrichment: list[dict[str, Any]] = [{}] * len(per_aoi_coords)
 
@@ -427,6 +435,11 @@ def run_enrichment(
             total=len(results["per_aoi_enrichment"]),
             succeeded=sum(1 for r in results["per_aoi_enrichment"] if "error" not in r),
         )
+    elif per_aoi_coords and len(per_aoi_coords) > 1:
+        results["per_aoi_enrichment"] = [
+            _normalise_per_aoi_entry({"safe_mode": True, "skipped": ["per_aoi"]}, entry, idx)
+            for idx, entry in enumerate(per_aoi_coords)
+        ]
     elif per_aoi_coords and len(per_aoi_coords) == 1:
         results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_coords[0])]
 
@@ -593,6 +606,16 @@ def enrich_imagery(
     results: dict[str, Any] = {"frame_plan": frame_plan}
     if not frame_plan:
         return {}
+
+    from treesight import config
+
+    if config.SAFE_MODE:
+        return {
+            "frame_plan": frame_plan,
+            "safe_mode": True,
+            "skipped": ["imagery", "change_detection"],
+            "resource_usage": {},
+        }
 
     acc = ResourceAccumulator()
     _ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
