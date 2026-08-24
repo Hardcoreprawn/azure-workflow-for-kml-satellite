@@ -4,6 +4,7 @@ NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
 
+import asyncio
 import json
 
 import azure.durable_functions as df
@@ -13,7 +14,11 @@ from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_
 from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 
 from . import bp
-from ._status import _durable_status_payload
+from ._status import (
+    _durable_status_payload,
+    _fetch_instance_telemetry_hint,
+    _needs_telemetry_recovery,
+)
 from .history import _build_analysis_history_response
 
 
@@ -58,7 +63,10 @@ async def _build_orchestrator_status_response(
     if not status:
         return func.HttpResponse(json.dumps({"error": "not found"}), status_code=404, mimetype="application/json")
 
-    result = _durable_status_payload(status)
+    telemetry_hint = None
+    if _needs_telemetry_recovery(status):
+        telemetry_hint = await asyncio.to_thread(_fetch_instance_telemetry_hint, instance_id)
+    result = _durable_status_payload(status, telemetry_hint=telemetry_hint)
     return func.HttpResponse(
         json.dumps(result, default=str),
         status_code=200,

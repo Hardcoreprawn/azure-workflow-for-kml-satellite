@@ -4,6 +4,7 @@ NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -18,7 +19,11 @@ from treesight.constants import DEFAULT_PROVIDER, PIPELINE_PAYLOADS_CONTAINER
 from treesight.security.orgs import get_user_org
 from treesight.storage import cosmos as _cosmos_mod
 
-from ._status import _durable_status_payload
+from ._status import (
+    _durable_status_payload,
+    _fetch_instance_telemetry_hint,
+    _needs_telemetry_recovery,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -325,8 +330,6 @@ async def _build_analysis_history_response(
         org_id = None
         member_count = 1
 
-    import asyncio
-
     runs = await asyncio.gather(*(_build_analysis_history_entry(record, client) for record in records))
     active_run = next((run for run in runs if _history_run_is_active(run)), None)
 
@@ -355,10 +358,15 @@ async def _build_analysis_history_entry(
     instance_id = str(record.get("instance_id") or record.get("submission_id") or "")
     status_payload: dict[str, Any] | None = None
     if instance_id:
-        with contextlib.suppress(Exception):
+        try:
             status = await client.get_status(instance_id)
             if status:
-                status_payload = _durable_status_payload(status)
+                telemetry_hint = None
+                if _needs_telemetry_recovery(status):
+                    telemetry_hint = await asyncio.to_thread(_fetch_instance_telemetry_hint, instance_id)
+                status_payload = _durable_status_payload(status, telemetry_hint=telemetry_hint)
+        except Exception:
+            logger.warning("Unable to fetch durable/telemetry status for instance=%s", instance_id, exc_info=True)
 
     runtime_status = record.get("status", "submitted")
     if status_payload and status_payload.get("runtimeStatus"):
