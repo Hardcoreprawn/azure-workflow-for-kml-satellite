@@ -16,6 +16,7 @@ from treesight.constants import (
 from treesight.geo import centroid as _geo_centroid
 from treesight.geo import haversine_km as _geo_haversine_km
 from treesight.log import log_phase
+from treesight.models.enrichment_manifest import ENRICHMENT_MANIFEST_V2_SCHEMA, EnrichmentManifestV2
 from treesight.pipeline.enrichment._phase_runners import (
     _run_aoi_metrics_phase,
     _run_change_detection_phase,
@@ -74,6 +75,7 @@ def _enrich_single_aoi(
     )
 
     result: dict[str, Any] = {
+        "aoi_index": aoi_index if aoi_index is not None else 0,
         "name": aoi_name,
         "coords": coords,
         "bbox": bbox,
@@ -167,6 +169,72 @@ def _is_multi_region(per_aoi_coords: list[dict]) -> bool:
     return False
 
 
+def _eudr_projection(results: dict[str, Any]) -> dict[str, Any] | None:
+    eudr_keys = (
+        "determination",
+        "eudr_mode",
+        "eudr_date_start",
+        "worldcover",
+        "wdpa",
+        "protected_areas",
+    )
+    eudr = {key: results[key] for key in eudr_keys if key in results}
+    return eudr or None
+
+
+def _single_aoi_projection(results: dict[str, Any], aoi_entry: dict[str, Any]) -> dict[str, Any]:
+    projected: dict[str, Any] = {
+        "aoi_index": 0,
+        "name": str(aoi_entry.get("name", "")),
+        "area_ha": aoi_entry.get("area_ha", 0.0),
+        "coords": aoi_entry.get("coords", results.get("coords", [])),
+        "bbox": results.get("bbox", aoi_entry.get("bbox", [])),
+        "center": results.get("center"),
+        "frame_plan": results.get("frame_plan", []),
+        "weather_daily": results.get("weather_daily") or [],
+        "ndvi_stats": results.get("ndvi_stats") or [],
+        "ndvi_raster_paths": results.get("ndvi_raster_paths") or [],
+        "change_detection": results.get("change_detection"),
+        "eudr": _eudr_projection(results),
+        "errors": [],
+    }
+    source_geometry_type = aoi_entry.get("source_geometry_type")
+    if source_geometry_type:
+        projected["source_geometry_type"] = source_geometry_type
+    plot_area_ha = aoi_entry.get("plot_area_ha")
+    if plot_area_ha is not None:
+        projected["plot_area_ha"] = plot_area_ha
+    return projected
+
+
+def _normalise_per_aoi_entry(result: dict[str, Any], aoi_entry: dict[str, Any], idx: int) -> dict[str, Any]:
+    normalised: dict[str, Any] = {
+        "aoi_index": idx,
+        "name": str(aoi_entry.get("name", "")),
+        "area_ha": aoi_entry.get("area_ha", 0.0),
+        "coords": aoi_entry.get("coords", []),
+        "bbox": aoi_entry.get("bbox", result.get("bbox", [])),
+        "center": result.get("center"),
+        "frame_plan": result.get("frame_plan", []),
+        "weather_daily": result.get("weather_daily") or [],
+        "ndvi_stats": result.get("ndvi_stats") or [],
+        "ndvi_raster_paths": result.get("ndvi_raster_paths") or [],
+        "change_detection": result.get("change_detection"),
+        "eudr": result.get("eudr") or _eudr_projection(result),
+        "errors": result.get("errors", []),
+    }
+    source_geometry_type = aoi_entry.get("source_geometry_type")
+    if source_geometry_type:
+        normalised["source_geometry_type"] = source_geometry_type
+    plot_area_ha = aoi_entry.get("plot_area_ha")
+    if plot_area_ha is not None:
+        normalised["plot_area_ha"] = plot_area_ha
+    normalised.update(result)
+    normalised["aoi_index"] = idx
+    normalised.setdefault("errors", [])
+    return normalised
+
+
 # ── Main orchestrator ─────────────────────────────────────────
 
 
@@ -228,6 +296,7 @@ def run_enrichment(
     center_lon = round((min(lons) + max(lons)) / 2, 4)
 
     results: dict[str, Any] = {
+        "schema_version": ENRICHMENT_MANIFEST_V2_SCHEMA,
         "frame_plan": frame_plan,
         "coords": coords,
         "bbox": bbox,
@@ -240,6 +309,9 @@ def run_enrichment(
         if eudr_mode:
             results["eudr_mode"] = True
             results["eudr_date_start"] = date_start
+        if per_aoi_coords and len(per_aoi_coords) == 1:
+            results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_coords[0])]
+        EnrichmentManifestV2.model_validate(results)
         return results
 
     # 1. Weather data
@@ -277,6 +349,9 @@ def run_enrichment(
         )
     else:
         ndvi_stats, ndvi_raster_paths = [], []
+    if not multi_region:
+        results.setdefault("ndvi_stats", ndvi_stats)
+        results.setdefault("ndvi_raster_paths", ndvi_raster_paths)
 
     # 5. Change detection — skipped for multi-region
     if not multi_region:
@@ -321,7 +396,12 @@ def run_enrichment(
                     entry.get("name", "?"),
                     exc_info=True,
                 )
-                return {"name": entry.get("name", ""), "error": "enrichment_failed"}
+                return {
+                    "aoi_index": idx,
+                    "name": entry.get("name", ""),
+                    "error": "enrichment_failed",
+                    "errors": ["enrichment_failed"],
+                }
 
         # Bound max_workers: never exceed the cap, never create more workers than AOIs,
         # never allow 0 (which raises ValueError). Nested calls to _run_mosaic_ndvi_phase
@@ -332,13 +412,17 @@ def run_enrichment(
             for future in as_completed(future_to_idx):
                 per_aoi_enrichment[future_to_idx[future]] = future.result()
 
-        results["per_aoi_enrichment"] = per_aoi_enrichment
+        results["per_aoi_enrichment"] = [
+            _normalise_per_aoi_entry(result, per_aoi_coords[idx], idx) for idx, result in enumerate(per_aoi_enrichment)
+        ]
         log_phase(
             "enrichment",
             "per_aoi_done",
-            total=len(per_aoi_enrichment),
-            succeeded=sum(1 for r in per_aoi_enrichment if "error" not in r),
+            total=len(results["per_aoi_enrichment"]),
+            succeeded=sum(1 for r in results["per_aoi_enrichment"] if "error" not in r),
         )
+    elif per_aoi_coords and len(per_aoi_coords) == 1:
+        results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_coords[0])]
 
     # 7. Store manifest
     duration = time.monotonic() - start
@@ -370,8 +454,11 @@ def run_enrichment(
             )
 
             results["determination"] = determine_deforestation_free(results)
+            if per_aoi_coords and len(per_aoi_coords) == 1:
+                results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_coords[0])]
 
     manifest_path = f"enrichment/{project_name}/{timestamp}/timelapse_payload.json"
+    EnrichmentManifestV2.model_validate(results)
     storage.upload_json(output_container, manifest_path, results)
     results["manifest_path"] = manifest_path
 

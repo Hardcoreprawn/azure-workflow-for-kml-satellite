@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from treesight.models.enrichment_manifest import (
+    ENRICHMENT_MANIFEST_V2_SCHEMA,
+    EnrichmentManifestV2,
+    PerAoiEnrichment,
+)
 from treesight.models.records import (
     EnrichmentManifest,
     FramePlanEntry,
@@ -253,3 +258,44 @@ class TestEnrichmentManifest:
         }
         m = EnrichmentManifest.model_validate(runner_output)
         assert m.manifest_path == "enrichment/test/ts/timelapse_payload.json"
+
+
+class TestEnrichmentManifestV2:
+    def test_single_aoi_manifest_contract(self):
+        manifest = EnrichmentManifestV2.model_validate(
+            {
+                "schema_version": ENRICHMENT_MANIFEST_V2_SCHEMA,
+                "per_aoi_enrichment": [
+                    {
+                        "aoi_index": 0,
+                        "name": "Solo Farm",
+                        "area_ha": 50.0,
+                        "coords": [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]],
+                        "bbox": [[-50.0, -10.0], [-49.0, -9.0]],
+                        "center": {"lat": -9.5, "lon": -49.5},
+                        "frame_plan": [],
+                        "ndvi_raster_paths": ["enrichment/test/20240101/ndvi/2024_spring.tif"],
+                    }
+                ],
+            }
+        )
+
+        assert manifest.schema_version == ENRICHMENT_MANIFEST_V2_SCHEMA
+        assert len(manifest.per_aoi_enrichment) == 1
+        assert manifest.per_aoi_enrichment[0].aoi_index == 0
+        assert manifest.per_aoi_enrichment[0].name == "Solo Farm"
+
+    def test_per_aoi_entry_allows_open_evidence_bags(self):
+        entry = PerAoiEnrichment.model_validate(
+            {
+                "aoi_index": 0,
+                "name": "Plot",
+                "area_ha": 1.0,
+                "coords": [[0.0, 0.0]],
+                "bbox": [[0.0, 0.0]],
+                "center": {"lat": 0.0, "lon": 0.0},
+                "custom_evidence": {"provider": "test"},
+            }
+        )
+
+        assert entry.model_extra["custom_evidence"] == {"provider": "test"}

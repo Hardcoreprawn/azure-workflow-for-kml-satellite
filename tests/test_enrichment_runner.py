@@ -446,14 +446,23 @@ class TestPerAoiEnrichment:
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
-    def test_single_aoi_skips_per_aoi(self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change):
-        """With only 1 AOI, per-AOI enrichment is not triggered."""
+    def test_single_aoi_emits_canonical_per_aoi_entry(
+        self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
+    ):
+        """With 1 AOI, the manifest still exposes canonical per-AOI evidence."""
         mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
-        mock_mosaic.return_value = ([], [])
+        unscoped_path = "enrichment/test/20240101/ndvi/2024_spring.tif"
+        mock_mosaic.return_value = ([{"mean": 0.42}], [unscoped_path])
         storage = MagicMock()
 
         per_aoi = [
-            {"name": "Solo Farm", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 50},
+            {
+                "name": "Solo Farm",
+                "coords": [[-50, -10], [-50, -9], [-49, -9]],
+                "area_ha": 50,
+                "source_geometry_type": "polygon",
+                "plot_area_ha": 49.5,
+            },
         ]
 
         result = run_enrichment(
@@ -465,7 +474,17 @@ class TestPerAoiEnrichment:
             per_aoi_coords=per_aoi,
         )
 
-        assert "per_aoi_enrichment" not in result
+        assert result["schema_version"] == "enrichment-manifest/v2"
+        assert len(result["per_aoi_enrichment"]) == 1
+        entry = result["per_aoi_enrichment"][0]
+        assert entry["aoi_index"] == 0
+        assert entry["name"] == "Solo Farm"
+        assert entry["area_ha"] == 50
+        assert entry["coords"] == per_aoi[0]["coords"]
+        assert entry["source_geometry_type"] == "polygon"
+        assert entry["plot_area_ha"] == 49.5
+        assert entry["ndvi_raster_paths"] == [unscoped_path]
+        assert "/aoi-0/" not in entry["ndvi_raster_paths"][0]
 
     @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
     @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
