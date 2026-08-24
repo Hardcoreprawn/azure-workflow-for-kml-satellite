@@ -849,17 +849,63 @@ class TestEnrichFinalize:
 
     def test_includes_per_aoi_results(self):
         storage = MagicMock()
-        per_aoi = [{"name": "a"}, {"name": "b", "error": "enrichment_failed"}]
+        per_aoi = [
+            {"name": "a", "coords": [[1, 2]], "area_ha": 10},
+            {"name": "b", "coords": [[3, 4]], "area_ha": 20},
+        ]
+        per_aoi_results = [{"name": "a"}, {"name": "b", "error": "enrichment_failed"}]
         result = enrich_finalize(
             {"frame_plan": []},
             {},
-            per_aoi,
+            per_aoi_results,
+            per_aoi_coords=per_aoi,
             project_name="p",
             timestamp="t",
             output_container="out",
             storage=storage,
         )
         assert len(result["per_aoi_enrichment"]) == 2
+        assert result["per_aoi_enrichment"][0]["aoi_index"] == 0
+        assert result["per_aoi_enrichment"][1]["aoi_index"] == 1
+
+    def test_single_aoi_finalize_projects_merged_top_level_evidence(self):
+        storage = MagicMock()
+        result = enrich_finalize(
+            {
+                "frame_plan": [{"start": "2024-01-01", "end": "2024-03-01"}],
+                "coords": [[-50, -10], [-50, -9], [-49, -9]],
+                "bbox": [[-50, -10], [-49, -9]],
+                "center": {"lat": -9.5, "lon": -49.5},
+                "weather_daily": [{"temp": 20}],
+            },
+            {
+                "ndvi_stats": [{"mean": 0.42}],
+                "ndvi_raster_paths": ["enrichment/p/t/ndvi/2024_spring.tif"],
+            },
+            [],
+            per_aoi_coords=[
+                {
+                    "name": "Solo Farm",
+                    "coords": [[-50, -10], [-50, -9], [-49, -9]],
+                    "area_ha": 50,
+                }
+            ],
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+
+        assert result["schema_version"] == "enrichment-manifest/v2"
+        assert len(result["per_aoi_enrichment"]) == 1
+        entry = result["per_aoi_enrichment"][0]
+        assert entry["aoi_index"] == 0
+        assert entry["name"] == "Solo Farm"
+        assert entry["area_ha"] == 50
+        assert entry["weather_daily"] == [{"temp": 20}]
+        assert entry["ndvi_stats"] == [{"mean": 0.42}]
+        assert entry["ndvi_raster_paths"] == ["enrichment/p/t/ndvi/2024_spring.tif"]
+        assert "/aoi-0/" not in entry["ndvi_raster_paths"][0]
 
     @patch("treesight.pipeline.enrichment.determination.determine_deforestation_free")
     def test_eudr_mode_runs_determination(self, mock_det):
@@ -869,6 +915,7 @@ class TestEnrichFinalize:
             {},
             {},
             [],
+            per_aoi_coords=[],
             eudr_mode=True,
             date_start="2021-01-01",
             project_name="p",

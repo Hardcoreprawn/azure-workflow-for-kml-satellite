@@ -652,6 +652,7 @@ def enrich_finalize(
     imagery: dict[str, Any],
     per_aoi_results: list[dict[str, Any]],
     *,
+    per_aoi_coords: list[dict[str, Any]] | None = None,
     eudr_mode: bool = False,
     date_start: str | None = None,
     project_name: str,
@@ -668,7 +669,7 @@ def enrich_finalize(
     # Merge: data_sources is the base, imagery overlays
     ds_usage = data_sources.get("resource_usage")
     img_usage = imagery.get("resource_usage")
-    merged = {**data_sources, **imagery}
+    merged = {"schema_version": ENRICHMENT_MANIFEST_V2_SCHEMA, **data_sources, **imagery}
     merged.pop("resource_usage", None)
 
     # Combine resource accumulators from parallel fan-out
@@ -679,15 +680,21 @@ def enrich_finalize(
         acc.merge(ResourceAccumulator.from_dict(img_usage))
 
     if per_aoi_results:
-        merged["per_aoi_enrichment"] = per_aoi_results
-        succeeded = [r for r in per_aoi_results if "error" not in r]
+        source_entries = per_aoi_coords or [{} for _ in per_aoi_results]
+        merged["per_aoi_enrichment"] = [
+            _normalise_per_aoi_entry(result, source_entries[idx] if idx < len(source_entries) else {}, idx)
+            for idx, result in enumerate(per_aoi_results)
+        ]
+        succeeded = [r for r in merged["per_aoi_enrichment"] if "error" not in r]
         acc.increment("per_aoi_enrichments", len(succeeded))
         log_phase(
             "enrichment",
             "per_aoi_done",
-            total=len(per_aoi_results),
+            total=len(merged["per_aoi_enrichment"]),
             succeeded=len(succeeded),
         )
+    elif per_aoi_coords and len(per_aoi_coords) == 1:
+        merged["per_aoi_enrichment"] = [_single_aoi_projection(merged, per_aoi_coords[0])]
 
     merged["resource_usage"] = acc.to_dict()
     merged["estimated_cost_pence"] = acc.estimate_cost_pence()
@@ -700,8 +707,11 @@ def enrich_finalize(
         )
 
         merged["determination"] = determine_deforestation_free(merged)
+        if per_aoi_coords and len(per_aoi_coords) == 1:
+            merged["per_aoi_enrichment"] = [_single_aoi_projection(merged, per_aoi_coords[0])]
 
     manifest_path = f"enrichment/{project_name}/{timestamp}/timelapse_payload.json"
+    EnrichmentManifestV2.model_validate(merged)
     storage.upload_json(output_container, manifest_path, merged)
     merged["manifest_path"] = manifest_path
 
