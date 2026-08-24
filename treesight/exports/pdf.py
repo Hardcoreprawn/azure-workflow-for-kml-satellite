@@ -278,7 +278,7 @@ def _pdf_per_parcel_sections(pdf: Any, per_aoi: list[dict[str, Any]]) -> None:
 
         # Determination
         det = _aoi_eudr_value(aoi, "determination") or {}
-        status = det.get("status", "unknown")
+        status = det.get("screening_outcome", det.get("status", "unknown"))
         confidence = det.get("confidence", "unknown")
         pdf.set_font("Helvetica", "B", 9)
         pdf.cell(
