@@ -351,6 +351,17 @@ def _requested_parcel_count(body: dict, *, default: int = 1) -> int:
     return 0
 
 
+def _release_reservation(*, org_id: str, instance_id: str, status: str) -> None:
+    """Release a quota reservation by calling finalize_run with a failure status.
+
+    Uses a lazy import so the call site in treesight.billing.accounting is
+    patchable in tests without a module-level import binding.
+    """
+    from treesight.billing.accounting import finalize_run
+
+    finalize_run(org_id=org_id, instance_id=instance_id, status=status)
+
+
 def _resolve_user_org_from_auth(
     req: func.HttpRequest,
     user_id: str,
@@ -498,6 +509,7 @@ def upload_token(
         ensure_user_org_fn=_ensure_user_org,
         reserve_run_or_error_fn=_reserve_run_or_error,
         write_ticket_and_mint_sas_fn=_write_ticket_and_mint_sas,
+        finalize_run_fn=_release_reservation,
         persist_submission_record_fn=_persist_submission_record,
         requested_parcel_count_fn=lambda b: _requested_parcel_count(b, default=1),
         detect_file_extension_fn=_detect_file_extension,

@@ -49,6 +49,7 @@ def _make_handler(
     ensure_user_org_fn=None,
     reserve_run_or_error_fn=None,
     write_ticket_and_mint_sas_fn=None,
+    finalize_run_fn=None,
     persist_submission_record_fn=None,
     requested_parcel_count_fn=None,
     detect_file_extension_fn=None,
@@ -67,6 +68,9 @@ def _make_handler(
 
     def _default_write_ticket(*args, **kwargs):
         return "https://storage.example.com/blob?sas=fake", None
+
+    def _default_finalize_run(*, org_id, instance_id, status):
+        pass
 
     def _default_persist(submission_id, record, user_id):
         pass
@@ -98,6 +102,7 @@ def _make_handler(
         ensure_user_org_fn=ensure_user_org_fn or _default_ensure_user_org,
         reserve_run_or_error_fn=reserve_run_or_error_fn or _default_reserve,
         write_ticket_and_mint_sas_fn=write_ticket_and_mint_sas_fn or _default_write_ticket,
+        finalize_run_fn=finalize_run_fn or _default_finalize_run,
         persist_submission_record_fn=persist_submission_record_fn or _default_persist,
         requested_parcel_count_fn=requested_parcel_count_fn or _default_parcel_count,
         detect_file_extension_fn=detect_file_extension_fn or _default_detect,
@@ -211,9 +216,7 @@ def test_returns_400_when_parcel_count_is_negative():
 def test_returns_error_when_reservation_fails():
     reserve_err = func.HttpResponse(b'{"error": "quota exhausted"}', status_code=403)
 
-    handler = _make_handler(
-        reserve_run_or_error_fn=lambda org_id, uid, pc, is_eudr, sid, req: reserve_err
-    )
+    handler = _make_handler(reserve_run_or_error_fn=lambda org_id, uid, pc, is_eudr, sid, req: reserve_err)
     payload, err = handler.mint()
 
     assert payload is None
@@ -264,20 +267,17 @@ def test_eudr_mode_false_propagated_to_reserve():
 # ---------------------------------------------------------------------------
 
 
-def test_releases_reservation_when_sas_fails(monkeypatch):
-    """finalize_run is called to release the reservation when SAS minting fails."""
-    import treesight.billing.accounting as billing_mod
-
+def test_releases_reservation_when_sas_fails():
+    """finalize_run_fn is called to release the reservation when SAS minting fails."""
     finalize_calls = []
 
     def _fake_finalize(*, org_id, instance_id, status):
         finalize_calls.append({"org_id": org_id, "instance_id": instance_id, "status": status})
 
-    monkeypatch.setattr(billing_mod, "finalize_run", _fake_finalize)
-
     sas_error = func.HttpResponse(b'{"error": "storage down"}', status_code=502)
     handler = _make_handler(
-        write_ticket_and_mint_sas_fn=lambda *a, **kw: (None, sas_error)
+        write_ticket_and_mint_sas_fn=lambda *a, **kw: (None, sas_error),
+        finalize_run_fn=_fake_finalize,
     )
     payload, err = handler.mint()
 

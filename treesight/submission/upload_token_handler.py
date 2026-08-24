@@ -58,6 +58,7 @@ class UploadTokenHandler:
             func.HttpResponse | None,
         ],
         write_ticket_and_mint_sas_fn: Callable[..., tuple[str | None, func.HttpResponse | None]],
+        finalize_run_fn: Callable[..., None],
         persist_submission_record_fn: Callable[[str, dict[str, Any], str], None],
         # Injected pure helpers (allow override in tests)
         requested_parcel_count_fn: Callable[[dict[str, Any]], int],
@@ -78,6 +79,7 @@ class UploadTokenHandler:
         self._ensure_user_org = ensure_user_org_fn
         self._reserve_run_or_error = reserve_run_or_error_fn
         self._write_ticket_and_mint_sas = write_ticket_and_mint_sas_fn
+        self._finalize_run = finalize_run_fn
         self._persist_submission_record = persist_submission_record_fn
         self._requested_parcel_count = requested_parcel_count_fn
         self._detect_file_extension = detect_file_extension_fn
@@ -163,9 +165,7 @@ class UploadTokenHandler:
         ext, content_type = self._detect_file_extension(self.body.get("filename", ""))
         self._content_type = content_type
         self._blob_name = f"analysis/{self._submission_id}{ext}"
-        self._submission_context = self._sanitise_submission_context(
-            self.body.get("submission_context") or {}
-        )
+        self._submission_context = self._sanitise_submission_context(self.body.get("submission_context") or {})
         self._effective_provider = self._resolve_provider(self.body, self._submission_context)
         return None
 
@@ -182,9 +182,7 @@ class UploadTokenHandler:
         )
         if storage_err is not None:
             try:
-                from treesight.billing.accounting import finalize_run
-
-                finalize_run(
+                self._finalize_run(
                     org_id=self._org_id,
                     instance_id=self._submission_id,
                     status="failed",
