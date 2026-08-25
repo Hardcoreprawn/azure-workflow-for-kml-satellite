@@ -77,7 +77,8 @@ def test_makefile_exposes_each_integration_tier() -> None:
     makefile = MAKEFILE.read_text()
 
     assert _target_runner_commands(makefile, "test-int") == [
-        "uv run python scripts/run_integration_tests.py --marker integration_azurite tests/test_integration.py"
+        "AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/run_integration_tests.py --marker "
+        "integration_azurite tests/test_integration.py"
     ]
     assert _target_runner_commands(makefile, "test-int-live") == [
         "uv run python scripts/run_integration_tests.py --marker integration_live_stack "

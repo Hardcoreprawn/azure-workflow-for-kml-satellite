@@ -1,11 +1,29 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-all dev-all-stub dev-logs dev-rebuild \
-	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check verify-local lint fmt check smoke clean prune-branches \
+	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local test-pipeline-local-clean real-acquisition-check blueprint-parity-check verify-local lint fmt check smoke clean prune-branches \
 	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
+
+# Resolved once per `make` invocation; empty outside a Docker-outside-of-
+# Docker devcontainer, in which case docker-compose.yml/.override.yml fall
+# back to "." (see scripts/detect_dood_workspace.sh).
+DEV_WORKSPACE := $(shell bash scripts/detect_dood_workspace.sh)
+export DEV_WORKSPACE
+
+# Deterministic Azurite host for script-based flows in this repo.
+# Ambient shell/env values are ignored to avoid hidden drift between sessions.
+# Override explicitly when needed:
+#   make AZURITE_BLOB_HOST=127.0.0.1 test-pipeline-local
+AZURITE_BLOB_HOST_DEFAULT := azurite
+ifeq ($(origin AZURITE_BLOB_HOST),command line)
+export AZURITE_BLOB_HOST
+else
+override AZURITE_BLOB_HOST := $(AZURITE_BLOB_HOST_DEFAULT)
+export AZURITE_BLOB_HOST
+endif
 
 # ───────────────────── Help ─────────────────────
 
@@ -41,21 +59,16 @@ _free-ports: ## Kill local processes holding dev ports
 
 dev-up: ## Start Azurite container
 	docker compose up -d azurite
-	@echo "Azurite running on localhost:10000 (blob), :10001 (queue), :10002 (table)"
+	@echo "Azurite running for scripts via AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST)"
+	@echo "Published ports: localhost:10000 (blob), :10001 (queue), :10002 (table)"
 
 dev-down: _free-ports ## Stop containers and free ports
 	docker compose down
 
 dev-init: dev-up ## Start Azurite + create storage containers
-	uv run python scripts/init_storage.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/init_storage.py
 
 # ───────────────────── Full Stack ─────────────────────
-
-# Resolved once per `make` invocation; empty outside a Docker-outside-of-
-# Docker devcontainer, in which case docker-compose.yml/.override.yml fall
-# back to "." (see scripts/detect_dood_workspace.sh).
-DEV_WORKSPACE := $(shell bash scripts/detect_dood_workspace.sh)
-export DEV_WORKSPACE
 
 dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web) — real Planetary Computer imagery, the single local dev path
 	@if [ -n "$(DEV_WORKSPACE)" ]; then echo "Detected Docker-outside-of-Docker — using host path $(DEV_WORKSPACE) for bind mounts"; fi
@@ -92,7 +105,7 @@ build-rust: ## Build + install the treesight_rs PyO3 extension into the active v
 	uv pip install --force-reinstall ./rust
 
 test-upload: ## Upload sample KML and trigger pipeline
-	uv run python scripts/simulate_upload.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/simulate_upload.py
 
 ux-smoke: ## UX smoke test across host site, EUDR/conservation/account apps, and the API auth boundary (needs make dev-all running + uv sync --extra ux)
 	@uv run python -c "import playwright" 2>/dev/null || { echo "ERROR: playwright not installed. Run: uv sync --extra ux"; exit 1; }
@@ -118,8 +131,8 @@ test-js: ## Execute website/js correctness tests with Node's built-in test runne
 	node --test tests/js/
 
 test-int: ## Run integration tests against a running Azurite (creates containers first)
-	uv run python scripts/init_storage.py
-	uv run python scripts/run_integration_tests.py --marker integration_azurite tests/test_integration.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/init_storage.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/run_integration_tests.py --marker integration_azurite tests/test_integration.py
 
 test-int-live: ## Run integration smoke tests against Azurite + local Functions host
 	uv run python scripts/run_integration_tests.py --marker integration_live_stack tests/test_pipeline_smoke_e2e.py tests/test_monster_aoi_scale.py
@@ -129,13 +142,19 @@ test-int-stripe: ## Run external Stripe integration tests (requires STRIPE_API_K
 
 test-pipeline-local: ## Unattended local/CI pipeline e2e gate against a running Azurite — no live Azure environment required (#1215)
 	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
-	uv run python scripts/init_storage.py
-	uv run python scripts/e2e_local.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/init_storage.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/e2e_local.py
+
+test-pipeline-local-clean: ## Local-only resilient wrapper: start Azurite, run e2e gate, always tear down containers
+	@set -euo pipefail; \
+	trap '$(MAKE) dev-down >/dev/null 2>&1 || true' EXIT; \
+	$(MAKE) dev-up; \
+	$(MAKE) test-pipeline-local
 
 real-acquisition-check: ## Run real-world EUDR fixtures against the REAL Planetary Computer provider for manual review (#1379) — not a CI gate
 	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
-	uv run python scripts/init_storage.py
-	uv run python scripts/real_acquisition_runner.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/init_storage.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/real_acquisition_runner.py
 
 blueprint-parity-check: ## Verify compute and orchestrator serve the identical HTTP blueprint set (needs make dev-all running) (#1407)
 	uv run python scripts/validate_blueprint_parity.py
