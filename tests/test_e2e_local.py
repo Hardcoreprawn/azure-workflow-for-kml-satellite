@@ -17,8 +17,8 @@ from scripts.e2e_local import (
     REPO_ROOT,
     assert_pipeline_succeeded,
     build_func_host_env,
-    remove_func_host_log,
     stop_func_host,
+    write_e2e_result,
 )
 
 
@@ -149,14 +149,27 @@ class TestStopFuncHost:
         proc.kill.assert_called_once()
 
 
-class TestRemoveFuncHostLog:
-    def test_removes_existing_log(self, tmp_path: Path):
-        log_path = tmp_path / "func.log"
-        log_path.write_text("transient")
+class TestWriteE2eResult:
+    def test_writes_validated_run_summary(self, tmp_path: Path):
+        result_path = tmp_path / "result.json"
 
-        remove_func_host_log(log_path)
+        write_e2e_result(
+            {
+                "runtimeStatus": "Completed",
+                "instanceId": "instance-1",
+                "output": {"downloadsCompleted": 1},
+            },
+            result_path,
+        )
 
-        assert not log_path.exists()
+        assert '"fixture": "tests/fixtures/sample.kml"' in result_path.read_text()
+        assert '"instanceId": "instance-1"' in result_path.read_text()
+        assert '"runtimeStatus": "Completed"' in result_path.read_text()
 
-    def test_tolerates_missing_log(self, tmp_path: Path):
-        remove_func_host_log(tmp_path / "missing.log")
+    def test_overwrites_previous_result(self, tmp_path: Path):
+        result_path = tmp_path / "result.json"
+        result_path.write_text("old")
+
+        write_e2e_result({"runtimeStatus": "Completed", "output": {}}, result_path)
+
+        assert result_path.read_text().startswith("{")

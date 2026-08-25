@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -36,6 +37,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 FUNC_BASE = "http://localhost:7071"
 DEFAULT_KML = REPO_ROOT / "tests" / "fixtures" / "sample.kml"
 FUNC_HOST_LOG_PATH = REPO_ROOT / ".e2e-local-func-host.log"
+E2E_RESULT_PATH = REPO_ROOT / ".e2e-local-result.json"
 
 _TERMINAL_STATUSES = frozenset({"Completed", "Failed", "Canceled", "Terminated"})
 DEFAULT_POLL_INTERVAL_SECONDS = 3.0
@@ -129,9 +131,15 @@ def stop_func_host(proc: subprocess.Popen, *, grace_seconds: float = 10.0) -> No
         proc.wait(timeout=5.0)
 
 
-def remove_func_host_log(path: Path = FUNC_HOST_LOG_PATH) -> None:
-    """Remove the transient host log after a successful disposable run."""
-    path.unlink(missing_ok=True)
+def write_e2e_result(status_payload: dict[str, Any], path: Path = E2E_RESULT_PATH) -> None:
+    """Persist the validated run summary as durable proof of a local pass."""
+    result = {
+        "fixture": str(DEFAULT_KML.relative_to(REPO_ROOT)),
+        "runtimeStatus": status_payload.get("runtimeStatus"),
+        "instanceId": status_payload.get("instanceId"),
+        "output": status_payload.get("output") or {},
+    }
+    path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
 
 
 def wait_for_func_host(*, timeout: float, interval: float = 2.0) -> None:
@@ -239,7 +247,6 @@ def main() -> None:
         os.environ.pop(var.lower(), None)
 
     proc = start_func_host(log_path=FUNC_HOST_LOG_PATH)
-    succeeded = False
     try:
         print("[1/4] Waiting for func host to become ready...")
         wait_for_func_host(timeout=120.0)
@@ -257,16 +264,15 @@ def main() -> None:
 
         print("[4/4] Verifying the run actually produced output...")
         assert_pipeline_succeeded(result)
+        write_e2e_result(result)
 
         print("\nPASS — local pipeline e2e gate succeeded.")
-        succeeded = True
+        print(f"Result written to {E2E_RESULT_PATH}")
     except Exception:
         print(f"\nFAIL — see func host log at {FUNC_HOST_LOG_PATH}", file=sys.stderr)
         raise
     finally:
         stop_func_host(proc)
-        if succeeded:
-            remove_func_host_log()
 
 
 if __name__ == "__main__":
