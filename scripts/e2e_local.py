@@ -246,6 +246,7 @@ def main() -> None:
         os.environ.pop(var, None)
         os.environ.pop(var.lower(), None)
 
+    E2E_RESULT_PATH.unlink(missing_ok=True)
     proc = start_func_host(log_path=FUNC_HOST_LOG_PATH)
     try:
         print("[1/4] Waiting for func host to become ready...")
