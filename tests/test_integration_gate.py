@@ -73,6 +73,18 @@ def _target_runner_commands(makefile: str, target: str) -> list[str]:
     return [line.strip() for line in match.group(0).splitlines() if "run_integration_tests.py" in line]
 
 
+def test_pipeline_e2e_target_owns_disposable_compose_lifecycle() -> None:
+    makefile = MAKEFILE.read_text()
+    match = re.search(r"^test-pipeline-local:.*?(?=^\S)", makefile, re.MULTILINE | re.DOTALL)
+
+    assert match is not None
+    target = match.group(0)
+    assert "PIPELINE_COMPOSE_PROJECT" in target
+    assert "up -d --wait" in target
+    assert "down --volumes --remove-orphans" in target
+    assert "test-pipeline-local-clean" not in makefile
+
+
 def test_makefile_exposes_each_integration_tier() -> None:
     makefile = MAKEFILE.read_text()
 

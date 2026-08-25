@@ -7,10 +7,10 @@ against Azurite and a real ``func start`` host process, with
 provider (see ``treesight/providers/stub.py``). No live Azure environment
 required.
 
-Prerequisite: Azurite must already be up and reachable (``make dev-up``, or
-a sibling ``azurite`` service in CI) — this script only creates containers
-if missing, then manages the func host lifecycle and trigger/poll/assert
-flow.
+Prerequisite: Azurite must already be up and reachable (the canonical
+entrypoint is ``make test-pipeline-local``; direct callers can use
+``make dev-up`` or a sibling ``azurite`` service in CI). This script manages
+the func host lifecycle and trigger/poll/assert flow.
 
 Usage:
   make test-pipeline-local
@@ -129,6 +129,11 @@ def stop_func_host(proc: subprocess.Popen, *, grace_seconds: float = 10.0) -> No
         proc.wait(timeout=5.0)
 
 
+def remove_func_host_log(path: Path = FUNC_HOST_LOG_PATH) -> None:
+    """Remove the transient host log after a successful disposable run."""
+    path.unlink(missing_ok=True)
+
+
 def wait_for_func_host(*, timeout: float, interval: float = 2.0) -> None:
     """Block until the func host answers /api/health, or raise TimeoutError."""
     deadline = time.monotonic() + timeout
@@ -234,6 +239,7 @@ def main() -> None:
         os.environ.pop(var.lower(), None)
 
     proc = start_func_host(log_path=FUNC_HOST_LOG_PATH)
+    succeeded = False
     try:
         print("[1/4] Waiting for func host to become ready...")
         wait_for_func_host(timeout=120.0)
@@ -253,11 +259,14 @@ def main() -> None:
         assert_pipeline_succeeded(result)
 
         print("\nPASS — local pipeline e2e gate succeeded.")
+        succeeded = True
     except Exception:
         print(f"\nFAIL — see func host log at {FUNC_HOST_LOG_PATH}", file=sys.stderr)
         raise
     finally:
         stop_func_host(proc)
+        if succeeded:
+            remove_func_host_log()
 
 
 if __name__ == "__main__":

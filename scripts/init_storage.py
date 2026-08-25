@@ -32,7 +32,13 @@ def wait_for_azurite(client: BlobServiceClient, retries: int = 15, delay: float 
             time.sleep(delay)
             continue
         try:
-            client.get_account_information()
+            client.get_account_information(
+                timeout=min(delay, 5.0),
+                retry_total=0,
+                retry_connect=0,
+                retry_read=0,
+                retry_status=0,
+            )
             return
         except Exception:
             if attempt == retries:

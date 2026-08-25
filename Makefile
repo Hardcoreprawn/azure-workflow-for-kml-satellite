@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
-       dev-all dev-all-stub dev-logs dev-rebuild \
-	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local test-pipeline-local-clean real-acquisition-check blueprint-parity-check verify-local lint fmt check smoke clean prune-branches \
+	dev-all dev-all-stub dev-logs dev-rebuild \
+	 test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check verify-local lint fmt check smoke clean prune-branches \
 	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
@@ -13,17 +13,11 @@ SHELL  := /bin/bash
 DEV_WORKSPACE := $(shell bash scripts/detect_dood_workspace.sh)
 export DEV_WORKSPACE
 
-# Deterministic Azurite host for script-based flows in this repo.
-# Ambient shell/env values are ignored to avoid hidden drift between sessions.
-# Override explicitly when needed:
-#   make AZURITE_BLOB_HOST=127.0.0.1 test-pipeline-local
-AZURITE_BLOB_HOST_DEFAULT := azurite
-ifeq ($(origin AZURITE_BLOB_HOST),command line)
+# Default endpoint for host-side script flows. The disposable pipeline target
+# selects its own endpoint after establishing its network below.
+AZURITE_BLOB_HOST ?= 127.0.0.1
 export AZURITE_BLOB_HOST
-else
-override AZURITE_BLOB_HOST := $(AZURITE_BLOB_HOST_DEFAULT)
-export AZURITE_BLOB_HOST
-endif
+PIPELINE_COMPOSE_PROJECT := canopex-pipeline-e2e
 
 # ───────────────────── Help ─────────────────────
 
@@ -58,7 +52,7 @@ _free-ports: ## Kill local processes holding dev ports
 # ───────────────────── Azurite (Docker) ─────────────────────
 
 dev-up: ## Start Azurite container
-	docker compose up -d azurite
+	docker compose up -d --wait --wait-timeout 60 azurite
 	@echo "Azurite running for scripts via AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST)"
 	@echo "Published ports: localhost:10000 (blob), :10001 (queue), :10002 (table)"
 
@@ -140,16 +134,21 @@ test-int-live: ## Run integration smoke tests against Azurite + local Functions 
 test-int-stripe: ## Run external Stripe integration tests (requires STRIPE_API_KEY)
 	uv run python scripts/run_integration_tests.py --marker integration_external tests/test_integration_billing.py
 
-test-pipeline-local: ## Unattended local/CI pipeline e2e gate against a running Azurite — no live Azure environment required (#1215)
+test-pipeline-local: ## Unattended local/CI pipeline e2e gate with managed Azurite lifecycle — no live Azure environment required (#1215)
 	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
-	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/init_storage.py
-	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/e2e_local.py
-
-test-pipeline-local-clean: ## Local-only resilient wrapper: start Azurite, run e2e gate, always tear down containers
 	@set -euo pipefail; \
-	trap '$(MAKE) dev-down >/dev/null 2>&1 || true' EXIT; \
-	$(MAKE) dev-up; \
-	$(MAKE) test-pipeline-local
+	project=$(PIPELINE_COMPOSE_PROJECT); \
+	trap 'docker compose --project-name "$$project" down --volumes --remove-orphans >/dev/null 2>&1 || true' EXIT; \
+	docker compose --project-name "$$project" up -d --wait --wait-timeout 60 azurite; \
+	if [[ -f /.dockerenv ]]; then \
+		docker network connect "$${project}_default" "$$(hostname)" 2>/dev/null || true; \
+		host=azurite; \
+	else \
+		host=127.0.0.1; \
+	fi; \
+	echo "Using Azurite endpoint $$host in Compose project $$project"; \
+	AZURITE_BLOB_HOST="$$host" uv run python scripts/init_storage.py; \
+	AZURITE_BLOB_HOST="$$host" uv run python scripts/e2e_local.py
 
 real-acquisition-check: ## Run real-world EUDR fixtures against the REAL Planetary Computer provider for manual review (#1379) — not a CI gate
 	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }

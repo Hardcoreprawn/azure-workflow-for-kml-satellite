@@ -8,6 +8,7 @@ real by ``make test-pipeline-local``, not something worth mocking in unit tests.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,6 +17,7 @@ from scripts.e2e_local import (
     REPO_ROOT,
     assert_pipeline_succeeded,
     build_func_host_env,
+    remove_func_host_log,
     stop_func_host,
 )
 
@@ -145,3 +147,16 @@ class TestStopFuncHost:
         stop_func_host(proc)
         proc.terminate.assert_called_once()
         proc.kill.assert_called_once()
+
+
+class TestRemoveFuncHostLog:
+    def test_removes_existing_log(self, tmp_path: Path):
+        log_path = tmp_path / "func.log"
+        log_path.write_text("transient")
+
+        remove_func_host_log(log_path)
+
+        assert not log_path.exists()
+
+    def test_tolerates_missing_log(self, tmp_path: Path):
+        remove_func_host_log(tmp_path / "missing.log")
