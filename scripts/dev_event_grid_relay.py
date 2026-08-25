@@ -146,7 +146,10 @@ def relay_forever(
             seen.add(blob_name)
             if not _is_relayable_blob(blob_name):
                 continue
-            _relay_one(container_client, container, blob_name, function_name, func_base, function_key)
+            unauthorized = _relay_one(container_client, container, blob_name, function_name, func_base, function_key)
+            if unauthorized:
+                function_key = _fetch_eventgrid_key(client) or function_key
+                _relay_one(container_client, container, blob_name, function_name, func_base, function_key)
 
         time.sleep(poll_interval)
 
@@ -158,13 +161,13 @@ def _relay_one(
     function_name: str,
     func_base: str,
     function_key: str | None,
-) -> None:
-    """Fire one blob's synthetic Event Grid event. Errors are logged, not raised."""
+) -> bool:
+    """Fire one blob's synthetic Event Grid event and flag stale auth keys."""
     try:
         props = container_client.get_blob_client(blob_name).get_blob_properties()
     except Exception as exc:
         print(f"  ... could not read properties for {blob_name} ({exc}), skipping")
-        return
+        return False
 
     print(f"New upload detected: {blob_name}")
     blob_url = f"{AZURITE_BLOB_BASE}/{container}/{blob_name}"
@@ -177,10 +180,16 @@ def _relay_one(
             function_name=function_name,
             function_key=function_key,
             func_base=func_base,
-            strict=False,
+            strict=True,
         )
+    except RuntimeError as exc:
+        if "HTTP 401" in str(exc):
+            print(f"  ... Event Grid key rejected for {blob_name}; refreshing and retrying")
+            return True
+        print(f"  ... failed to relay {blob_name} ({exc})")
     except Exception as exc:
         print(f"  ... failed to relay {blob_name} ({exc})")
+    return False
 
 
 def main() -> int:
