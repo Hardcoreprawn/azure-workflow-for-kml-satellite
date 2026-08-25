@@ -84,6 +84,8 @@ def compute_budget_status(
 #                  autonomously right now
 #   blocked      — a prerequisite is not yet done; do not start out of order
 _AUTOPILOT_EXCLUDED_LABELS = frozenset({"epic", "no-autopilot", "blocked"})
+_PRIORITY_LABEL_ORDER = ("priority:now", "priority:next", "priority:backlog")
+_PRIORITY_LABELS = frozenset(_PRIORITY_LABEL_ORDER)
 
 
 def issue_priority_score(labels: set[str]) -> int:
@@ -141,6 +143,72 @@ def fallback_priority_score(labels: set[str]) -> int:
     elif "priority:next" in labels:
         score += 50
     return score
+
+
+def normalize_priority_labels(labels: set[str]) -> set[str]:
+    """Normalize active issue priority labels to a single priority:* value.
+
+    Active work items should always carry exactly one ``priority:*`` label for
+    consistent board ordering and autopilot ranking. Epics and explicit
+    ``moscow:wont`` items are excluded from normalization.
+    """
+    if "epic" in labels or "moscow:wont" in labels:
+        return set(labels)
+
+    chosen_priority = next((label for label in _PRIORITY_LABEL_ORDER if label in labels), "priority:backlog")
+    normalized = {label for label in labels if label not in _PRIORITY_LABELS}
+    normalized.add(chosen_priority)
+    return normalized
+
+
+def _replace_issue_labels(*, token: str, owner: str, repo: str, issue_number: int, labels: set[str]) -> None:
+    _github_api(
+        token=token,
+        method="PATCH",
+        path=f"/repos/{owner}/{repo}/issues/{issue_number}",
+        body={"labels": sorted(labels)},
+    )
+
+
+def normalize_open_issue_priorities(
+    *,
+    issues: list[IssueCandidate],
+    token: str,
+    owner: str,
+    repo: str,
+    dry_run: bool,
+) -> list[IssueCandidate]:
+    """Return issues with normalized active-item priority labels.
+
+    In non-dry runs, this also writes normalized labels back to GitHub.
+    """
+    normalized_issues: list[IssueCandidate] = []
+    normalized_count = 0
+    for issue in issues:
+        normalized_labels = normalize_priority_labels(issue.labels)
+        if normalized_labels != issue.labels:
+            normalized_count += 1
+            if not dry_run:
+                _replace_issue_labels(
+                    token=token,
+                    owner=owner,
+                    repo=repo,
+                    issue_number=issue.number,
+                    labels=normalized_labels,
+                )
+        normalized_issues.append(
+            IssueCandidate(
+                number=issue.number,
+                title=issue.title,
+                labels=normalized_labels,
+                assignees=issue.assignees,
+                url=issue.url,
+                body=issue.body,
+            )
+        )
+    mode = "dry-run" if dry_run else "write"
+    print(f"priority_hygiene: normalized={normalized_count} mode={mode}")
+    return normalized_issues
 
 
 # Quadrant heuristics (#1010): Unplanned = carries `discovered` (found mid-work,
@@ -590,6 +658,13 @@ def main() -> int:
         return 0
 
     issues = load_open_issues(token=cfg.token, owner=cfg.owner, repo=cfg.repo)
+    issues = normalize_open_issue_priorities(
+        issues=issues,
+        token=cfg.token,
+        owner=cfg.owner,
+        repo=cfg.repo,
+        dry_run=cfg.dry_run,
+    )
 
     # Visibility only (#1010) — surfaced every run so the quadrant/security
     # mix is a glance-able fact, not a manual audit. Does not gate selection.

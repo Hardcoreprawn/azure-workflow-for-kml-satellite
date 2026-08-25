@@ -10,6 +10,8 @@ from scripts.backlog_autopilot import (
     compute_mix_report,
     count_open_copilot_prs,
     fallback_priority_score,
+    normalize_open_issue_priorities,
+    normalize_priority_labels,
     parse_args,
     parse_blocking_refs,
     parse_closing_refs,
@@ -382,3 +384,46 @@ def test_mix_report_empty_snapshot_has_zero_security_share() -> None:
 
     assert mix.total == 0
     assert mix.security_share == 0.0
+
+
+def test_normalize_priority_labels_adds_backlog_for_active_issue_without_priority() -> None:
+    normalized = normalize_priority_labels({"moscow:should"})
+    assert normalized == {"moscow:should", "priority:backlog"}
+
+
+def test_normalize_priority_labels_keeps_highest_priority_when_multiple_present() -> None:
+    normalized = normalize_priority_labels({"moscow:must", "priority:next", "priority:backlog"})
+    assert normalized == {"moscow:must", "priority:next"}
+
+
+def test_normalize_priority_labels_skips_epics_and_wont_items() -> None:
+    assert normalize_priority_labels({"epic"}) == {"epic"}
+    assert normalize_priority_labels({"moscow:wont"}) == {"moscow:wont"}
+
+
+def test_normalize_open_issue_priorities_updates_labels_via_api_when_not_dry_run(monkeypatch) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_api(*, token: str, method: str, path: str, body: dict[str, object] | None = None) -> dict[str, object]:
+        calls.append((path, body or {}))
+        return {}
+
+    monkeypatch.setattr("scripts.backlog_autopilot._github_api", fake_api)
+    issues = [_issue(1, {"moscow:should"}), _issue(2, {"moscow:must", "priority:now"})]
+
+    normalized = normalize_open_issue_priorities(
+        issues=issues,
+        token="t",
+        owner="o",
+        repo="r",
+        dry_run=False,
+    )
+
+    assert normalized[0].labels == {"moscow:should", "priority:backlog"}
+    assert normalized[1].labels == {"moscow:must", "priority:now"}
+    assert calls == [
+        (
+            "/repos/o/r/issues/1",
+            {"labels": ["moscow:should", "priority:backlog"]},
+        )
+    ]
