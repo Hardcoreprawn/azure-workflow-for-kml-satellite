@@ -67,9 +67,21 @@ def main() -> None:
     print("Azurite is ready.")
 
     _ensure_sdk()
-    from azure.storage.blob import BlobServiceClient
+    from azure.storage.blob import BlobServiceClient, CorsRule
 
     client = BlobServiceClient.from_connection_string(CONN_STR)
+    client.set_service_properties(
+        cors=[
+            CorsRule(
+                allowed_origins=["*"],
+                allowed_methods=["PUT", "OPTIONS", "GET", "HEAD"],
+                allowed_headers=["*"],
+                exposed_headers=["*"],
+                max_age_in_seconds=3600,
+            )
+        ]
+    )
+    print("Local browser CORS is configured.")
     print("Creating containers...")
     for name in CONTAINERS:
         container = client.get_container_client(name)

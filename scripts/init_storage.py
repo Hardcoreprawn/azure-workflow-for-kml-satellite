@@ -10,7 +10,7 @@ import sys
 import time
 
 from _azurite import AZURITE_BLOB_HOST, AZURITE_CONN_STR, CONTAINERS, azurite_blob_reachable
-from azure.storage.blob import BlobServiceClient
+from azure.storage.blob import BlobServiceClient, CorsRule
 
 
 def _clear_proxy_env() -> None:
@@ -49,6 +49,21 @@ def wait_for_azurite(client: BlobServiceClient, retries: int = 15, delay: float 
             time.sleep(delay)
 
 
+def configure_local_cors(client: BlobServiceClient) -> None:
+    """Allow the local website to upload directly to Azurite via SAS."""
+    client.set_service_properties(
+        cors=[
+            CorsRule(
+                allowed_origins=["*"],
+                allowed_methods=["PUT", "OPTIONS", "GET", "HEAD"],
+                allowed_headers=["*"],
+                exposed_headers=["*"],
+                max_age_in_seconds=3600,
+            )
+        ]
+    )
+
+
 def main() -> None:
     """Connect to Azurite and ensure all required containers exist."""
     print(f"Connecting to Azurite (AZURITE_BLOB_HOST={AZURITE_BLOB_HOST})...")
@@ -56,6 +71,8 @@ def main() -> None:
     client = BlobServiceClient.from_connection_string(AZURITE_CONN_STR)
     wait_for_azurite(client)
     print("Azurite is ready.")
+    configure_local_cors(client)
+    print("Local browser CORS is configured.")
 
     for name in CONTAINERS:
         container = client.get_container_client(name)
