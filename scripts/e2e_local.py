@@ -16,6 +16,8 @@ Usage:
   make test-pipeline-local
   # or directly:
   uv run python scripts/e2e_local.py
+  uv run python scripts/e2e_local.py --scenario representative
+  uv run python scripts/e2e_local.py --scenario representative --dry-run-matrix
 """
 
 from __future__ import annotations
