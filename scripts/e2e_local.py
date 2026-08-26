@@ -20,6 +20,8 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
+import json
 import os
 import subprocess
 import sys
@@ -37,6 +39,8 @@ DEFAULT_KML = REPO_ROOT / "tests" / "fixtures" / "sample.kml"
 FUNC_HOST_LOG_PATH = REPO_ROOT / ".e2e-local-func-host.log"
 
 _TERMINAL_STATUSES = frozenset({"Completed", "Failed", "Canceled", "Terminated"})
+_REPRESENTATIVE_SCENARIO = "representative"
+_DEFAULT_SCENARIO = "single"
 
 # Dummy CIAM values so treesight.config.validate_config() doesn't fail
 # function indexing — REQUIRE_AUTH stays unset, so nothing ever verifies
@@ -198,33 +202,123 @@ def assert_pipeline_succeeded(status_payload: dict[str, Any]) -> None:
         raise AssertionError(f"No rawImageryPaths in artifacts. Summary: {output}")
 
 
+def build_representative_case_matrix() -> list[dict[str, str]]:
+    """Return the deterministic representative case matrix."""
+    sample_path = str(DEFAULT_KML)
+    return [
+        {"caseId": "rep-001-single-upload", "inputPath": sample_path, "container": DEFAULT_CONTAINER},
+        {"caseId": "rep-002-repeat-upload", "inputPath": sample_path, "container": DEFAULT_CONTAINER},
+        {"caseId": "rep-003-alt-container", "inputPath": sample_path, "container": f"{DEFAULT_CONTAINER}-rep-alt"},
+    ]
+
+
+def _build_case_matrix(scenario: str) -> list[dict[str, str]]:
+    if scenario == _DEFAULT_SCENARIO:
+        return [{"caseId": "single-001-default-upload", "inputPath": str(DEFAULT_KML), "container": DEFAULT_CONTAINER}]
+    if scenario == _REPRESENTATIVE_SCENARIO:
+        return build_representative_case_matrix()
+    raise ValueError(f"Unknown scenario {scenario!r}. Expected one of: {_DEFAULT_SCENARIO}, {_REPRESENTATIVE_SCENARIO}")
+
+
+def _run_single_case(case: dict[str, str], *, timeout: float) -> dict[str, Any]:
+    blob_name, blob_url, content_length = upload_kml(Path(case["inputPath"]), case["container"])
+    instance_id = fire_event_grid(blob_url, blob_name, content_length, case["container"])
+    status_payload = poll_orchestration(instance_id, timeout=timeout)
+    assert_pipeline_succeeded(status_payload)
+    return {
+        "caseId": case["caseId"],
+        "container": case["container"],
+        "inputPath": case["inputPath"],
+        "status": "Succeeded",
+        "instanceId": instance_id,
+        "runtimeStatus": status_payload.get("runtimeStatus"),
+        "error": None,
+    }
+
+
+def run_scenario(scenario: str, *, dry_run_matrix: bool, timeout: float = 300.0) -> dict[str, Any]:
+    """Run one scenario and return a structured summary."""
+    cases = _build_case_matrix(scenario)
+    results: list[dict[str, Any]] = []
+    totals = {"succeeded": 0, "failed": 0, "dryRun": 0}
+
+    if dry_run_matrix:
+        for case in cases:
+            results.append(
+                {
+                    "caseId": case["caseId"],
+                    "container": case["container"],
+                    "inputPath": case["inputPath"],
+                    "status": "DryRun",
+                    "instanceId": None,
+                    "runtimeStatus": None,
+                    "error": None,
+                }
+            )
+        totals["dryRun"] = len(results)
+        return {"scenario": scenario, "totalCases": len(cases), "cases": results, "totals": totals}
+
+    proc = start_func_host(log_path=FUNC_HOST_LOG_PATH)
+    try:
+        print("[1/4] Waiting for func host to become ready...")
+        wait_for_func_host(timeout=120.0)
+        print("[2/4] Executing scenario matrix...")
+        for index, case in enumerate(cases, start=1):
+            print(f"  [{index}/{len(cases)}] Running case {case['caseId']} ({case['container']})")
+            try:
+                result = _run_single_case(case, timeout=timeout)
+                totals["succeeded"] += 1
+            except Exception as exc:
+                result = {
+                    "caseId": case["caseId"],
+                    "container": case["container"],
+                    "inputPath": case["inputPath"],
+                    "status": "Failed",
+                    "instanceId": None,
+                    "runtimeStatus": None,
+                    "error": str(exc),
+                }
+                totals["failed"] += 1
+            results.append(result)
+        return {"scenario": scenario, "totalCases": len(cases), "cases": results, "totals": totals}
+    finally:
+        stop_func_host(proc)
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run local pipeline e2e scenarios")
+    parser.add_argument(
+        "--scenario",
+        default=_DEFAULT_SCENARIO,
+        choices=[_DEFAULT_SCENARIO, _REPRESENTATIVE_SCENARIO],
+        help=f"Scenario to execute (default: {_DEFAULT_SCENARIO})",
+    )
+    parser.add_argument(
+        "--dry-run-matrix",
+        action="store_true",
+        help="Print deterministic case matrix and summary without starting func host or uploads",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
     # Avoid proxy env vars breaking localhost httpx calls in CI/dev shells.
     for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "SOCKS_PROXY"):
         os.environ.pop(var, None)
         os.environ.pop(var.lower(), None)
 
-    proc = start_func_host(log_path=FUNC_HOST_LOG_PATH)
+    args = _parse_args()
     try:
-        print("[1/4] Waiting for func host to become ready...")
-        wait_for_func_host(timeout=120.0)
-
-        print("[2/4] Uploading sample KML and triggering the pipeline...")
-        blob_name, blob_url, content_length = upload_kml(DEFAULT_KML, DEFAULT_CONTAINER)
-        instance_id = fire_event_grid(blob_url, blob_name, content_length, DEFAULT_CONTAINER)
-
-        print("[3/4] Polling orchestration to a terminal state...")
-        result = poll_orchestration(instance_id, timeout=300.0)
-
-        print("[4/4] Verifying the run actually produced output...")
-        assert_pipeline_succeeded(result)
-
-        print("\nPASS — local pipeline e2e gate succeeded.")
+        summary = run_scenario(args.scenario, dry_run_matrix=args.dry_run_matrix)
+        print("\nScenario summary:")
+        print(json.dumps(summary, indent=2))
+        if summary["totals"]["failed"] > 0:
+            raise AssertionError(f"Scenario {args.scenario!r} had {summary['totals']['failed']} failing case(s).")
+        if not args.dry_run_matrix:
+            print("\nPASS — local pipeline e2e gate succeeded.")
     except Exception:
         print(f"\nFAIL — see func host log at {FUNC_HOST_LOG_PATH}", file=sys.stderr)
         raise
-    finally:
-        stop_func_host(proc)
 
 
 if __name__ == "__main__":

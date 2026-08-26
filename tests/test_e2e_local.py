@@ -13,9 +13,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from scripts.e2e_local import (
+    DEFAULT_CONTAINER,
     REPO_ROOT,
     assert_pipeline_succeeded,
     build_func_host_env,
+    build_representative_case_matrix,
+    run_scenario,
     stop_func_host,
 )
 
@@ -145,3 +148,52 @@ class TestStopFuncHost:
         stop_func_host(proc)
         proc.terminate.assert_called_once()
         proc.kill.assert_called_once()
+
+
+class TestRepresentativeScenario:
+    def test_representative_case_matrix_uses_stable_case_ids(self):
+        matrix = build_representative_case_matrix()
+        assert [case["caseId"] for case in matrix] == [
+            "rep-001-single-upload",
+            "rep-002-repeat-upload",
+            "rep-003-alt-container",
+        ]
+
+    def test_run_scenario_dry_run_tracks_each_case_and_totals(self):
+        summary = run_scenario("representative", dry_run_matrix=True)
+        assert summary["scenario"] == "representative"
+        assert summary["totalCases"] == 3
+        assert summary["cases"] == [
+            {
+                "caseId": "rep-001-single-upload",
+                "container": DEFAULT_CONTAINER,
+                "inputPath": str(REPO_ROOT / "tests" / "fixtures" / "sample.kml"),
+                "status": "DryRun",
+                "instanceId": None,
+                "runtimeStatus": None,
+                "error": None,
+            },
+            {
+                "caseId": "rep-002-repeat-upload",
+                "container": DEFAULT_CONTAINER,
+                "inputPath": str(REPO_ROOT / "tests" / "fixtures" / "sample.kml"),
+                "status": "DryRun",
+                "instanceId": None,
+                "runtimeStatus": None,
+                "error": None,
+            },
+            {
+                "caseId": "rep-003-alt-container",
+                "container": f"{DEFAULT_CONTAINER}-rep-alt",
+                "inputPath": str(REPO_ROOT / "tests" / "fixtures" / "sample.kml"),
+                "status": "DryRun",
+                "instanceId": None,
+                "runtimeStatus": None,
+                "error": None,
+            },
+        ]
+        assert summary["totals"] == {"succeeded": 0, "failed": 0, "dryRun": 3}
+
+    def test_run_scenario_raises_for_unknown_scenario(self):
+        with pytest.raises(ValueError, match="Unknown scenario"):
+            run_scenario("unknown-scenario", dry_run_matrix=True)
