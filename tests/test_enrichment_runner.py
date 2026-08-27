@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from treesight.pipeline.enrichment.runner import (
+    _SAFE_MODE_ALL_SKIPS,
+    _enrich_single_aoi,
     _run_mosaic_ndvi_phase,
     enrich_data_sources,
     enrich_finalize,
@@ -953,6 +955,23 @@ class TestEnrichSingleAoiStep:
         assert result["bbox"]
         assert result["center"]
         mock_enrich.assert_not_called()
+
+    def test_safe_mode_uses_shared_skip_report(self):
+        with patch("treesight.config.SAFE_MODE", True):
+            result = _enrich_single_aoi(
+                {"name": "safe-aoi", "coords": COORDS, "area_ha": 10},
+                date_start=None,
+                date_end=None,
+                cadence="maximum",
+                max_history_years=None,
+                eudr_mode=False,
+                project_name="p",
+                timestamp="t",
+                output_container="out",
+                storage=MagicMock(),
+            )
+
+        assert result["skipped"] == _SAFE_MODE_ALL_SKIPS
 
     @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
     def test_returns_aoi_result(self, mock_inner):

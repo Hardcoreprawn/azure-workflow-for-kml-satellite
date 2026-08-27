@@ -103,7 +103,7 @@ def _enrich_single_aoi(
 
     if config.SAFE_MODE:
         result["safe_mode"] = True
-        result["skipped"] = ["weather", "flood_fire", "eudr_datasets", "imagery", "change_detection"]
+        result["skipped"] = _SAFE_MODE_ALL_SKIPS
         return result
 
     first_date = frame_plan[0]["start"]
