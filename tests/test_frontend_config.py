@@ -21,6 +21,7 @@ INDEX_HTML = WEBSITE / "index.html"
 APP_INDEX_HTML = WEBSITE / "app" / "index.html"
 EUDR_INDEX_HTML = WEBSITE / "eudr" / "index.html"
 ACCOUNT_INDEX_HTML = WEBSITE / "account" / "index.html"
+INVITE_INDEX_HTML = WEBSITE / "account" / "invite" / "index.html"
 LANDING_JS = WEBSITE / "js" / "landing.js"
 APP_SHELL_JS = WEBSITE / "js" / "app-shell.js"
 APP_RUNS_JS = WEBSITE / "js" / "app-runs.js"
@@ -599,6 +600,17 @@ class TestAuthConfig:
         html = ACCOUNT_INDEX_HTML.read_text()
         assert "ciam.authEnabled === 'function' && !ciam.authEnabled()" in html, (
             "account/index.html's updateAuthUI must check authEnabled() before gating"
+        )
+
+    def test_invite_page_does_not_capture_ciam_before_it_loads(self):
+        """account/invite/index.html must resolve CIAM only after deferred scripts load."""
+        html = INVITE_INDEX_HTML.read_text()
+        assert "var ciam = {};" in html, (
+            "account/invite/index.html must start with an empty ciam placeholder, not "
+            "window.CanopexCiam || {} at parse time"
+        )
+        assert "ciam = window.CanopexCiam || {};" in html, (
+            "account/invite/index.html must resolve ciam during init(), after deferred scripts run"
         )
 
     def test_landing_msal_script_is_pinned_and_has_sri(self, index_html):
