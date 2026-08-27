@@ -1126,6 +1126,15 @@ class TestEnrichFinalize:
         entry = result["per_aoi_enrichment"][0]
         assert entry["bbox"]
         assert entry["center"] == {"lat": -9.5, "lon": -49.5}
+        assert entry["safe_mode"] is True
+        assert entry["skipped"] == [
+            "weather",
+            "flood_fire",
+            "eudr_datasets",
+            "mosaic",
+            "ndvi",
+            "change_detection",
+        ]
 
     @patch("treesight.pipeline.enrichment.determination.determine_deforestation_free")
     def test_eudr_mode_runs_determination(self, mock_det):

@@ -250,6 +250,10 @@ def _single_aoi_projection(results: dict[str, Any], aoi_entry: dict[str, Any]) -
     plot_area_ha = aoi_entry.get("plot_area_ha")
     if plot_area_ha is not None:
         projected["plot_area_ha"] = plot_area_ha
+    if results.get("safe_mode"):
+        projected["safe_mode"] = True
+    if results.get("skipped"):
+        projected["skipped"] = results["skipped"]
     return projected
 
 
@@ -797,6 +801,17 @@ def enrich_finalize(
         **data_sources,
         **imagery,
     }
+    if data_sources.get("safe_mode") or imagery.get("safe_mode"):
+        merged["safe_mode"] = True
+        merged["skipped"] = list(
+            dict.fromkeys(
+                [
+                    *data_sources.get("skipped", []),
+                    *imagery.get("skipped", []),
+                    *_SAFE_MODE_ALL_SKIPS,
+                ]
+            )
+        )
     merged.pop("resource_usage", None)
 
     # Combine resource accumulators from parallel fan-out
