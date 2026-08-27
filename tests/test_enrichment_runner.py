@@ -752,6 +752,8 @@ class TestEnrichDataSources:
         assert result["schema_version"] == "enrichment-manifest/v2"
         assert len(result["per_aoi_enrichment"]) == 1
         assert result["per_aoi_enrichment"][0]["name"] == "Solo"
+        assert result["per_aoi_enrichment"][0]["safe_mode"] is True
+        assert result["per_aoi_enrichment"][0]["skipped"] == _SAFE_MODE_ALL_SKIPS
         mock_weather.assert_not_called()
         mock_flood.assert_not_called()
         mock_eudr.assert_not_called()
