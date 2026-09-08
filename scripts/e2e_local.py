@@ -86,7 +86,7 @@ def build_func_host_env(base_env: dict[str, str], *, test_mode: bool = True) -> 
     env["AzureWebJobsScriptRoot"] = str(REPO_ROOT)
     for key, value in _DUMMY_CIAM_DEFAULTS.items():
         env.setdefault(key, value)
-    env.setdefault("AzureWebJobsStorage", AZURITE_CONN_STR)
+    env["AzureWebJobsStorage"] = AZURITE_CONN_STR
     env.setdefault("FUNCTIONS_WORKER_RUNTIME", "python")
     env.setdefault("AzureWebJobsFeatureFlags", "EnableWorkerIndexing")
     # The Functions HOST (not the Python worker) manages its host-key

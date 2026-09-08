@@ -143,13 +143,15 @@ def relay_forever(
             continue
 
         for blob_name in _new_blobs(seen, current):
-            seen.add(blob_name)
             if not _is_relayable_blob(blob_name):
+                seen.add(blob_name)
                 continue
-            unauthorized = _relay_one(container_client, container, blob_name, function_name, func_base, function_key)
-            if unauthorized:
+            outcome = _relay_one(container_client, container, blob_name, function_name, func_base, function_key)
+            if outcome == "unauthorized":
                 function_key = _fetch_eventgrid_key(client) or function_key
-                _relay_one(container_client, container, blob_name, function_name, func_base, function_key)
+                outcome = _relay_one(container_client, container, blob_name, function_name, func_base, function_key)
+            if outcome == "accepted":
+                seen.add(blob_name)
 
         time.sleep(poll_interval)
 
@@ -161,13 +163,13 @@ def _relay_one(
     function_name: str,
     func_base: str,
     function_key: str | None,
-) -> bool:
+) -> str:
     """Fire one blob's synthetic Event Grid event and flag stale auth keys."""
     try:
         props = container_client.get_blob_client(blob_name).get_blob_properties()
     except Exception as exc:
         print(f"  ... could not read properties for {blob_name} ({exc}), skipping")
-        return False
+        return "failed"
 
     print(f"New upload detected: {blob_name}")
     blob_url = f"{AZURITE_BLOB_BASE}/{container}/{blob_name}"
@@ -185,11 +187,13 @@ def _relay_one(
     except RuntimeError as exc:
         if "HTTP 401" in str(exc):
             print(f"  ... Event Grid key rejected for {blob_name}; refreshing and retrying")
-            return True
+            return "unauthorized"
         print(f"  ... failed to relay {blob_name} ({exc})")
+        return "failed"
     except Exception as exc:
         print(f"  ... failed to relay {blob_name} ({exc})")
-    return False
+        return "failed"
+    return "accepted"
 
 
 def main() -> int:

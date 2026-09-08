@@ -58,9 +58,11 @@ class TestBuildFuncHostEnv:
         assert "AzureWebJobsStorage" in env
         assert env["AzureWebJobsStorage"]
 
-    def test_preserves_existing_azure_web_jobs_storage(self):
+    def test_overrides_inherited_storage_with_selected_azurite(self):
+        from scripts.e2e_local import AZURITE_CONN_STR
+
         env = build_func_host_env({"AzureWebJobsStorage": "UseDevelopmentStorage=true"})
-        assert env["AzureWebJobsStorage"] == "UseDevelopmentStorage=true"
+        assert env["AzureWebJobsStorage"] == AZURITE_CONN_STR
 
     def test_test_mode_false_omits_canopex_test_mode(self):
         """scripts/real_acquisition_runner.py (#1379) needs the real imagery

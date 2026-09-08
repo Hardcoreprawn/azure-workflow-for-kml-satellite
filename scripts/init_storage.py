@@ -54,7 +54,13 @@ def configure_local_cors(client: BlobServiceClient) -> None:
     client.set_service_properties(
         cors=[
             CorsRule(
-                allowed_origins=["*"],
+                allowed_origins=[
+                    origin.strip()
+                    for origin in os.environ.get(
+                        "AZURITE_CORS_ORIGINS", "http://localhost:4280,http://127.0.0.1:4280"
+                    ).split(",")
+                    if origin.strip()
+                ],
                 allowed_methods=["PUT", "OPTIONS", "GET", "HEAD"],
                 allowed_headers=["*"],
                 exposed_headers=["*"],

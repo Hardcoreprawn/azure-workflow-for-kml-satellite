@@ -807,6 +807,38 @@ class TestEnrichmentParallelFanOut:
         aoi_tasks = ctx.task_all.call_args_list[1][0][0]
         assert len(aoi_tasks) == 3
 
+    def test_single_aoi_is_passed_to_finalize_without_per_aoi_activity(self):
+        """Single AOI should get v2 model projection without duplicate per-AOI activity work."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _phase_enrichment
+
+        ctx = MagicMock()
+        parallel_sentinel = MagicMock()
+        finalize_sentinel = MagicMock()
+        ctx.task_all.return_value = parallel_sentinel
+        ctx.call_activity_with_retry.return_value = finalize_sentinel
+
+        aois = [{"name": "solo", "coords": [[1, 2]], "area_ha": 10}]
+
+        gen = _phase_enrichment(
+            ctx,
+            inp={"eudr_mode": False},
+            ctx={"project_name": "p", "timestamp": "t"},
+            all_coords=[[10.0, 20.0]],
+            per_aoi_coords=aois,
+            output_container="out",
+        )
+
+        gen.send(None)
+        gen.send([{"frame_plan": []}, {"ndvi": {}}])
+
+        assert ctx.task_all.call_count == 1
+        activity_names = [call.args[0] for call in ctx.call_activity_with_retry.call_args_list]
+        assert "enrich_single_aoi" not in activity_names
+        finalize_payload = ctx.call_activity_with_retry.call_args_list[-1].args[2]
+        assert finalize_payload["per_aoi_coords"] == aois
+
     def test_enrichment_reports_substep_status(self):
         """Orchestrator should set customStatus with enrichment sub-steps."""
         from unittest.mock import MagicMock
