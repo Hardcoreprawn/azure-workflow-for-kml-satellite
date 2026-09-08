@@ -5,34 +5,80 @@ Usage: uv run python scripts/init_storage.py
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 
-from _azurite import AZURITE_CONN_STR, CONTAINERS
-from azure.storage.blob import BlobServiceClient
+from _azurite import AZURITE_BLOB_HOST, AZURITE_CONN_STR, CONTAINERS, azurite_blob_reachable
+from azure.storage.blob import BlobServiceClient, CorsRule
+
+
+def _clear_proxy_env() -> None:
+    """Avoid proxy env vars hijacking local Azurite traffic."""
+    for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "SOCKS_PROXY"):
+        os.environ.pop(var, None)
+        os.environ.pop(var.lower(), None)
 
 
 def wait_for_azurite(client: BlobServiceClient, retries: int = 15, delay: float = 2.0) -> None:
     """Block until Azurite responds, or exit after *retries* attempts."""
     for attempt in range(1, retries + 1):
+        if not azurite_blob_reachable(timeout=delay):
+            if attempt == retries:
+                print("ERROR: Azurite is not reachable on the blob endpoint. Is it running?")
+                print("  Start it with: make dev-up")
+                sys.exit(1)
+            print(f"  Waiting for Azurite socket (attempt {attempt}/{retries})...")
+            time.sleep(delay)
+            continue
         try:
-            client.get_account_information()
+            client.get_account_information(
+                timeout=min(delay, 5.0),
+                retry_total=0,
+                retry_connect=0,
+                retry_read=0,
+                retry_status=0,
+            )
             return
         except Exception:
             if attempt == retries:
                 print("ERROR: Azurite is not responding. Is it running?")
-                print("  Start it with: docker compose up -d")
+                print("  Start it with: make dev-up")
                 sys.exit(1)
             print(f"  Waiting for Azurite (attempt {attempt}/{retries})...")
             time.sleep(delay)
 
 
+def configure_local_cors(client: BlobServiceClient) -> None:
+    """Allow the local website to upload directly to Azurite via SAS."""
+    client.set_service_properties(
+        cors=[
+            CorsRule(
+                allowed_origins=[
+                    origin.strip()
+                    for origin in os.environ.get(
+                        "AZURITE_CORS_ORIGINS", "http://localhost:4280,http://127.0.0.1:4280"
+                    ).split(",")
+                    if origin.strip()
+                ],
+                allowed_methods=["PUT", "OPTIONS", "GET", "HEAD"],
+                allowed_headers=["*"],
+                exposed_headers=["*"],
+                max_age_in_seconds=3600,
+            )
+        ]
+    )
+
+
 def main() -> None:
     """Connect to Azurite and ensure all required containers exist."""
-    print("Connecting to Azurite...")
+    print(f"Connecting to Azurite (AZURITE_BLOB_HOST={AZURITE_BLOB_HOST})...")
+    _clear_proxy_env()
     client = BlobServiceClient.from_connection_string(AZURITE_CONN_STR)
     wait_for_azurite(client)
     print("Azurite is ready.")
+    configure_local_cors(client)
+    print("Local browser CORS is configured.")
 
     for name in CONTAINERS:
         container = client.get_container_client(name)

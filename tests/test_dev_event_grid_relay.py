@@ -148,3 +148,37 @@ class TestRelayForeverSeedsExistingBlobs:
             dev_event_grid_relay.relay_forever(poll_interval=0)
 
         assert relayed == ["new.kml"]
+
+    @pytest.mark.parametrize("failed_attempts", [1, 2])
+    def test_refreshes_key_and_retries_after_unauthorized_webhook(self, monkeypatch, failed_attempts):
+        container_client = _FakeContainerClient([set(), {"new.kml"}])
+        fake_client = _FakeBlobServiceClient(container_client)
+        monkeypatch.setattr(
+            dev_event_grid_relay.BlobServiceClient,
+            "from_connection_string",
+            lambda _conn_str: fake_client,
+        )
+        keys = iter(["stale-key", "fresh-key"])
+        monkeypatch.setattr(dev_event_grid_relay, "_fetch_eventgrid_key", lambda _client: next(keys))
+        attempts: list[tuple[str, str]] = []
+
+        def _fake_fire_event_grid(**kwargs):
+            attempts.append((kwargs["function_key"], kwargs["blob_name"]))
+            if len(attempts) <= failed_attempts:
+                raise RuntimeError("Event Grid webhook rejected with HTTP 401")
+
+        monkeypatch.setattr(dev_event_grid_relay, "fire_event_grid", _fake_fire_event_grid)
+
+        polls = []
+
+        def _fake_sleep(_seconds):
+            polls.append(True)
+            if len(polls) == 3:
+                raise _StopRelayError
+
+        monkeypatch.setattr(dev_event_grid_relay.time, "sleep", _fake_sleep)
+
+        with pytest.raises(_StopRelayError):
+            dev_event_grid_relay.relay_forever(poll_interval=0)
+
+        assert attempts == [("stale-key", "new.kml")] + [("fresh-key", "new.kml")] * failed_attempts

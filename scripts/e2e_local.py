@@ -7,10 +7,10 @@ against Azurite and a real ``func start`` host process, with
 provider (see ``treesight/providers/stub.py``). No live Azure environment
 required.
 
-Prerequisite: Azurite must already be up and reachable (``make dev-up``, or
-a sibling ``azurite`` service in CI) — this script only creates containers
-if missing, then manages the func host lifecycle and trigger/poll/assert
-flow.
+Prerequisite: Azurite must already be up and reachable (the canonical
+entrypoint is ``make test-pipeline-local``; direct callers can use
+``make dev-up`` or a sibling ``azurite`` service in CI). This script manages
+the func host lifecycle and trigger/poll/assert flow.
 
 Usage:
   make test-pipeline-local
@@ -39,10 +39,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 FUNC_BASE = "http://localhost:7071"
 DEFAULT_KML = REPO_ROOT / "tests" / "fixtures" / "sample.kml"
 FUNC_HOST_LOG_PATH = REPO_ROOT / ".e2e-local-func-host.log"
+E2E_RESULT_PATH = REPO_ROOT / ".e2e-local-result.json"
 
 _TERMINAL_STATUSES = frozenset({"Completed", "Failed", "Canceled", "Terminated"})
 _REPRESENTATIVE_SCENARIO = "representative"
 _DEFAULT_SCENARIO = "single"
+DEFAULT_POLL_INTERVAL_SECONDS = 3.0
+DEFAULT_ORCH_TIMEOUT_SECONDS = 600.0
 
 # Dummy CIAM values so treesight.config.validate_config() doesn't fail
 # function indexing — REQUIRE_AUTH stays unset, so nothing ever verifies
@@ -87,7 +90,7 @@ def build_func_host_env(base_env: dict[str, str], *, test_mode: bool = True) -> 
     env["AzureWebJobsScriptRoot"] = str(REPO_ROOT)
     for key, value in _DUMMY_CIAM_DEFAULTS.items():
         env.setdefault(key, value)
-    env.setdefault("AzureWebJobsStorage", AZURITE_CONN_STR)
+    env["AzureWebJobsStorage"] = AZURITE_CONN_STR
     env.setdefault("FUNCTIONS_WORKER_RUNTIME", "python")
     env.setdefault("AzureWebJobsFeatureFlags", "EnableWorkerIndexing")
     # The Functions HOST (not the Python worker) manages its host-key
@@ -132,6 +135,17 @@ def stop_func_host(proc: subprocess.Popen, *, grace_seconds: float = 10.0) -> No
         proc.wait(timeout=5.0)
 
 
+def write_e2e_result(status_payload: dict[str, Any], path: Path = E2E_RESULT_PATH) -> None:
+    """Persist the validated run summary as durable proof of a local pass."""
+    result = {
+        "fixture": str(DEFAULT_KML.relative_to(REPO_ROOT)),
+        "runtimeStatus": status_payload.get("runtimeStatus"),
+        "instanceId": status_payload.get("instanceId"),
+        "output": status_payload.get("output") or {},
+    }
+    path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+
+
 def wait_for_func_host(*, timeout: float, interval: float = 2.0) -> None:
     """Block until the func host answers /api/health, or raise TimeoutError."""
     deadline = time.monotonic() + timeout
@@ -150,7 +164,11 @@ def wait_for_func_host(*, timeout: float, interval: float = 2.0) -> None:
 
 
 def poll_orchestration(
-    instance_id: str, *, timeout: float, interval: float = 3.0, base: str = FUNC_BASE
+    instance_id: str,
+    *,
+    timeout: float,
+    interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+    base: str = FUNC_BASE,
 ) -> dict[str, Any]:
     """Poll the orchestrator status endpoint to a terminal state.
 
@@ -166,6 +184,7 @@ def poll_orchestration(
     url = f"{base}/api/orchestrator/{instance_id}"
     deadline = time.monotonic() + timeout
     last_status = ""
+    last_payload: dict[str, Any] | None = None
     while time.monotonic() < deadline:
         try:
             resp = httpx.get(url, timeout=10.0)
@@ -176,6 +195,7 @@ def poll_orchestration(
             time.sleep(interval)
             continue
         data = resp.json()
+        last_payload = data
         status = data.get("runtimeStatus", "Unknown")
         if status != last_status:
             print(f"  status: {status}")
@@ -183,7 +203,12 @@ def poll_orchestration(
         if status in _TERMINAL_STATUSES:
             return data
         time.sleep(interval)
-    raise TimeoutError(f"Orchestration {instance_id} did not reach a terminal state within {timeout}s")
+    custom = (last_payload or {}).get("customStatus")
+    raise TimeoutError(
+        "Orchestration "
+        f"{instance_id} did not reach a terminal state within {timeout}s "
+        f"(last_status={last_status or 'unknown'}, custom_status={custom!r})"
+    )
 
 
 def assert_pipeline_succeeded(status_payload: dict[str, Any]) -> None:
@@ -210,7 +235,7 @@ def build_representative_case_matrix() -> list[dict[str, str]]:
     return [
         {"caseId": "rep-001-single-upload", "inputPath": sample_path, "container": DEFAULT_CONTAINER},
         {"caseId": "rep-002-repeat-upload", "inputPath": sample_path, "container": DEFAULT_CONTAINER},
-        {"caseId": "rep-003-alt-container", "inputPath": sample_path, "container": f"{DEFAULT_CONTAINER}-rep-alt"},
+        {"caseId": "rep-003-alt-container", "inputPath": sample_path, "container": f"rep-alt-{DEFAULT_CONTAINER}"},
     ]
 
 
@@ -222,23 +247,38 @@ def _build_case_matrix(scenario: str) -> list[dict[str, str]]:
     raise ValueError(f"Unknown scenario {scenario!r}. Expected one of: {_DEFAULT_SCENARIO}, {_REPRESENTATIVE_SCENARIO}")
 
 
-def _run_single_case(case: dict[str, str], *, timeout: float) -> dict[str, Any]:
-    blob_name, blob_url, content_length = upload_kml(Path(case["inputPath"]), case["container"])
-    instance_id = fire_event_grid(blob_url, blob_name, content_length, case["container"])
-    status_payload = poll_orchestration(instance_id, timeout=timeout)
-    assert_pipeline_succeeded(status_payload)
-    return {
+def _run_single_case(
+    case: dict[str, str], *, timeout: float, interval: float = DEFAULT_POLL_INTERVAL_SECONDS
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
         "caseId": case["caseId"],
         "container": case["container"],
         "inputPath": case["inputPath"],
-        "status": "Succeeded",
-        "instanceId": instance_id,
-        "runtimeStatus": status_payload.get("runtimeStatus"),
+        "status": "Failed",
+        "instanceId": None,
+        "runtimeStatus": None,
         "error": None,
     }
+    try:
+        blob_name, blob_url, content_length = upload_kml(Path(case["inputPath"]), case["container"])
+        result["instanceId"] = fire_event_grid(blob_url, blob_name, content_length, case["container"], strict=True)
+        payload = poll_orchestration(result["instanceId"], timeout=timeout, interval=interval)
+        result["runtimeStatus"] = payload.get("runtimeStatus")
+        result["output"] = payload.get("output") or {}
+        assert_pipeline_succeeded(payload)
+        result["status"] = "Succeeded"
+    except Exception as exc:
+        result["error"] = str(exc)
+    return result
 
 
-def run_scenario(scenario: str, *, dry_run_matrix: bool, timeout: float = 300.0) -> dict[str, Any]:
+def run_scenario(
+    scenario: str,
+    *,
+    dry_run_matrix: bool,
+    timeout: float = DEFAULT_ORCH_TIMEOUT_SECONDS,
+    interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+) -> dict[str, Any]:
     """Run one scenario and return a structured summary."""
     cases = _build_case_matrix(scenario)
     results: list[dict[str, Any]] = []
@@ -262,27 +302,21 @@ def run_scenario(scenario: str, *, dry_run_matrix: bool, timeout: float = 300.0)
 
     proc = start_func_host(log_path=FUNC_HOST_LOG_PATH)
     try:
-        print("[1/4] Waiting for func host to become ready...")
+        print("[1/2] Waiting for func host to become ready...")
         wait_for_func_host(timeout=120.0)
-        print("[2/4] Executing scenario matrix...")
+        print("[2/2] Executing scenario matrix...")
         for index, case in enumerate(cases, start=1):
             print(f"  [{index}/{len(cases)}] Running case {case['caseId']} ({case['container']})")
-            try:
-                result = _run_single_case(case, timeout=timeout)
+            result = _run_single_case(case, timeout=timeout, interval=interval)
+            if result["status"] == "Succeeded":
                 totals["succeeded"] += 1
-            except Exception as exc:
-                result = {
-                    "caseId": case["caseId"],
-                    "container": case["container"],
-                    "inputPath": case["inputPath"],
-                    "status": "Failed",
-                    "instanceId": None,
-                    "runtimeStatus": None,
-                    "error": str(exc),
-                }
+            else:
                 totals["failed"] += 1
             results.append(result)
         return {"scenario": scenario, "totalCases": len(cases), "cases": results, "totals": totals}
+    except Exception:
+        print(f"\nHost execution failed; see {FUNC_HOST_LOG_PATH}", file=sys.stderr)
+        raise
     finally:
         stop_func_host(proc)
 
@@ -300,26 +334,48 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print deterministic case matrix and summary without starting func host or uploads",
     )
+    parser.add_argument(
+        "--orchestration-timeout-seconds",
+        type=float,
+        default=float(os.getenv("E2E_LOCAL_ORCHESTRATION_TIMEOUT_SECONDS", DEFAULT_ORCH_TIMEOUT_SECONDS)),
+    )
+    parser.add_argument(
+        "--poll-interval-seconds",
+        type=float,
+        default=float(os.getenv("E2E_LOCAL_POLL_INTERVAL_SECONDS", DEFAULT_POLL_INTERVAL_SECONDS)),
+    )
     return parser.parse_args()
 
 
 def main() -> None:
+    args = _parse_args()
     # Avoid proxy env vars breaking localhost httpx calls in CI/dev shells.
     for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "SOCKS_PROXY"):
         os.environ.pop(var, None)
         os.environ.pop(var.lower(), None)
 
-    args = _parse_args()
+    if not args.dry_run_matrix:
+        E2E_RESULT_PATH.unlink(missing_ok=True)
     try:
-        summary = run_scenario(args.scenario, dry_run_matrix=args.dry_run_matrix)
+        summary = run_scenario(
+            args.scenario,
+            dry_run_matrix=args.dry_run_matrix,
+            timeout=args.orchestration_timeout_seconds,
+            interval=args.poll_interval_seconds,
+        )
         print("\nScenario summary:")
         print(json.dumps(summary, indent=2))
+        if not args.dry_run_matrix:
+            if args.scenario == _DEFAULT_SCENARIO and not summary["totals"]["failed"]:
+                write_e2e_result(summary["cases"][0])
+            else:
+                E2E_RESULT_PATH.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
         if summary["totals"]["failed"] > 0:
             raise AssertionError(f"Scenario {args.scenario!r} had {summary['totals']['failed']} failing case(s).")
         if not args.dry_run_matrix:
             print("\nPASS — local pipeline e2e gate succeeded.")
     except Exception:
-        print(f"\nFAIL — see func host log at {FUNC_HOST_LOG_PATH}", file=sys.stderr)
+        print("\nFAIL — local scenario did not complete.", file=sys.stderr)
         raise
 
 

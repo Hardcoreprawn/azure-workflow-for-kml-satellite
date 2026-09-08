@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import re
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -73,11 +75,48 @@ def _target_runner_commands(makefile: str, target: str) -> list[str]:
     return [line.strip() for line in match.group(0).splitlines() if "run_integration_tests.py" in line]
 
 
+def test_pipeline_e2e_target_owns_disposable_compose_lifecycle() -> None:
+    makefile = MAKEFILE.read_text()
+    match = re.search(r"^test-pipeline-local:.*?(?=^\S)", makefile, re.MULTILINE | re.DOTALL)
+
+    assert match is not None
+    target = match.group(0)
+    assert "PIPELINE_COMPOSE_PROJECT" in target
+    assert "up -d --wait" in target
+    assert "down --volumes --remove-orphans" in target
+    assert "test-pipeline-local-clean:" in makefile
+    assert target.index("rm -f .e2e-local-result.json") < target.index("command -v func")
+    assert "docker network disconnect" in target
+    assert "attached=1" in target
+
+
+@pytest.mark.parametrize("module_name", ["init_storage", "init_storage_docker"])
+@pytest.mark.parametrize("origins", [None, "http://localhost:9000,http://127.0.0.1:9000"])
+def test_local_storage_cors_uses_explicit_origins(monkeypatch, module_name, origins) -> None:
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    module = importlib.import_module(module_name)
+    if origins is None:
+        monkeypatch.delenv("AZURITE_CORS_ORIGINS", raising=False)
+    else:
+        monkeypatch.setenv("AZURITE_CORS_ORIGINS", origins)
+    client = MagicMock()
+    monkeypatch.setattr("azure.storage.blob.BlobServiceClient.from_connection_string", lambda *_: client)
+    monkeypatch.setattr(module, "wait_for_azurite", lambda *args: None)
+    if module_name == "init_storage_docker":
+        monkeypatch.setattr(module, "_ensure_sdk", lambda: None)
+    module.main()
+    rule = client.set_service_properties.call_args.kwargs["cors"][0]
+    expected = origins.split(",") if origins else ["http://localhost:4280", "http://127.0.0.1:4280"]
+    assert rule.allowed_origins.split(",") == expected
+    assert "*" not in rule.allowed_origins
+
+
 def test_makefile_exposes_each_integration_tier() -> None:
     makefile = MAKEFILE.read_text()
 
     assert _target_runner_commands(makefile, "test-int") == [
-        "uv run python scripts/run_integration_tests.py --marker integration_azurite tests/test_integration.py"
+        "AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/run_integration_tests.py --marker "
+        "integration_azurite tests/test_integration.py"
     ]
     assert _target_runner_commands(makefile, "test-int-live") == [
         "uv run python scripts/run_integration_tests.py --marker integration_live_stack "
