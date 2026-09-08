@@ -2,6 +2,13 @@
 
 from treesight.models.aoi import AOI
 from treesight.models.blob_event import BlobEvent
+from treesight.models.enrichment_manifest import (
+    ENRICHMENT_MANIFEST_V2_SCHEMA,
+    CenterPoint,
+    EnrichmentManifestV2,
+    PerAoiEnrichment,
+    RunSummary,
+)
 from treesight.models.enums import OrderState, WorkflowState
 from treesight.models.feature import Feature
 from treesight.models.geolocation import (
@@ -30,10 +37,13 @@ from treesight.models.records import (
 
 __all__ = [
     "AOI",
+    "ENRICHMENT_MANIFEST_V2_SCHEMA",
     "AcquisitionResult",
     "BlobEvent",
+    "CenterPoint",
     "DownloadResult",
     "EnrichmentManifest",
+    "EnrichmentManifestV2",
     "Feature",
     "FulfillmentResult",
     "GeolocationProvenance",
@@ -44,10 +54,12 @@ __all__ = [
     "LegalUseClassification",
     "MetadataResult",
     "OrderState",
+    "PerAoiEnrichment",
     "PipelineSummary",
     "PipelineSummaryCounts",
     "PostProcessResult",
     "RunRecord",
+    "RunSummary",
     "SearchResult",
     "SubscriptionRecord",
     "UserRecord",

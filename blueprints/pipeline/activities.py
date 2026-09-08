@@ -425,6 +425,7 @@ def enrich_finalize(payload: _Payload) -> dict[str, Any]:
         payload["data_sources"],
         payload["imagery"],
         payload.get("per_aoi_results", []),
+        per_aoi_coords=payload.get("per_aoi_coords"),
         eudr_mode=payload.get("eudr_mode", False),
         date_start=payload.get("date_start"),
         project_name=payload["project_name"],
