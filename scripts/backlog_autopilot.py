@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
-from urllib import error, request
+from urllib import error, parse, request
 
 COPILOT_ACTOR_ID = "BOT_kgDOC9w8XQ"
 
@@ -156,18 +156,29 @@ def normalize_priority_labels(labels: set[str]) -> set[str]:
         return set(labels)
 
     chosen_priority = next((label for label in _PRIORITY_LABEL_ORDER if label in labels), "priority:backlog")
-    normalized = {label for label in labels if label not in _PRIORITY_LABELS}
+    normalized = {label for label in labels if label.strip() and label not in _PRIORITY_LABELS}
     normalized.add(chosen_priority)
     return normalized
 
 
-def _replace_issue_labels(*, token: str, owner: str, repo: str, issue_number: int, labels: set[str]) -> None:
-    _github_api(
-        token=token,
-        method="PATCH",
-        path=f"/repos/{owner}/{repo}/issues/{issue_number}",
-        body={"labels": sorted(labels)},
-    )
+def _update_priority_labels(
+    *, token: str, owner: str, repo: str, issue_number: int, before: set[str], after: set[str]
+) -> set[str]:
+    path = f"/repos/{owner}/{repo}/issues/{issue_number}/labels"
+    added = (after - before) & _PRIORITY_LABELS
+    if added:
+        _github_api(token=token, method="POST", path=path, body={"labels": sorted(added)})
+    for label in sorted((before - after) & _PRIORITY_LABELS):
+        try:
+            _github_api(token=token, method="DELETE", path=f"{path}/{parse.quote(label, safe='')}")
+        except RuntimeError as exc:
+            if not isinstance(exc.__cause__, error.HTTPError) or exc.__cause__.code != 404:
+                raise
+    current = _github_api(token=token, method="GET", path=f"/repos/{owner}/{repo}/issues/{issue_number}")
+    labels = {label["name"] for label in current["labels"] if label["name"].strip()}
+    if labels & _PRIORITY_LABELS != after & _PRIORITY_LABELS:
+        raise RuntimeError(f"Issue #{issue_number} priority labels changed during normalization")
+    return labels
 
 
 def normalize_open_issue_priorities(
@@ -189,12 +200,13 @@ def normalize_open_issue_priorities(
         if normalized_labels != issue.labels:
             normalized_count += 1
             if not dry_run:
-                _replace_issue_labels(
+                normalized_labels = _update_priority_labels(
                     token=token,
                     owner=owner,
                     repo=repo,
                     issue_number=issue.number,
-                    labels=normalized_labels,
+                    before=issue.labels,
+                    after=normalized_labels,
                 )
         normalized_issues.append(
             IssueCandidate(

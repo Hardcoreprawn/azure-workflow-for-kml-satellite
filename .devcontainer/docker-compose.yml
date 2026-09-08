@@ -1,0 +1,19 @@
+name: ${COMPOSE_PROJECT_NAME:-canopex-dev}
+
+services:
+  devcontainer:
+    image: ghcr.io/hardcoreprawn/treesight-dev:latest
+    init: true
+    command: ["sleep", "infinity"]
+    volumes:
+      - ${DEV_WORKSPACE:-.}:/workspace
+    environment:
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-canopex-dev}
+      CANOPEX_DEVCONTAINER: "1"
+      AZURITE_BLOB_HOST: azurite
+      FUNC_URL: http://func:80
+      VERIFY_COMPUTE_BASE: http://func:80
+      VERIFY_ORCH_BASE: http://orch:80
+      VERIFY_WEB_BASE: http://web:4280
+      VERIFY_OLLAMA_BASE: http://ollama:11434
+    restart: "no"
