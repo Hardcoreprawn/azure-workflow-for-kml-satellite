@@ -108,12 +108,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #1451 | Backlog priority normalization (closes #939): priority-only API writes preserve unrelated labels, reject blank input, and verify concurrent update outcomes before dispatch. |
 | #1449 | Canonical v2 AOI enrichment manifests, direct/split SAFE_MODE parity, and nested EUDR export evidence (closes #1448 and #1450). Merge review added unavailable-weather regressions for both multi-AOI paths. |
 | #1473 | SHA-pinned CodeQL action patch update to v4.37.8; local checks and all required CI checks passed. |
 | #1477 | Non-root devcontainer and project-scoped sibling Docker lifecycle; cached startup, ordered storage initialization, explicit cleanup, and CPU-default Ollama (closes #1475). Local `make check` and startup/shutdown checks passed; window-close UI and GPU validation remain outstanding. |
 | #1393 | feat(eudr): `GeolocationProvenance` model + end-to-end wiring (`coords_to_kml` → KML `ExtendedData` → lxml round-trip → `per_aoi_enrichment` → `_plot_geolocation`) so EUDR DDS exports use the supplier-declared point/polygon type, not the derived buffer's area, per Article 2(28) (closes #1343; folds in #1403's wiring fast-follow). |
 | #1406 | feat: real-acquisition local runner (`scripts/real_acquisition_runner.py`) — sibling to `corpus_runner.py` that runs `tests/fixtures/eudr_scenarios/*.kml` against the REAL Planetary Computer provider (not the `CANOPEX_TEST_MODE` stub) and fetches EUDR exports for human review, unblocking #1379's Stage 0 checklist (closes #1405). |
-| #1399 | feat: client-side cold-start masking for API latency perception — new anonymous `GET /api/internal-health` warm-up probe, `apiFetchWithRetry` (one retry after 2s on network/timeout errors), granular submission status messages, and adaptive polling interval for `pollAnalysisRun` (3s/6s/12s by elapsed time) (closes #764). |
 | —  | **MILESTONE (2026-07-12): Domain-model overhaul begun — Organisation as the single ownership root** (epic #1057; model documented in `docs/DATA_MODEL.md` — conceptual/logical/physical + D1–D5 divergences). **D3 landed**: per-user quota retired, org pool is the sole accounting unit. D1 (auth active-org resolution) in progress; D2 (org-partitioning) sequenced after D1. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 
