@@ -71,8 +71,8 @@ OLLAMA_BASE = os.environ.get("VERIFY_OLLAMA_BASE", "http://localhost:11434")
 # same reason.
 PIPELINE_TIMEOUT_SECONDS = float(os.environ.get("VERIFY_PIPELINE_TIMEOUT_S", "600"))
 
-_REQUIRED_CONTAINERS = ("canopex-azurite", "canopex-cosmos", "canopex-func", "canopex-orch", "canopex-web")
-_LIVENESS_ONLY_CONTAINERS = ("canopex-event-grid-relay",)
+_REQUIRED_CONTAINERS = ("azurite", "cosmos", "func", "orch", "web")
+_LIVENESS_ONLY_CONTAINERS = ("event-grid-relay",)
 
 EXPORT_FORMATS = ("eudr-pdf", "eudr-geojson", "eudr-csv")
 
@@ -94,13 +94,31 @@ def check_container_running(name: str) -> bool:
     reports healthy — a merely "running" container can still be mid-startup
     or explicitly unhealthy, which a bare Status check would miss."""
     try:
+        selection = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--quiet",
+                "--filter",
+                f"label=com.docker.compose.project={os.environ.get('COMPOSE_PROJECT_NAME', 'canopex-dev')}",
+                "--filter",
+                f"label=com.docker.compose.service={name}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        containers = selection.stdout.split()
+        if selection.returncode != 0 or len(containers) != 1:
+            return False
         out = subprocess.run(
             [
                 "docker",
                 "inspect",
                 "--format",
                 "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}",
-                name,
+                containers[0],
             ],
             capture_output=True,
             text=True,
@@ -310,8 +328,8 @@ def check_website() -> list[Result]:
 
 def check_event_grid_relay() -> list[Result]:
     print("\n[8/9] Event Grid relay (liveness only — see module docstring)")
-    ok = check_container_running("canopex-event-grid-relay")
-    _print_result("canopex-event-grid-relay running", ok, warn_only=True)
+    ok = check_container_running("event-grid-relay")
+    _print_result("event-grid-relay running", ok, warn_only=True)
     return [("event-grid-relay", True)]  # never blocks the gate
 
 

@@ -27,10 +27,8 @@ AZURITE_ACCOUNT_NAME: Final[str] = "devstoreaccount1"
 AZURITE_ACCOUNT_KEY: Final[str] = (
     "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="  # pragma: allowlist secret
 )
-# Host defaults to loopback for local dev. CI runs the gate jobs *inside* the
-# dev container with Azurite as a `services:` container reachable by its network
-# alias, so the host is overridable via the AZURITE_BLOB_HOST env var (the same
-# knob init_storage_docker.py already honours). See #1086.
+# Single source of truth for blob endpoint host. Keep deterministic behavior:
+# use explicit AZURITE_BLOB_HOST when set, else loopback default.
 AZURITE_BLOB_HOST: Final[str] = os.environ.get("AZURITE_BLOB_HOST", "127.0.0.1")
 AZURITE_BLOB_PORT: Final[int] = 10000
 AZURITE_QUEUE_PORT: Final[int] = 10001

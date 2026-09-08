@@ -104,6 +104,7 @@ def _phase_enrichment(
                     "data_sources": data_sources,
                     "imagery": imagery,
                     "per_aoi_results": per_aoi_results,
+                    "per_aoi_coords": per_aoi_coords,
                     "eudr_mode": inp.get("eudr_mode", False),
                     "date_start": inp.get("date_start"),
                     "project_name": ctx["project_name"],

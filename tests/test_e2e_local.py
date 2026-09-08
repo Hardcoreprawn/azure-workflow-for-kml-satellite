@@ -8,6 +8,7 @@ real by ``make test-pipeline-local``, not something worth mocking in unit tests.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -17,6 +18,7 @@ from scripts.e2e_local import (
     assert_pipeline_succeeded,
     build_func_host_env,
     stop_func_host,
+    write_e2e_result,
 )
 
 
@@ -56,9 +58,11 @@ class TestBuildFuncHostEnv:
         assert "AzureWebJobsStorage" in env
         assert env["AzureWebJobsStorage"]
 
-    def test_preserves_existing_azure_web_jobs_storage(self):
+    def test_overrides_inherited_storage_with_selected_azurite(self):
+        from scripts.e2e_local import AZURITE_CONN_STR
+
         env = build_func_host_env({"AzureWebJobsStorage": "UseDevelopmentStorage=true"})
-        assert env["AzureWebJobsStorage"] == "UseDevelopmentStorage=true"
+        assert env["AzureWebJobsStorage"] == AZURITE_CONN_STR
 
     def test_test_mode_false_omits_canopex_test_mode(self):
         """scripts/real_acquisition_runner.py (#1379) needs the real imagery
@@ -145,3 +149,29 @@ class TestStopFuncHost:
         stop_func_host(proc)
         proc.terminate.assert_called_once()
         proc.kill.assert_called_once()
+
+
+class TestWriteE2eResult:
+    def test_writes_validated_run_summary(self, tmp_path: Path):
+        result_path = tmp_path / "result.json"
+
+        write_e2e_result(
+            {
+                "runtimeStatus": "Completed",
+                "instanceId": "instance-1",
+                "output": {"downloadsCompleted": 1},
+            },
+            result_path,
+        )
+
+        assert '"fixture": "tests/fixtures/sample.kml"' in result_path.read_text()
+        assert '"instanceId": "instance-1"' in result_path.read_text()
+        assert '"runtimeStatus": "Completed"' in result_path.read_text()
+
+    def test_overwrites_previous_result(self, tmp_path: Path):
+        result_path = tmp_path / "result.json"
+        result_path.write_text("old")
+
+        write_e2e_result({"runtimeStatus": "Completed", "output": {}}, result_path)
+
+        assert result_path.read_text().startswith("{")

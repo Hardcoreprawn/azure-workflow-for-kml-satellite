@@ -640,20 +640,23 @@ class TestEnrichFinalize:
         from blueprints.pipeline.activities import enrich_finalize
 
         expected = {"manifest_path": "output/manifest.json"}
+        per_aoi_coords = [{"name": "Solo", "coords": [[1, 2]], "area_ha": 1}]
         with (
             patch("treesight.storage.client.BlobStorageClient"),
-            patch("treesight.pipeline.enrichment.enrich_finalize", return_value=expected),
+            patch("treesight.pipeline.enrichment.enrich_finalize", return_value=expected) as finalize,
         ):
             result = enrich_finalize(
                 {
                     "data_sources": {},
                     "imagery": {},
+                    "per_aoi_coords": per_aoi_coords,
                     "project_name": "farm",
                     "timestamp": "2024-06-01T00:00:00Z",
                 }
             )
 
         assert result == expected
+        assert finalize.call_args.kwargs["per_aoi_coords"] == per_aoi_coords
 
 
 # ---------------------------------------------------------------------------
