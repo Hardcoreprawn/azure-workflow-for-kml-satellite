@@ -100,6 +100,7 @@ ACTIVE_RUN_STATUSES = frozenset({"submitted", "running", "queued"})
 
 # --- HTTP ---
 DEFAULT_HTTP_TIMEOUT_SECONDS = 30.0
+SAS_TOKEN_EXPIRY_MINUTES = 15
 
 # --- AI inference ---
 AI_MAX_TOKENS = 1000
