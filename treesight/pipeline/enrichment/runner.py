@@ -284,6 +284,7 @@ def _normalise_per_aoi_entry(result: dict[str, Any], aoi_entry: dict[str, Any], 
     normalised["aoi_index"] = idx
     normalised["bbox"] = normalised.get("bbox") or _bbox_from_entry(aoi_entry)
     normalised["center"] = normalised.get("center") or _center_from_coords(coords)
+    normalised["weather_daily"] = normalised.get("weather_daily") or {}
     normalised["errors"] = normalised.get("errors") or ([normalised["error"]] if normalised.get("error") else [])
     return normalised
 

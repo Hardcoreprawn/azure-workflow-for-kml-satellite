@@ -1034,6 +1034,26 @@ class TestEnrichSingleAoiStep:
 class TestEnrichFinalize:
     """Verify enrich_finalize merges results and stores manifest."""
 
+    def test_multi_aoi_unavailable_weather_preserves_manifest(self):
+        storage = MagicMock()
+        per_aoi = [
+            {"name": "a", "coords": [[1, 2]], "area_ha": 10},
+            {"name": "b", "coords": [[3, 4]], "area_ha": 20},
+        ]
+        result = enrich_finalize(
+            {"frame_plan": []},
+            {},
+            [{"weather_daily": None}, {"weather_daily": {"temperature": [20]}}],
+            per_aoi_coords=per_aoi,
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+        assert result["per_aoi_enrichment"][0]["weather_daily"] == {}
+        assert result["per_aoi_enrichment"][1]["weather_daily"] == {"temperature": [20]}
+        storage.upload_json.assert_called_once()
+
     def test_merges_data_sources_and_imagery(self):
         storage = MagicMock()
         result = enrich_finalize(
@@ -1491,6 +1511,7 @@ class TestMultiRegionRunEnrichment:
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    @pytest.mark.parametrize("weather_daily", [None, {"temperature": [20]}, [{"temperature": 20}]])
     def test_multi_region_per_aoi_still_runs(
         self,
         mock_plan,
@@ -1500,11 +1521,15 @@ class TestMultiRegionRunEnrichment:
         mock_mosaic,
         mock_change,
         mock_enrich_aoi,
+        weather_daily,
     ):
         """Per-AOI enrichment still runs for multi-region submissions."""
         mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
         mock_mosaic.return_value = ([], [])
-        mock_enrich_aoi.side_effect = lambda entry, **kw: {"name": entry.get("name", "")}
+        mock_enrich_aoi.side_effect = lambda entry, **kw: {
+            "name": entry.get("name", ""),
+            "weather_daily": weather_daily,
+        }
         storage = MagicMock()
 
         per_aoi = [
@@ -1531,6 +1556,7 @@ class TestMultiRegionRunEnrichment:
 
         assert "per_aoi_enrichment" in result
         assert len(result["per_aoi_enrichment"]) == 2
+        assert all(entry["weather_daily"] == (weather_daily or {}) for entry in result["per_aoi_enrichment"])
 
     @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
     @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
