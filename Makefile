@@ -1,7 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
-       dev-all dev-all-stub dev-logs dev-rebuild \
+       dev-all dev-all-stub dev-logs dev-status dev-rebuild \
 	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check verify-local lint fmt check smoke clean prune-branches \
-	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
 SHELL  := /bin/bash
@@ -18,73 +17,38 @@ help: ## Show this help
 setup: ## Install Python deps (Docker required for the app stack — see dev-init/dev-all)
 	uv sync --all-extras
 
-# ───────────────────── Port cleanup ─────────────────────
-
-DEV_FUNC_PORT := 7071
-DEV_WEB_PORT := 4280
-DEV_WEB_LEGACY_PORT := 1111
-DEV_STORAGE_PORTS := 10000 10001 10002
-DEV_WEB_PORTS := $(DEV_WEB_PORT) $(DEV_WEB_LEGACY_PORT)
-DEV_PORTS := $(DEV_FUNC_PORT) $(DEV_WEB_PORTS) $(DEV_STORAGE_PORTS)
-
-_free-ports: ## Kill local processes holding dev ports
-	@for p in $(DEV_PORTS); do \
-		pids=$$(fuser $$p/tcp 2>/dev/null); \
-		if [ -n "$$pids" ]; then \
-			echo "Killing pid(s) $$pids on port $$p"; \
-			fuser -k $$p/tcp 2>/dev/null || true; \
-		fi; \
-	done
-	@sleep 1
-
 # ───────────────────── Azurite (Docker) ─────────────────────
 
-dev-up: ## Start Azurite container
-	docker compose up -d azurite
-	@echo "Azurite running on localhost:10000 (blob), :10001 (queue), :10002 (table)"
+dev-up: ## Start healthy Azurite and initialize local storage
+	bash scripts/dev_stack.sh storage
 
-dev-down: _free-ports ## Stop containers and free ports
-	docker compose down
+dev-down: ## Stop this project's services, preserving data and the active editor
+	bash scripts/dev_stack.sh down
 
 dev-init: dev-up ## Start Azurite + create storage containers
-	uv run python scripts/init_storage.py
 
 # ───────────────────── Full Stack ─────────────────────
 
 # Resolved once per `make` invocation; empty outside a Docker-outside-of-
 # Docker devcontainer, in which case docker-compose.yml/.override.yml fall
 # back to "." (see scripts/detect_dood_workspace.sh).
-DEV_WORKSPACE := $(shell bash scripts/detect_dood_workspace.sh)
+DEV_WORKSPACE ?= $(shell bash scripts/detect_dood_workspace.sh)
 export DEV_WORKSPACE
 
-dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web) — real Planetary Computer imagery, the single local dev path
-	@if [ -n "$(DEV_WORKSPACE)" ]; then echo "Detected Docker-outside-of-Docker — using host path $(DEV_WORKSPACE) for bind mounts"; fi
-	source .github/image-config.env && export UV_VERSION && \
-	docker compose down --remove-orphans 2>/dev/null || true
-	source .github/image-config.env && export UV_VERSION && docker compose up --build -d
-	@echo ""
-	@echo "╔══════════════════════════════════════════════════════╗"
-	@echo "║  All services starting via docker-compose:           ║"
-	@echo "║                                                      ║"
-	@echo "║  Website:    http://localhost:4280                    ║"
-	@echo "║  Functions:  http://localhost:7071/api/health (compute)║"
-	@echo "║  Orchestrator: http://localhost:7072/api/health        ║"
-	@echo "║  Azurite:    localhost:10000 (blob)                   ║"
-	@echo "║                                                      ║"
-	@echo "║  Imagery:    real PC (dev-all-stub = stub)            ║"
-	@echo "║  Logs:       make dev-logs                            ║"
-	@echo "║  Stop:       docker compose down                      ║"
-	@echo "╚══════════════════════════════════════════════════════╝"
+dev-all: ## Start the healthy full stack with cached images and real imagery
+	bash scripts/dev_stack.sh up
 
 dev-all-stub: ## Full stack, synthetic imagery (CANOPEX_TEST_MODE=1) — fast whole-pipeline regression run, no real Planetary Computer calls
 	CANOPEX_TEST_MODE=1 $(MAKE) dev-all
 
 dev-logs: ## Tail logs from all docker-compose services
-	docker compose logs -f --tail=50
+	bash scripts/dev_stack.sh logs
 
-dev-rebuild: _free-ports ## Rebuild and restart all services
-	docker compose down --remove-orphans 2>/dev/null || true
-	docker compose up --build -d --force-recreate
+dev-status: ## Show running, stopped, and initialization service state
+	bash scripts/dev_stack.sh status
+
+dev-rebuild: ## Explicitly rebuild application images and wait for healthy services
+	bash scripts/dev_stack.sh rebuild
 
 # ───────────────────── Testing ─────────────────────
 
@@ -268,9 +232,8 @@ smoke: ## POST to /api/health/deep and exit non-zero if not healthy
 
 # ───────────────────── Cleanup ─────────────────────
 
-clean: dev-down ## Stop Azurite and remove data volume
-	docker volume rm kml-satellites_azurite-data 2>/dev/null || true
-	@echo "Cleaned up."
+clean: ## Reset this project's data and models (requires DEV_RESET_DATA=1, host only)
+	bash scripts/dev_stack.sh clean
 
 prune-branches: ## Delete local branches whose upstream was deleted (merged/closed PRs)
 	@git fetch --prune

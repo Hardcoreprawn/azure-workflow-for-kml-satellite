@@ -8,7 +8,30 @@ tests/test_corpus_runner.py / tests/test_validate_blueprint_parity.py.
 
 from __future__ import annotations
 
+import subprocess
+from unittest.mock import patch
+
+import pytest
 from verify_local_stack import EXPORT_FORMATS, summarize
+
+
+@pytest.mark.parametrize("state, expected", [("running|healthy", True), ("running|unhealthy", False)])
+def test_container_health_uses_project_service_labels(
+    monkeypatch: pytest.MonkeyPatch, state: str, expected: bool
+) -> None:
+    from verify_local_stack import check_container_running
+
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "test-project")
+    with patch("verify_local_stack.subprocess.run") as run:
+        run.side_effect = [
+            subprocess.CompletedProcess([], 0, "container-id\n"),
+            subprocess.CompletedProcess([], 0, state),
+        ]
+        assert check_container_running("func") is expected
+    selection = run.call_args_list[0].args[0]
+    assert "label=com.docker.compose.project=test-project" in selection
+    assert "label=com.docker.compose.service=func" in selection
+    assert run.call_args_list[1].args[0][-1] == "container-id"
 
 
 class TestSummarize:
