@@ -256,9 +256,6 @@
 (function() {
   'use strict';
 
-  // NOT `window.CanopexCiam || {}` here: canopex-auth.js loads with `defer`,
-  // so capturing it at parse time can freeze `ciam` at `{}` before auth init.
-  // Re-resolve in init(), after deferred scripts have run.
   var ciam = {};
   var apiClient = null;
 
@@ -417,8 +414,18 @@
     }
   }
 
-  function init() {
+  async function init() {
     ciam = window.CanopexCiam || {};
+    try {
+      if (typeof ciam.ensureMsalReady !== 'function') {
+        throw new Error('Authentication module unavailable');
+      }
+      await ciam.ensureMsalReady();
+    } catch (err) {
+      console.error('[invite-app] Authentication initialization failed:', err);
+      showError('Unable to initialize sign-in. Please reload the page.');
+      return;
+    }
     apiClient = initApiClient();
     if (!apiClient) {
       showError('Unable to initialize application. Please try again.');
