@@ -22,7 +22,7 @@ setup: ## Install Python deps (Docker required for the app stack — see dev-ini
 dev-up: ## Start healthy Azurite and initialize local storage
 	bash scripts/dev_stack.sh storage
 
-dev-down: ## Stop this project's services, preserving data and the active editor
+dev-down: ## Preserve data; stop apps inside the devcontainer, or the whole project on the host
 	bash scripts/dev_stack.sh down
 
 dev-init: dev-up ## Start Azurite + create storage containers
