@@ -27,6 +27,18 @@ stored in this document; retrieve them from the Azure portal or from
 
 ### Local Container Lifecycle
 
+The disposable acceptance gate is `make test-pipeline-local`; use
+`make test-pipeline-local-clean` to reset its dedicated Compose project first.
+Both clear stale `.e2e-local-result.json` before bootstrap. The gate pins host
+storage to its selected Azurite endpoint, retains fresh result and host-log
+evidence, and removes its containers, volumes, and any temporary network
+attachment on exit. Cleanup errors fail the command rather than being hidden.
+
+Local blob CORS defaults to `http://localhost:4280` and
+`http://127.0.0.1:4280`. Both initializers accept a comma-separated
+`AZURITE_CORS_ORIGINS` override for another local website port. Pass this
+environment variable into the initializer container when using Compose.
+
 The devcontainer and its Docker-outside-of-Docker sibling services share the
 `canopex-dev` Compose project. Set `COMPOSE_PROJECT_NAME` before opening VS Code
 and for host commands to use another project. Separate projects still publish

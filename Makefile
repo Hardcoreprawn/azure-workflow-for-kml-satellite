@@ -3,8 +3,24 @@
 	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check verify-local lint fmt check smoke clean prune-branches \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
+.PHONY: test-pipeline-local-clean
+
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
+
+# Resolved once per `make` invocation; empty outside a Docker-outside-of-
+# Docker devcontainer, in which case docker-compose.yml/.override.yml fall
+# back to "." (see scripts/detect_dood_workspace.sh).
+ifeq ($(origin DEV_WORKSPACE),undefined)
+DEV_WORKSPACE := $(shell bash scripts/detect_dood_workspace.sh)
+endif
+export DEV_WORKSPACE
+
+# Default endpoint for host-side script flows. The disposable pipeline target
+# selects its own endpoint after establishing its network below.
+AZURITE_BLOB_HOST ?= 127.0.0.1
+export AZURITE_BLOB_HOST
+PIPELINE_COMPOSE_PROJECT := canopex-pipeline-e2e
 
 # ───────────────────── Help ─────────────────────
 
@@ -29,14 +45,6 @@ dev-init: dev-up ## Start Azurite + create storage containers
 
 # ───────────────────── Full Stack ─────────────────────
 
-# Resolved once per `make` invocation; empty outside a Docker-outside-of-
-# Docker devcontainer, in which case docker-compose.yml/.override.yml fall
-# back to "." (see scripts/detect_dood_workspace.sh).
-ifeq ($(origin DEV_WORKSPACE),undefined)
-DEV_WORKSPACE := $(shell bash scripts/detect_dood_workspace.sh)
-endif
-export DEV_WORKSPACE
-
 dev-all: ## Start the healthy full stack with cached images and real imagery
 	bash scripts/dev_stack.sh up
 
@@ -58,7 +66,7 @@ build-rust: ## Build + install the treesight_rs PyO3 extension into the active v
 	uv pip install --force-reinstall ./rust
 
 test-upload: ## Upload sample KML and trigger pipeline
-	uv run python scripts/simulate_upload.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/simulate_upload.py
 
 ux-smoke: ## UX smoke test across host site, EUDR/conservation/account apps, and the API auth boundary (needs make dev-all running + uv sync --extra ux)
 	@uv run python -c "import playwright" 2>/dev/null || { echo "ERROR: playwright not installed. Run: uv sync --extra ux"; exit 1; }
@@ -84,8 +92,8 @@ test-js: ## Execute website/js correctness tests with Node's built-in test runne
 	node --test tests/js/
 
 test-int: ## Run integration tests against a running Azurite (creates containers first)
-	uv run python scripts/init_storage.py
-	uv run python scripts/run_integration_tests.py --marker integration_azurite tests/test_integration.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/init_storage.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/run_integration_tests.py --marker integration_azurite tests/test_integration.py
 
 test-int-live: ## Run integration smoke tests against Azurite + local Functions host
 	uv run python scripts/run_integration_tests.py --marker integration_live_stack tests/test_pipeline_smoke_e2e.py tests/test_monster_aoi_scale.py
@@ -93,15 +101,39 @@ test-int-live: ## Run integration smoke tests against Azurite + local Functions 
 test-int-stripe: ## Run external Stripe integration tests (requires STRIPE_API_KEY)
 	uv run python scripts/run_integration_tests.py --marker integration_external tests/test_integration_billing.py
 
-test-pipeline-local: ## Unattended local/CI pipeline e2e gate against a running Azurite — no live Azure environment required (#1215)
+test-pipeline-local-clean: ## Reset the disposable pipeline project, then run the local gate
+	rm -f .e2e-local-result.json
+	docker compose --project-name "$(PIPELINE_COMPOSE_PROJECT)" down --volumes --remove-orphans
+	$(MAKE) test-pipeline-local
+
+test-pipeline-local: ## Unattended local/CI pipeline e2e gate with managed Azurite lifecycle — no live Azure environment required (#1215)
+	rm -f .e2e-local-result.json
 	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
-	uv run python scripts/init_storage.py
-	uv run python scripts/e2e_local.py
+	@set -euo pipefail; \
+	project=$(PIPELINE_COMPOSE_PROJECT); \
+	attached=0; \
+	cleanup() { \
+		result=$$?; trap - EXIT; \
+		if [[ "$$attached" == 1 ]]; then docker network disconnect "$${project}_default" "$$(hostname)" || result=1; fi; \
+		docker compose --project-name "$$project" down --volumes --remove-orphans || result=1; \
+		exit "$$result"; \
+	}; \
+	trap cleanup EXIT; \
+	docker compose --project-name "$$project" up -d --wait --wait-timeout 60 azurite; \
+	if [[ -f /.dockerenv ]]; then \
+		docker network connect "$${project}_default" "$$(hostname)"; attached=1; \
+		host=azurite; \
+	else \
+		host=127.0.0.1; \
+	fi; \
+	echo "Using Azurite endpoint $$host in Compose project $$project"; \
+	AZURITE_BLOB_HOST="$$host" uv run python scripts/init_storage.py; \
+	AZURITE_BLOB_HOST="$$host" uv run python scripts/e2e_local.py
 
 real-acquisition-check: ## Run real-world EUDR fixtures against the REAL Planetary Computer provider for manual review (#1379) — not a CI gate
 	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
-	uv run python scripts/init_storage.py
-	uv run python scripts/real_acquisition_runner.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/init_storage.py
+	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/real_acquisition_runner.py
 
 blueprint-parity-check: ## Verify compute and orchestrator serve the identical HTTP blueprint set (needs make dev-all running) (#1407)
 	uv run python scripts/validate_blueprint_parity.py

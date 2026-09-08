@@ -7,10 +7,10 @@ against Azurite and a real ``func start`` host process, with
 provider (see ``treesight/providers/stub.py``). No live Azure environment
 required.
 
-Prerequisite: Azurite must already be up and reachable (``make dev-up``, or
-a sibling ``azurite`` service in CI) — this script only creates containers
-if missing, then manages the func host lifecycle and trigger/poll/assert
-flow.
+Prerequisite: Azurite must already be up and reachable (the canonical
+entrypoint is ``make test-pipeline-local``; direct callers can use
+``make dev-up`` or a sibling ``azurite`` service in CI). This script manages
+the func host lifecycle and trigger/poll/assert flow.
 
 Usage:
   make test-pipeline-local
@@ -20,6 +20,8 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
+import json
 import os
 import subprocess
 import sys
@@ -35,8 +37,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 FUNC_BASE = "http://localhost:7071"
 DEFAULT_KML = REPO_ROOT / "tests" / "fixtures" / "sample.kml"
 FUNC_HOST_LOG_PATH = REPO_ROOT / ".e2e-local-func-host.log"
+E2E_RESULT_PATH = REPO_ROOT / ".e2e-local-result.json"
 
 _TERMINAL_STATUSES = frozenset({"Completed", "Failed", "Canceled", "Terminated"})
+DEFAULT_POLL_INTERVAL_SECONDS = 3.0
+DEFAULT_ORCH_TIMEOUT_SECONDS = 600.0
 
 # Dummy CIAM values so treesight.config.validate_config() doesn't fail
 # function indexing — REQUIRE_AUTH stays unset, so nothing ever verifies
@@ -81,7 +86,7 @@ def build_func_host_env(base_env: dict[str, str], *, test_mode: bool = True) -> 
     env["AzureWebJobsScriptRoot"] = str(REPO_ROOT)
     for key, value in _DUMMY_CIAM_DEFAULTS.items():
         env.setdefault(key, value)
-    env.setdefault("AzureWebJobsStorage", AZURITE_CONN_STR)
+    env["AzureWebJobsStorage"] = AZURITE_CONN_STR
     env.setdefault("FUNCTIONS_WORKER_RUNTIME", "python")
     env.setdefault("AzureWebJobsFeatureFlags", "EnableWorkerIndexing")
     # The Functions HOST (not the Python worker) manages its host-key
@@ -126,6 +131,17 @@ def stop_func_host(proc: subprocess.Popen, *, grace_seconds: float = 10.0) -> No
         proc.wait(timeout=5.0)
 
 
+def write_e2e_result(status_payload: dict[str, Any], path: Path = E2E_RESULT_PATH) -> None:
+    """Persist the validated run summary as durable proof of a local pass."""
+    result = {
+        "fixture": str(DEFAULT_KML.relative_to(REPO_ROOT)),
+        "runtimeStatus": status_payload.get("runtimeStatus"),
+        "instanceId": status_payload.get("instanceId"),
+        "output": status_payload.get("output") or {},
+    }
+    path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+
+
 def wait_for_func_host(*, timeout: float, interval: float = 2.0) -> None:
     """Block until the func host answers /api/health, or raise TimeoutError."""
     deadline = time.monotonic() + timeout
@@ -144,7 +160,11 @@ def wait_for_func_host(*, timeout: float, interval: float = 2.0) -> None:
 
 
 def poll_orchestration(
-    instance_id: str, *, timeout: float, interval: float = 3.0, base: str = FUNC_BASE
+    instance_id: str,
+    *,
+    timeout: float,
+    interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+    base: str = FUNC_BASE,
 ) -> dict[str, Any]:
     """Poll the orchestrator status endpoint to a terminal state.
 
@@ -160,6 +180,7 @@ def poll_orchestration(
     url = f"{base}/api/orchestrator/{instance_id}"
     deadline = time.monotonic() + timeout
     last_status = ""
+    last_payload: dict[str, Any] | None = None
     while time.monotonic() < deadline:
         try:
             resp = httpx.get(url, timeout=10.0)
@@ -170,6 +191,7 @@ def poll_orchestration(
             time.sleep(interval)
             continue
         data = resp.json()
+        last_payload = data
         status = data.get("runtimeStatus", "Unknown")
         if status != last_status:
             print(f"  status: {status}")
@@ -177,7 +199,12 @@ def poll_orchestration(
         if status in _TERMINAL_STATUSES:
             return data
         time.sleep(interval)
-    raise TimeoutError(f"Orchestration {instance_id} did not reach a terminal state within {timeout}s")
+    custom = (last_payload or {}).get("customStatus")
+    raise TimeoutError(
+        "Orchestration "
+        f"{instance_id} did not reach a terminal state within {timeout}s "
+        f"(last_status={last_status or 'unknown'}, custom_status={custom!r})"
+    )
 
 
 def assert_pipeline_succeeded(status_payload: dict[str, Any]) -> None:
@@ -199,11 +226,27 @@ def assert_pipeline_succeeded(status_payload: dict[str, Any]) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run local unattended pipeline e2e gate")
+    parser.add_argument(
+        "--orchestration-timeout-seconds",
+        type=float,
+        default=float(os.getenv("E2E_LOCAL_ORCHESTRATION_TIMEOUT_SECONDS", DEFAULT_ORCH_TIMEOUT_SECONDS)),
+        help="Timeout for terminal orchestration status (default: 600 or E2E_LOCAL_ORCHESTRATION_TIMEOUT_SECONDS)",
+    )
+    parser.add_argument(
+        "--poll-interval-seconds",
+        type=float,
+        default=float(os.getenv("E2E_LOCAL_POLL_INTERVAL_SECONDS", DEFAULT_POLL_INTERVAL_SECONDS)),
+        help="Polling interval for orchestration status (default: 3)",
+    )
+    args = parser.parse_args()
+
     # Avoid proxy env vars breaking localhost httpx calls in CI/dev shells.
     for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "SOCKS_PROXY"):
         os.environ.pop(var, None)
         os.environ.pop(var.lower(), None)
 
+    E2E_RESULT_PATH.unlink(missing_ok=True)
     proc = start_func_host(log_path=FUNC_HOST_LOG_PATH)
     try:
         print("[1/4] Waiting for func host to become ready...")
@@ -214,12 +257,18 @@ def main() -> None:
         instance_id = fire_event_grid(blob_url, blob_name, content_length, DEFAULT_CONTAINER)
 
         print("[3/4] Polling orchestration to a terminal state...")
-        result = poll_orchestration(instance_id, timeout=300.0)
+        result = poll_orchestration(
+            instance_id,
+            timeout=args.orchestration_timeout_seconds,
+            interval=args.poll_interval_seconds,
+        )
 
         print("[4/4] Verifying the run actually produced output...")
         assert_pipeline_succeeded(result)
+        write_e2e_result(result)
 
         print("\nPASS — local pipeline e2e gate succeeded.")
+        print(f"Result written to {E2E_RESULT_PATH}")
     except Exception:
         print(f"\nFAIL — see func host log at {FUNC_HOST_LOG_PATH}", file=sys.stderr)
         raise

@@ -102,8 +102,6 @@ run_pipeline_e2e() {
   # the caller's own localhost — true here, false for a sibling container.
   uv sync --all-extras
   command -v func >/dev/null 2>&1 || bash scripts/setup_func_tools.sh
-  docker compose up -d azurite
-  uv run python scripts/init_storage.py
   make test-pipeline-local
 }
 

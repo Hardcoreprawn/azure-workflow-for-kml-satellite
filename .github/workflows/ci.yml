@@ -262,12 +262,6 @@ jobs:
       - name: Install Azure Functions Core Tools
         run: bash scripts/setup_func_tools.sh
 
-      - name: Start Azurite
-        run: docker compose up -d azurite
-
-      - name: Wait for Azurite
-        run: uv run python scripts/init_storage.py
-
       - name: Run pipeline e2e gate
         run: make test-pipeline-local
 
@@ -277,7 +271,7 @@ jobs:
 
       - name: Tear down Azurite
         if: always()
-        run: docker compose down -v --remove-orphans
+        run: docker compose --project-name canopex-pipeline-e2e down -v --remove-orphans
 
   build:
     name: Build Docker image
