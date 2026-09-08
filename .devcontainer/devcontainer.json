@@ -1,19 +1,33 @@
 {
   "name": "Canopex Dev",
-  "image": "ghcr.io/hardcoreprawn/treesight-dev:latest",
+  "dockerComposeFile": [
+    "../docker-compose.yml",
+    "../docker-compose.override.yml",
+    "docker-compose.yml"
+  ],
+  "service": "devcontainer",
+  "shutdownAction": "stopCompose",
   "workspaceFolder": "/workspace",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
-  "remoteUser": "root",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
   "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "username": "vscode",
+      "installZsh": false,
+      "installOhMyZsh": false,
+      "upgradePackages": false
+    },
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
-  "mounts": [
-    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
-  ],
-  "containerEnv": {
-    "AZURITE_BLOB_HOST": "host.docker.internal"
+  "remoteEnv": {
+    "HOME": "/home/vscode",
+    "DEV_WORKSPACE": "${localWorkspaceFolder}",
+    "UV_NO_SYNC": "1"
   },
+  "postCreateCommand": "sudo chown -R vscode:vscode /opt/venv && uv sync --frozen --all-extras --no-install-project --inexact",
+  "postStartCommand": "bash scripts/dev_stack.sh up",
+  "forwardPorts": ["web:4280", "func:80", "orch:80"],
   "customizations": {
     "vscode": {
       "settings": {

@@ -1,7 +1,8 @@
+name: ${COMPOSE_PROJECT_NAME:-canopex-dev}
+
 services:
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite
-    container_name: canopex-azurite
     ports:
       - "10000:10000"  # Blob
       - "10001:10001"  # Queue
@@ -23,7 +24,6 @@ services:
 
   init-storage:
     image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-    container_name: canopex-init
     depends_on:
       azurite:
         condition: service_healthy
@@ -47,7 +47,6 @@ services:
   # local-dev-only auth path (treesight/storage/cosmos.py's _get_client()).
   cosmos:
     image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-latest
-    container_name: canopex-cosmos
     ports:
       - "8081:8081"  # NoSQL gateway
     environment:
@@ -106,8 +105,7 @@ services:
       # `make dev-all` works out of the box for a new dev machine too.
       args:
         BASE_IMAGE: ghcr.io/hardcoreprawn/treesight-base:latest
-        UV_VERSION: ${UV_VERSION}
-    container_name: canopex-func
+        UV_VERSION: ${UV_VERSION:-0.11.28}
     ports:
       - "7071:80"
     depends_on:
@@ -115,6 +113,8 @@ services:
         condition: service_healthy
       cosmos:
         condition: service_healthy
+      init-storage:
+        condition: service_completed_successfully
     environment:
       AzureWebJobsStorage: >-  # pragma: allowlist secret
         DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
@@ -182,8 +182,7 @@ services:
       dockerfile: Dockerfile.orchestrator
       args:
         BASE_IMAGE: ghcr.io/hardcoreprawn/treesight-base:latest
-        UV_VERSION: ${UV_VERSION}
-    container_name: canopex-orch
+        UV_VERSION: ${UV_VERSION:-0.11.28}
     ports:
       - "7072:80"
     depends_on:
@@ -191,6 +190,8 @@ services:
         condition: service_healthy
       cosmos:
         condition: service_healthy
+      init-storage:
+        condition: service_completed_successfully
     environment:
       AzureWebJobsStorage: >-  # pragma: allowlist secret
         DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
@@ -233,8 +234,7 @@ services:
   # matching synthetic event (#1273; see scripts/dev_event_grid_relay.py
   # for why this is the documented mechanism, not a workaround).
   event-grid-relay:
-    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-    container_name: canopex-event-grid-relay
+    image: ghcr.io/hardcoreprawn/treesight-dev:latest
     depends_on:
       azurite:
         condition: service_healthy
@@ -249,14 +249,11 @@ services:
       # default — logs would only appear once the buffer filled or the
       # process exited, making `docker compose logs` look silent/broken.
       PYTHONUNBUFFERED: "1"
-    command: >-
-      sh -c "uv pip install --system -q azure-storage-blob httpx &&
-      python dev_event_grid_relay.py --func-base http://func:80"
-    restart: unless-stopped
+    command: ["python", "dev_event_grid_relay.py", "--func-base", "http://func:80"]
+    restart: "no"
 
   web:
     image: python:3.12-slim
-    container_name: canopex-web
     ports:
       - "4280:4280"
     depends_on:
@@ -274,24 +271,20 @@ services:
       python scripts/dev_server.py --port 4280 --func-host func --func-port 80
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4280/', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   ollama:
     image: ollama/ollama:latest
-    container_name: canopex-ollama
     ports:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
     environment:
       OLLAMA_HOST: "0.0.0.0:11434"
-    runtime: nvidia
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     healthcheck:
       # ollama/ollama's image ships no curl/wget; the `ollama` CLI itself
       # queries the local server and exits non-zero if it's unreachable.
