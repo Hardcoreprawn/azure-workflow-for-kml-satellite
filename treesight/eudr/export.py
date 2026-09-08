@@ -10,6 +10,7 @@ import csv
 import io
 from typing import Any
 
+from treesight.exports.geojson import _aoi_eudr_value
 from treesight.pipeline.enrichment.determination import as_screening_determination
 
 SUMMARY_CSV_FIELDS = [
@@ -57,7 +58,7 @@ def summary_rows_from_manifest(
     for idx, aoi in enumerate(per_aoi):
         parcel_key = str(idx)
         center = aoi.get("center", {})
-        determination = as_screening_determination(aoi.get("determination"))
+        determination = as_screening_determination(_aoi_eudr_value(aoi, "determination"))
         raw_override = parcel_overrides.get(parcel_key, {})
         override = raw_override if isinstance(raw_override, dict) else {}
         overridden = bool(override) and not override.get("reverted")
