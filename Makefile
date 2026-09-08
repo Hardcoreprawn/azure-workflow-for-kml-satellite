@@ -32,7 +32,9 @@ dev-init: dev-up ## Start Azurite + create storage containers
 # Resolved once per `make` invocation; empty outside a Docker-outside-of-
 # Docker devcontainer, in which case docker-compose.yml/.override.yml fall
 # back to "." (see scripts/detect_dood_workspace.sh).
-DEV_WORKSPACE ?= $(shell bash scripts/detect_dood_workspace.sh)
+ifeq ($(origin DEV_WORKSPACE),undefined)
+DEV_WORKSPACE := $(shell bash scripts/detect_dood_workspace.sh)
+endif
 export DEV_WORKSPACE
 
 dev-all: ## Start the healthy full stack with cached images and real imagery
