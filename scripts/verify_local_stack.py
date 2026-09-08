@@ -98,7 +98,6 @@ def check_container_running(name: str) -> bool:
             [
                 "docker",
                 "ps",
-                "--all",
                 "--quiet",
                 "--filter",
                 f"label=com.docker.compose.project={os.environ.get('COMPOSE_PROJECT_NAME', 'canopex-dev')}",

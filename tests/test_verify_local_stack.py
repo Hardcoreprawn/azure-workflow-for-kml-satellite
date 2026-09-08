@@ -34,6 +34,27 @@ def test_container_health_uses_project_service_labels(
     assert run.call_args_list[1].args[0][-1] == "container-id"
 
 
+def test_container_health_ignores_stale_stopped_container() -> None:
+    from verify_local_stack import check_container_running
+
+    def docker_result(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[1] == "ps":
+            containers = "live-id\nstale-id\n" if "--all" in command else "live-id\n"
+            return subprocess.CompletedProcess(command, 0, containers)
+        return subprocess.CompletedProcess(command, 0, "running|healthy")
+
+    with patch("verify_local_stack.subprocess.run", side_effect=docker_result):
+        assert check_container_running("func")
+
+
+@pytest.mark.parametrize("containers", ["", "first-live\nsecond-live\n"])
+def test_container_health_rejects_missing_or_ambiguous_live_service(containers: str) -> None:
+    from verify_local_stack import check_container_running
+
+    with patch("verify_local_stack.subprocess.run", return_value=subprocess.CompletedProcess([], 0, containers)):
+        assert not check_container_running("func")
+
+
 class TestSummarize:
     def test_all_passed(self):
         failed, passed = summarize([("a", True), ("b", True)])
