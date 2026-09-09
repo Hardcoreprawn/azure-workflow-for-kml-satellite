@@ -21,6 +21,15 @@
     if (backdrop) backdrop.hidden = true;
   }
 
+  function createAuthenticatedApiClient() {
+    const client = window.CanopexApiClient.createClient();
+    const authModule = window.CanopexAuth;
+    if (authModule && typeof authModule.getToken === 'function') {
+      client.setGetToken(authModule.getToken);
+    }
+    return client;
+  }
+
   async function handleSubscribe() {
     const btn = document.getElementById('eudr-subscribe-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
@@ -28,7 +37,7 @@
       if (!window.CanopexApiClient || typeof window.CanopexApiClient.createClient !== 'function') {
         throw new Error('API client unavailable');
       }
-      const client = window.CanopexApiClient.createClient();
+      const client = createAuthenticatedApiClient();
       await client.discoverApiBase();
       const res = await client.fetch('/api/eudr/subscribe', {
         method: 'POST',
