@@ -31,6 +31,7 @@ azurite-data/
 
 # Local pipeline e2e gate (#1215)
 .e2e-local-func-host.log
+.e2e-local-result.json
 .azurite/
 
 # Real-acquisition local runner (#1379, #1405)

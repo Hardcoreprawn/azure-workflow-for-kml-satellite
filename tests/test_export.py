@@ -533,6 +533,63 @@ def eudr_manifest():
 class TestBuildEudrGeoJson:
     """EUDR per-parcel GeoJSON export (#582)."""
 
+    def test_v2_per_aoi_eudr_bag_takes_precedence_over_toplevel(self):
+        manifest = {
+            "determination": {"screening_outcome": "signal_detected", "confidence": "low", "flags": ["wrong"]},
+            "worldcover": {"available": False},
+            "wdpa": {"checked": True, "is_protected": True},
+            "per_aoi_enrichment": [
+                {
+                    "name": "Solo Farm",
+                    "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]],
+                    "center": {"lat": -1.305, "lon": 36.805},
+                    "area_ha": 12.5,
+                    "eudr": {
+                        "determination": {
+                            "screening_outcome": "no_signal_detected",
+                            "confidence": "high",
+                            "flags": [],
+                        },
+                        "worldcover": {
+                            "available": True,
+                            "land_cover": {
+                                "dominant_class": "Tree cover",
+                                "classes": [{"code": 10, "label": "Tree cover", "area_pct": 88.0}],
+                            },
+                        },
+                        "wdpa": {"checked": True, "is_protected": False},
+                    },
+                }
+            ],
+        }
+
+        result = _build_eudr_geojson(manifest)
+
+        props = result["features"][0]["properties"]
+        assert props["determination_status"] == "no_signal_detected"
+        assert props["determination_confidence"] == "high"
+        assert props["worldcover_dominant"] == "Tree cover"
+        assert props["worldcover_tree_pct"] == 88.0
+        assert props["wdpa_is_protected"] is False
+
+    def test_v2_null_change_detection_does_not_crash(self):
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Partial parcel",
+                    "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]],
+                    "center": {"lat": -1.305, "lon": 36.805},
+                    "area_ha": 12.5,
+                    "change_detection": None,
+                    "eudr": {"determination": {"screening_outcome": "no_signal_detected", "flags": []}},
+                }
+            ]
+        }
+
+        result = _build_eudr_geojson(manifest)
+
+        assert result["features"][0]["properties"]["change_trajectory"] == "unknown"
+
     def test_returns_feature_collection(self, eudr_manifest):
         result = _build_eudr_geojson(eudr_manifest)
         assert result["type"] == "FeatureCollection"
@@ -651,6 +708,63 @@ class TestBuildEudrGeoJson:
 class TestBuildEudrCsv:
     """EUDR per-parcel CSV export (#582)."""
 
+    def test_v2_per_aoi_eudr_bag_takes_precedence_over_toplevel(self):
+        manifest = {
+            "determination": {"screening_outcome": "signal_detected", "confidence": "low", "flags": ["wrong"]},
+            "worldcover": {"available": False},
+            "wdpa": {"checked": True, "is_protected": True},
+            "per_aoi_enrichment": [
+                {
+                    "name": "Solo Farm",
+                    "center": {"lat": -1.305, "lon": 36.805},
+                    "area_ha": 12.5,
+                    "ndvi_stats": [{"mean": 0.72}],
+                    "eudr": {
+                        "determination": {
+                            "screening_outcome": "no_signal_detected",
+                            "confidence": "high",
+                            "flags": [],
+                        },
+                        "worldcover": {
+                            "available": True,
+                            "land_cover": {
+                                "dominant_class": "Tree cover",
+                                "classes": [{"code": 10, "label": "Tree cover", "area_pct": 88.0}],
+                            },
+                        },
+                        "wdpa": {"checked": True, "is_protected": False},
+                    },
+                }
+            ],
+        }
+
+        result = _build_eudr_csv(manifest)
+        rows = list(csv.DictReader(io.StringIO(result)))
+
+        assert rows[0]["determination_status"] == "no_signal_detected"
+        assert rows[0]["determination_confidence"] == "high"
+        assert rows[0]["worldcover_dominant"] == "Tree cover"
+        assert rows[0]["worldcover_tree_pct"] == "88.0"
+        assert rows[0]["wdpa_is_protected"] == "False"
+
+    def test_v2_null_change_detection_does_not_crash(self):
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Partial parcel",
+                    "center": {"lat": -1.305, "lon": 36.805},
+                    "area_ha": 12.5,
+                    "change_detection": None,
+                    "eudr": {"determination": {"screening_outcome": "no_signal_detected", "flags": []}},
+                }
+            ]
+        }
+
+        result = _build_eudr_csv(manifest)
+        rows = list(csv.DictReader(io.StringIO(result)))
+
+        assert rows[0]["change_trajectory"] == ""
+
     def test_returns_string(self, eudr_manifest):
         result = _build_eudr_csv(eudr_manifest)
         assert isinstance(result, str)
@@ -742,6 +856,23 @@ class TestBuildPdfEudrPerParcel:
     def test_eudr_pdf_with_per_aoi_enrichment(self, eudr_manifest):
         result = _build_pdf(eudr_manifest, "run-eudr-582")
         assert isinstance(result, bytes)
+        assert result.startswith(b"%PDF")
+
+    def test_v2_nested_eudr_and_null_change_detection_render(self):
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Partial parcel",
+                    "center": {"lat": -1.305, "lon": 36.805},
+                    "area_ha": 12.5,
+                    "change_detection": None,
+                    "eudr": {"determination": {"screening_outcome": "no_signal_detected", "confidence": "high"}},
+                }
+            ]
+        }
+
+        result = _build_pdf(manifest, "run-v2-partial")
+
         assert result.startswith(b"%PDF")
 
 
@@ -1044,6 +1175,24 @@ class TestBuildEudrAuditPdf:
     def test_returns_valid_pdf(self, eudr_manifest):
         result = build_eudr_audit_pdf(eudr_manifest, "run-audit-587")
         assert isinstance(result, bytes)
+        assert result.startswith(b"%PDF")
+
+    def test_v2_nested_eudr_and_null_change_detection_render(self):
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Partial parcel",
+                    "center": {"lat": -1.305, "lon": 36.805},
+                    "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]],
+                    "area_ha": 12.5,
+                    "change_detection": None,
+                    "eudr": {"determination": {"screening_outcome": "no_signal_detected", "confidence": "high"}},
+                }
+            ]
+        }
+
+        result = build_eudr_audit_pdf(manifest, "run-v2-partial")
+
         assert result.startswith(b"%PDF")
 
     def test_larger_than_basic_pdf(self, eudr_manifest):

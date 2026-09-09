@@ -2,6 +2,16 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+import pytest
+
+from treesight.models.enrichment_manifest import (
+    ENRICHMENT_MANIFEST_V2_SCHEMA,
+    EnrichmentManifestV2,
+    PerAoiEnrichment,
+)
 from treesight.models.records import (
     EnrichmentManifest,
     FramePlanEntry,
@@ -253,3 +263,111 @@ class TestEnrichmentManifest:
         }
         m = EnrichmentManifest.model_validate(runner_output)
         assert m.manifest_path == "enrichment/test/ts/timelapse_payload.json"
+
+
+class TestEnrichmentManifestV2:
+    def test_checked_in_json_schema_matches_model(self):
+        schema_path = Path("docs/schemas/enrichment-manifest-v2.schema.json")
+        checked_in = json.loads(schema_path.read_text())
+        generated = EnrichmentManifestV2.model_json_schema()
+
+        assert checked_in == generated
+
+    def test_single_aoi_manifest_contract(self):
+        manifest = EnrichmentManifestV2.model_validate(
+            {
+                "schema_version": ENRICHMENT_MANIFEST_V2_SCHEMA,
+                "run": {"project_name": "test", "timestamp": "20240101", "eudr_mode": True},
+                "summary": {"aoi_count": 1, "multi_region": False, "frame_plan": []},
+                "per_aoi_enrichment": [
+                    {
+                        "aoi_index": 0,
+                        "name": "Solo Farm",
+                        "area_ha": 50.0,
+                        "coords": [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]],
+                        "bbox": [[-50.0, -10.0], [-49.0, -9.0]],
+                        "center": {"lat": -9.5, "lon": -49.5},
+                        "frame_plan": [],
+                        "ndvi_raster_paths": ["enrichment/test/20240101/ndvi/2024_spring.tif"],
+                    }
+                ],
+            }
+        )
+
+        assert manifest.schema_version == ENRICHMENT_MANIFEST_V2_SCHEMA
+        assert len(manifest.per_aoi_enrichment) == 1
+        assert manifest.per_aoi_enrichment[0].aoi_index == 0
+        assert manifest.per_aoi_enrichment[0].name == "Solo Farm"
+
+    def test_schema_version_is_required_for_v2_writes(self):
+        with pytest.raises(ValueError, match="schema_version"):
+            EnrichmentManifestV2.model_validate(
+                {
+                    "run": {"project_name": "test", "timestamp": "20240101"},
+                    "summary": {"aoi_count": 0},
+                    "per_aoi_enrichment": [],
+                }
+            )
+
+    def test_run_and_summary_are_required_for_v2_writes(self):
+        with pytest.raises(ValueError, match="run"):
+            EnrichmentManifestV2.model_validate(
+                {"schema_version": ENRICHMENT_MANIFEST_V2_SCHEMA, "summary": {"aoi_count": 0}}
+            )
+        with pytest.raises(ValueError, match="summary"):
+            EnrichmentManifestV2.model_validate(
+                {"schema_version": ENRICHMENT_MANIFEST_V2_SCHEMA, "run": {"project_name": "test"}}
+            )
+
+    def test_per_aoi_identity_fields_are_required(self):
+        with pytest.raises(ValueError, match="name"):
+            PerAoiEnrichment.model_validate({"aoi_index": 0})
+
+    def test_weather_daily_accepts_existing_dict_shape(self):
+        entry = PerAoiEnrichment.model_validate(
+            {
+                "aoi_index": 0,
+                "name": "Plot",
+                "area_ha": 1.0,
+                "coords": [[0.0, 0.0]],
+                "bbox": [[0.0, 0.0]],
+                "center": {"lat": 0.0, "lon": 0.0},
+                "weather_daily": {"dates": ["2024-01-01"], "temperature_2m_mean": [20.0]},
+            }
+        )
+
+        assert entry.weather_daily == {"dates": ["2024-01-01"], "temperature_2m_mean": [20.0]}
+
+    def test_per_aoi_entry_allows_open_evidence_bags(self):
+        entry = PerAoiEnrichment.model_validate(
+            {
+                "aoi_index": 0,
+                "name": "Plot",
+                "area_ha": 1.0,
+                "coords": [[0.0, 0.0]],
+                "bbox": [[0.0, 0.0]],
+                "center": {"lat": 0.0, "lon": 0.0},
+                "custom_evidence": {"provider": "test"},
+            }
+        )
+
+        assert entry.model_extra["custom_evidence"] == {"provider": "test"}
+
+    def test_per_aoi_entry_requires_canonical_identity_fields(self):
+        with pytest.raises(ValueError, match=r"name|area_ha|coords|bbox|center"):
+            PerAoiEnrichment.model_validate({"aoi_index": 0})
+
+    def test_per_aoi_entry_accepts_dict_weather_daily_payload(self):
+        entry = PerAoiEnrichment.model_validate(
+            {
+                "aoi_index": 0,
+                "name": "Plot",
+                "area_ha": 1.0,
+                "coords": [[0.0, 0.0]],
+                "bbox": [[0.0, 0.0]],
+                "center": {"lat": 0.0, "lon": 0.0},
+                "weather_daily": {"dates": ["2026-01-01"], "temp": [24.0]},
+            }
+        )
+
+        assert entry.weather_daily == {"dates": ["2026-01-01"], "temp": [24.0]}

@@ -229,6 +229,30 @@ class TestSummaryRowsFromManifest:
         assert rows[0]["parcel_name"] == "Parcel A"
         assert rows[0]["run_id"] == "run-1"
 
+    def test_v2_nested_eudr_determination_takes_precedence(self):
+        manifest = _make_manifest(
+            [
+                {
+                    "name": "Parcel A",
+                    "area_ha": 1.5,
+                    "center": {"lat": 51.5, "lon": -0.12},
+                    "determination": {"screening_outcome": "signal_detected", "confidence": "low", "flags": ["wrong"]},
+                    "eudr": {
+                        "determination": {
+                            "screening_outcome": "no_signal_detected",
+                            "confidence": "high",
+                            "flags": [],
+                        }
+                    },
+                }
+            ]
+        )
+
+        rows = summary_rows_from_manifest("run-1", "2024-01-01", manifest, None)
+
+        assert rows[0]["determination_status"] == "no_signal_detected"
+        assert rows[0]["determination_confidence"] == "high"
+
     def test_empty_manifest_returns_empty(self):
         rows = summary_rows_from_manifest("run-1", "2024-01-01", {}, None)
         assert rows == []

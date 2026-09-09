@@ -10,6 +10,8 @@ from scripts.backlog_autopilot import (
     compute_mix_report,
     count_open_copilot_prs,
     fallback_priority_score,
+    normalize_open_issue_priorities,
+    normalize_priority_labels,
     parse_args,
     parse_blocking_refs,
     parse_closing_refs,
@@ -382,3 +384,108 @@ def test_mix_report_empty_snapshot_has_zero_security_share() -> None:
 
     assert mix.total == 0
     assert mix.security_share == 0.0
+
+
+def test_normalize_priority_labels_adds_backlog_for_active_issue_without_priority() -> None:
+    normalized = normalize_priority_labels({"moscow:should"})
+    assert normalized == {"moscow:should", "priority:backlog"}
+
+
+def test_normalize_priority_labels_keeps_highest_priority_when_multiple_present() -> None:
+    normalized = normalize_priority_labels({"moscow:must", "priority:next", "priority:backlog"})
+    assert normalized == {"moscow:must", "priority:next"}
+
+
+def test_normalize_priority_labels_skips_epics_and_wont_items() -> None:
+    assert normalize_priority_labels({"epic"}) == {"epic"}
+    assert normalize_priority_labels({"moscow:wont"}) == {"moscow:wont"}
+
+
+def test_normalize_open_issue_priorities_updates_labels_via_api_when_not_dry_run(monkeypatch) -> None:
+    calls: list[tuple[str, str, dict[str, object]]] = []
+
+    def fake_api(*, token: str, method: str, path: str, body: dict[str, object] | None = None) -> dict[str, object]:
+        calls.append((method, path, body or {}))
+        if method == "GET":
+            labels = (
+                ["moscow:should", "priority:backlog", "concurrent"]
+                if path.endswith("/1")
+                else ["priority:now", "security"]
+            )
+            return {"labels": [{"name": label} for label in labels]}
+        return {}
+
+    monkeypatch.setattr("scripts.backlog_autopilot._github_api", fake_api)
+    issues = [
+        _issue(1, {"moscow:should", "", " "}),
+        _issue(2, {"moscow:must", "priority:now"}),
+        _issue(3, {"priority:now", "priority:backlog", "security"}),
+    ]
+
+    normalized = normalize_open_issue_priorities(
+        issues=issues,
+        token="t",
+        owner="o",
+        repo="r",
+        dry_run=False,
+    )
+
+    assert normalized[0].labels == {"moscow:should", "priority:backlog", "concurrent"}
+    assert normalized[1].labels == {"moscow:must", "priority:now"}
+    assert calls == [
+        (
+            "POST",
+            "/repos/o/r/issues/1/labels",
+            {"labels": ["priority:backlog"]},
+        ),
+        ("GET", "/repos/o/r/issues/1", {}),
+        ("DELETE", "/repos/o/r/issues/3/labels/priority%3Abacklog", {}),
+        ("GET", "/repos/o/r/issues/3", {}),
+    ]
+
+
+def test_priority_normalization_rejects_concurrent_priority_loss(monkeypatch) -> None:
+    import pytest
+
+    def fake_api(**kwargs):
+        return {"labels": [{"name": "security"}]}
+
+    monkeypatch.setattr("scripts.backlog_autopilot._github_api", fake_api)
+    with pytest.raises(RuntimeError, match="priority labels changed"):
+        normalize_open_issue_priorities(
+            issues=[_issue(1, {"priority:now", "priority:next"})],
+            token="t",
+            owner="o",
+            repo="r",
+            dry_run=False,
+        )
+
+
+def test_priority_normalization_accepts_verified_already_removed_label(monkeypatch) -> None:
+    from urllib.error import HTTPError
+
+    def fake_api(**kwargs):
+        if kwargs["method"] == "DELETE":
+            raise RuntimeError("GitHub API error") from HTTPError("url", 404, "Not Found", {}, None)
+        return {"labels": [{"name": "priority:now"}, {"name": "security"}]}
+
+    monkeypatch.setattr("scripts.backlog_autopilot._github_api", fake_api)
+    normalized = normalize_open_issue_priorities(
+        issues=[_issue(1, {"priority:now", "priority:next"})],
+        token="t",
+        owner="o",
+        repo="r",
+        dry_run=False,
+    )
+    assert normalized[0].labels == {"priority:now", "security"}
+
+
+def test_priority_normalization_dry_run_never_writes(monkeypatch) -> None:
+    def unexpected_api(**kwargs):
+        raise AssertionError("dry run must not write labels")
+
+    monkeypatch.setattr("scripts.backlog_autopilot._github_api", unexpected_api)
+    normalized = normalize_open_issue_priorities(
+        issues=[_issue(1, {"security"})], token="t", owner="o", repo="r", dry_run=True
+    )
+    assert normalized[0].labels == {"security", "priority:backlog"}

@@ -25,6 +25,80 @@ stored in this document; retrieve them from the Azure portal or from
 
 ## Deploy
 
+### Local Container Lifecycle
+
+The disposable acceptance gate is `make test-pipeline-local`; use
+`make test-pipeline-local-clean` to reset its dedicated Compose project first.
+Both clear stale `.e2e-local-result.json` before bootstrap. The gate pins host
+storage to its selected Azurite endpoint, retains fresh result and host-log
+evidence, and removes its containers, volumes, and any temporary network
+attachment on exit. Cleanup errors fail the command rather than being hidden.
+
+Local blob CORS defaults to `http://localhost:4280` and
+`http://127.0.0.1:4280`. Both initializers accept a comma-separated
+`AZURITE_CORS_ORIGINS` override for another local website port. Pass this
+environment variable into the initializer container when using Compose.
+
+The devcontainer and its Docker-outside-of-Docker sibling services share the
+`canopex-dev` Compose project. Set `COMPOSE_PROJECT_NAME` before opening VS Code
+and for host commands to use another project. Separate projects still publish
+the same host ports: stop the previous stack before starting another checkout.
+Never kill unrelated port owners to make startup succeed.
+
+- Open the checkout with **Dev Containers: Reopen in Container**. Compose starts
+   the editor and app services in dependency order; `postStartCommand` checks
+   the stack and waits for health. All services participate in automatic shutdown.
+   Startup logs remain available in the Dev Containers output panel. A failed
+   hook leaves the editor available for diagnosis and stops the app services.
+- The editor runs as `vscode`, with the host UID/GID and `HOME=/home/vscode`.
+   The prebuilt Python environment is writable by that user. Creation synchronizes
+   locked dependencies once, retaining the baked Rust extension; warm starts do
+   not reinstall dependencies. Do not run Git,
+   dependency installation, or tests as root against the workspace.
+- `DEV_WORKSPACE` is the host checkout path supplied by VS Code, not the
+   container's `/workspace` path. Sibling bind mounts use that value. The editor
+   reaches siblings through Compose DNS (`azurite`, `func`, `orch`, `web`). The
+   DooD feature alone owns the socket mount; no second socket mount is needed.
+- `make dev-all` is idempotent: reuse existing images and wait for readiness.
+   On first use, Compose builds missing application images. Use `make dev-rebuild`
+   after dependency or root-level application configuration changes. Routine
+   `treesight/`, `blueprints/`, and website edits use bind mounts.
+- Azurite must be healthy and `init-storage` must succeed before Functions
+   start. Cosmos must also be healthy; web and relay wait for Functions.
+   `DEV_WAIT_TIMEOUT` defaults to 240 seconds; failed/interrupted starts return
+   nonzero and attempt project-scoped cleanup without deleting data.
+   Storage-only failures stop only storage services. A Compose failure before
+   editor lifecycle hooks run requires host-side `make dev-down` cleanup.
+- `make dev-status` shows service state; `make dev-logs` follows app logs.
+   `make dev-up` / `make dev-init` start and initialize storage only.
+- `make dev-down` inside the editor removes app containers but keeps the
+   editor and network alive. On the host it removes the whole project and network.
+   Both preserve data volumes. Closing the VS Code devcontainer window uses
+   `shutdownAction: stopCompose`; stopped containers remain reusable. No service
+   has an automatic restart policy, so restarting Docker does not resurrect a
+   lone relay. A VS Code/host crash can bypass close handling: run the host
+   `make dev-down` after recovery. `DEV_STOP_TIMEOUT` defaults to 20 seconds.
+- Data deletion is host-only and explicit: `DEV_RESET_DATA=1 make clean` removes
+   this project's storage and downloaded model volumes. It does not prune Docker
+   globally. Earlier `workspace`/`kml-satellites` project volumes are not migrated
+   or deleted automatically; inspect and stop those projects separately.
+- Ollama runs without NVIDIA by default. `CANOPEX_DEV_GPU=1 make dev-all` adds
+   the GPU override and requires NVIDIA Container Toolkit. Models are not
+   downloaded automatically. `make dev-all-stub` remains the explicit synthetic
+   imagery option; normal startup uses real imagery.
+
+Host URLs: website `http://localhost:4280`, compute `http://localhost:7071`,
+orchestrator `http://localhost:7072`. VS Code also forwards the sibling web/API
+ports. Docker socket access grants control over the host daemon; use only
+trusted workspaces. This configuration is local development only and changes
+no production deployment, authentication, or billing gates.
+
+After changing the devcontainer configuration, rebuild/reopen it. Verify with
+`make test-fast TESTS="tests/test_dev_stack_lifecycle.py tests/test_verify_local_stack.py"`,
+`make check`, then exercise startup, repeat startup, `make dev-down`, and closing
+the editor. Confirm no running containers remain with this project's Compose
+label after host shutdown. GPU execution requires its own hardware validation.
+
 ### Reset Mode (pipeline reset in progress)
 
 During the pipeline reset there is **no cloud deployment**. Validation is

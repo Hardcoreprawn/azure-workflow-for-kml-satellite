@@ -6,6 +6,7 @@ from typing import Any
 
 from treesight.constants import EUDR_CUTOFF_DATE
 from treesight.exports.csv import _as_dict
+from treesight.exports.geojson import _aoi_eudr_value
 from treesight.exports.pdf import _safe_text
 from treesight.pipeline.enrichment.determination import as_screening_determination
 
@@ -44,7 +45,7 @@ def _audit_cover_page(pdf: Any, manifest: dict[str, Any], instance_id: str) -> N
     free_count = sum(
         1
         for a in succeeded
-        if as_screening_determination(a.get("determination")).screening_outcome == "no_signal_detected"
+        if as_screening_determination(_aoi_eudr_value(a, "determination")).screening_outcome == "no_signal_detected"
     )
     review_count = len(succeeded) - free_count
 
@@ -96,7 +97,7 @@ def _audit_executive_summary(pdf: Any, manifest: dict[str, Any]) -> None:
     free_count = sum(
         1
         for a in succeeded
-        if as_screening_determination(a.get("determination")).screening_outcome == "no_signal_detected"
+        if as_screening_determination(_aoi_eudr_value(a, "determination")).screening_outcome == "no_signal_detected"
     )
     review_count = len(succeeded) - free_count
 
@@ -327,7 +328,7 @@ def _audit_single_parcel(
     )
 
     # Screening result
-    determination = as_screening_determination(aoi.get("determination"))
+    determination = as_screening_determination(_aoi_eudr_value(aoi, "determination"))
     screening_outcome = determination.screening_outcome
     confidence = determination.confidence
     pdf.set_font("Helvetica", "B", 10)
@@ -352,7 +353,7 @@ def _audit_single_parcel(
         pdf.set_text_color(0, 0, 0)
 
     # WorldCover baseline
-    wc = aoi.get("worldcover", {})
+    wc = _aoi_eudr_value(aoi, "worldcover") or {}
     if wc.get("available"):
         lc = wc.get("land_cover", {})
         pdf.cell(
@@ -369,7 +370,7 @@ def _audit_single_parcel(
             pdf.cell(0, 4, f"    {label}: {pct_str}", new_x="LMARGIN", new_y="NEXT")
 
     # Protected area
-    wdpa = aoi.get("wdpa", {})
+    wdpa = _aoi_eudr_value(aoi, "wdpa") or {}
     if wdpa.get("checked"):
         prot = "YES -- overlap detected" if wdpa.get("is_protected") else "No overlap"
         pdf.cell(0, 5, f"Protected area (WDPA): {prot}", new_x="LMARGIN", new_y="NEXT")
@@ -389,7 +390,8 @@ def _audit_single_parcel(
         )
 
     # Change detection
-    cd_summary = aoi.get("change_detection", {}).get("summary", {})
+    change_detection = aoi.get("change_detection") or {}
+    cd_summary = change_detection.get("summary", {})
     if cd_summary:
         pdf.cell(
             0,
