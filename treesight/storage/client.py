@@ -6,6 +6,7 @@ import json
 from pathlib import PurePosixPath
 from typing import Any, ClassVar, cast
 
+from azure.core.exceptions import ResourceExistsError
 from azure.storage.blob import BlobServiceClient, ContentSettings, StorageStreamDownloader
 
 from treesight.config import STORAGE_ACCOUNT_NAME, STORAGE_CONNECTION_STRING
@@ -67,7 +68,11 @@ class BlobStorageClient:
             return
         container = self._client.get_container_client(container_name)
         if not container.exists():
-            container.create_container()
+            try:
+                container.create_container()
+            except ResourceExistsError as error:
+                if getattr(error, "error_code", None) != "ContainerAlreadyExists":
+                    raise
         self._known_containers.add(container_name)
 
     def upload_bytes(
