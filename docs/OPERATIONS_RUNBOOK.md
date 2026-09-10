@@ -81,6 +81,15 @@ name), and `monster_200.kml` (200 polygons). Mixed workloads and large/negative
 cases are tracked by #1454 and #1455. Concurrency here measures local synthetic
 pipeline plumbing, not live-provider capacity or scientific accuracy.
 
+With `CANOPEX_TEST_MODE=1`, weather enrichment is intentionally unavailable:
+`weather_daily` and `weather_monthly` are null, the phase logs `weather_skipped`
+with structured reason `test_mode`, and no Open-Meteo request or usage is recorded.
+Direct weather-provider calls obey the same centrally configured mode. Unset the
+flag or set it to `0` for real weather acquisition. This is not synthetic weather
+evidence and does not establish scientific validity. The weather guard alone is
+not a global egress guarantee: SDK/native remote reads and other enrichment
+providers require their own controls and network-isolated acceptance checks.
+
 Local blob CORS defaults to `http://localhost:4280` and
 `http://127.0.0.1:4280`. Both initializers accept a comma-separated
 `AZURITE_CORS_ORIGINS` override for another local website port. Pass this

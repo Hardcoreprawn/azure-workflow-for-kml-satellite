@@ -17,6 +17,7 @@ from typing import Any
 
 import httpx
 
+from treesight.config import is_test_mode_enabled
 from treesight.constants import (
     COLLECTION_DISPLAY_GSD_M,
     DEFAULT_ENRICHMENT_FRAME_CONCURRENCY,
@@ -58,6 +59,11 @@ def _run_weather_phase(
     acc: ResourceAccumulator | None = None,
 ) -> None:
     """Phase 1: fetch daily weather data and aggregate monthly summaries."""
+    if is_test_mode_enabled():
+        results["weather_daily"] = None
+        results["weather_monthly"] = None
+        log_phase("enrichment", "weather_skipped", reason="test_mode")
+        return
     t0 = time.monotonic()
     log_phase("enrichment", "weather_start", lat=center_lat, lon=center_lon)
     today = datetime.now(UTC).strftime("%Y-%m-%d")

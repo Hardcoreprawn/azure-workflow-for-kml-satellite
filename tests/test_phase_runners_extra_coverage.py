@@ -10,7 +10,10 @@ directly exercised. Closes the gap exposed by the #1292 extraction.
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import httpx
+import pytest
 
 from treesight.pipeline.enrichment._phase_runners import (
     _run_aoi_metrics_phase,
@@ -21,14 +24,65 @@ from treesight.pipeline.enrichment._phase_runners import (
     _run_weather_phase,
 )
 from treesight.pipeline.enrichment.resource_accumulator import ResourceAccumulator
+from treesight.pipeline.enrichment.weather import fetch_weather
 
 BBOX = [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0], [-49.0, -10.0]]
 
 
 class TestWeatherPhase:
+    def test_test_mode_weather_never_calls_live_provider(self, monkeypatch):
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "1")
+        request = MagicMock(side_effect=AssertionError("unexpected external weather request"))
+        monkeypatch.setattr(httpx, "get", request)
+
+        assert fetch_weather(-10.0, -50.0, "2024-01-01", "2024-06-01") is None
+        request.assert_not_called()
+
+    def test_test_mode_phase_reports_unavailable_without_provider_usage(self, monkeypatch, caplog):
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "1")
+        request = MagicMock(side_effect=AssertionError("unexpected external weather request"))
+        monkeypatch.setattr(httpx, "get", request)
+        results: dict = {}
+        acc = ResourceAccumulator()
+
+        with caplog.at_level("INFO"):
+            _run_weather_phase(-10.0, -50.0, "2024-01-01", "2024-06-01", results, acc=acc)
+
+        assert results == {"weather_daily": None, "weather_monthly": None}
+        request.assert_not_called()
+        assert acc.to_dict()["api_calls"] == {}
+        assert acc.to_dict()["data_sources_queried"] == []
+        assert "weather_skipped" in caplog.text
+        assert caplog.records[-1].custom_properties["reason"] == "test_mode"
+
+    @pytest.mark.parametrize("enabled", [None, "0"])
+    def test_real_mode_weather_keeps_live_provider_path(self, monkeypatch, enabled):
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "1")
+        assert fetch_weather(-10.0, -50.0, "2024-01-01", "2024-01-02") is None
+        if enabled is None:
+            monkeypatch.delenv("CANOPEX_TEST_MODE")
+        else:
+            monkeypatch.setenv("CANOPEX_TEST_MODE", enabled)
+        response = httpx.Response(
+            200,
+            request=httpx.Request("GET", "https://weather.example"),
+            json={"daily": {"time": ["2024-01-01"], "temperature_2m_mean": [20], "precipitation_sum": [2]}},
+        )
+        request = MagicMock(return_value=response)
+        monkeypatch.setattr(httpx, "get", request)
+
+        result = fetch_weather(-10.0, -50.0, "2024-01-01", "2024-01-02")
+
+        assert result is not None
+        assert result["temp"] == [20]
+        assert result["precip"] == [2]
+        assert result["dates"] == ["2024-01-01"]
+        request.assert_called_once()
+
     @patch("treesight.pipeline.enrichment._phase_runners.aggregate_weather_monthly")
     @patch("treesight.pipeline.enrichment._phase_runners.fetch_weather")
-    def test_weather_available_populates_results_and_accumulator(self, mock_fetch, mock_agg):
+    def test_weather_available_populates_results_and_accumulator(self, mock_fetch, mock_agg, monkeypatch):
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "0")
         mock_fetch.return_value = {"dates": ["2024-01-01", "2024-01-02"]}
         mock_agg.return_value = {"2024-01": {"tmean": 20.0}}
         results: dict = {}
@@ -42,7 +96,8 @@ class TestWeatherPhase:
         assert "open-meteo" in acc.to_dict()["data_sources_queried"]
 
     @patch("treesight.pipeline.enrichment._phase_runners.fetch_weather")
-    def test_weather_unavailable_sets_none(self, mock_fetch):
+    def test_weather_unavailable_sets_none(self, mock_fetch, monkeypatch):
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "0")
         mock_fetch.return_value = None
         results: dict = {}
 

@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from treesight.config import is_test_mode_enabled
 from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,9 @@ def fetch_weather(
     end_date: str,
 ) -> dict[str, Any] | None:
     """Fetch historical weather from Open-Meteo and return structured data."""
+    if is_test_mode_enabled():
+        logger.info("Weather unavailable: external provider disabled in test_mode")
+        return None
     url = (
         f"{OPEN_METEO_API}"
         f"?latitude={lat}&longitude={lon}"
