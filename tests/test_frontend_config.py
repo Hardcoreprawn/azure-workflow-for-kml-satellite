@@ -1015,6 +1015,14 @@ class TestEudrUsageConsistency:
             "for the app shell to call on entitlement failure"
         )
 
+    def test_eudr_subscribe_modal_binds_auth_token_getter(self):
+        """Subscribe modal API client must use CanopexAuth token getter for signed-in users."""
+        modal_js = (WEBSITE / "js" / "app-eudr-subscribe-modal.js").read_text()
+        assert "client.setGetToken(authModule.getToken);" in modal_js, (
+            "app-eudr-subscribe-modal.js must bind CanopexAuth.getToken on the modal API "
+            "client before posting /api/eudr/subscribe"
+        )
+
     def test_app_eudr_updates_hero_parcels_and_unavailable_state(self, app_eudr_js):
         """EUDR module should set hero parcel pill and clear loading state on errors."""
         assert "eudr-parcels-used" in app_eudr_js, "app-eudr.js must update the hero parcels stat pill"
