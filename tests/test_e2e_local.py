@@ -7,37 +7,31 @@ real by ``make test-pipeline-local``, not something worth mocking in unit tests.
 
 from __future__ import annotations
 
+import json
 import subprocess
+from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
-from scripts.e2e_local import (
-    DEFAULT_CONTAINER,
-    REPO_ROOT,
-    assert_pipeline_succeeded,
-    build_func_host_env,
-    build_representative_case_matrix,
-    run_scenario,
-    stop_func_host,
-    write_e2e_result,
-)
+import scripts.e2e_local as runner
 
 
 class TestBuildFuncHostEnv:
     def test_always_enables_test_mode(self):
-        env = build_func_host_env({})
+        env = runner.build_func_host_env({})
         assert env["CANOPEX_TEST_MODE"] == "1"
 
     def test_fills_in_dummy_ciam_values_when_missing(self):
-        env = build_func_host_env({})
+        env = runner.build_func_host_env({})
         assert env["CIAM_AUTHORITY"]
         assert env["CIAM_TENANT_ID"]
         assert env["CIAM_API_AUDIENCE"]
 
     def test_preserves_a_real_ciam_value_if_already_set(self):
-        env = build_func_host_env({"CIAM_TENANT_ID": "real-tenant"})
+        env = runner.build_func_host_env({"CIAM_TENANT_ID": "real-tenant"})
         assert env["CIAM_TENANT_ID"] == "real-tenant"
 
     def test_always_pins_script_root_to_repo_root(self):
@@ -46,38 +40,36 @@ class TestBuildFuncHostEnv:
         actual working directory, so any image inheriting it makes func
         silently look for function_app.py in the wrong place. This must be
         overridden unconditionally, never a setdefault."""
-        env = build_func_host_env({"AzureWebJobsScriptRoot": "/home/site/wwwroot"})
-        assert env["AzureWebJobsScriptRoot"] == str(REPO_ROOT)
+        env = runner.build_func_host_env({"AzureWebJobsScriptRoot": "/home/site/wwwroot"})
+        assert env["AzureWebJobsScriptRoot"] == str(runner.REPO_ROOT)
 
     def test_forces_filesystem_secrets_storage(self):
         """The Functions host's blob-backed secrets repository resolves
         devstoreaccount1 straight to 127.0.0.1, ignoring AzureWebJobsStorage's
         actual endpoint — breaks whenever Azurite isn't on localhost."""
-        env = build_func_host_env({})
+        env = runner.build_func_host_env({})
         assert env["AzureWebJobsSecretStorageType"] == "files"  # pragma: allowlist secret
 
     def test_fills_in_azure_web_jobs_storage_when_missing(self):
-        env = build_func_host_env({})
+        env = runner.build_func_host_env({})
         assert "AzureWebJobsStorage" in env
         assert env["AzureWebJobsStorage"]
 
     def test_overrides_inherited_storage_with_selected_azurite(self):
-        from scripts.e2e_local import AZURITE_CONN_STR
-
-        env = build_func_host_env({"AzureWebJobsStorage": "UseDevelopmentStorage=true"})
-        assert env["AzureWebJobsStorage"] == AZURITE_CONN_STR
+        env = runner.build_func_host_env({"AzureWebJobsStorage": "UseDevelopmentStorage=true"})
+        assert env["AzureWebJobsStorage"] == runner.AZURITE_CONN_STR
 
     def test_test_mode_false_omits_canopex_test_mode(self):
         """scripts/real_acquisition_runner.py (#1379) needs the real imagery
         provider, not the synthetic stub CANOPEX_TEST_MODE selects."""
-        env = build_func_host_env({}, test_mode=False)
+        env = runner.build_func_host_env({}, test_mode=False)
         assert "CANOPEX_TEST_MODE" not in env
 
     def test_test_mode_false_strips_an_inherited_value(self):
         """A developer's shell may already export CANOPEX_TEST_MODE from a
         previous test-mode run — it must never leak into a real-acquisition
         run just because the parent process happened to have it set."""
-        env = build_func_host_env({"CANOPEX_TEST_MODE": "1"}, test_mode=False)
+        env = runner.build_func_host_env({"CANOPEX_TEST_MODE": "1"}, test_mode=False)
         assert "CANOPEX_TEST_MODE" not in env
 
     def test_test_mode_false_still_allows_test_principal_auth(self):
@@ -85,19 +77,19 @@ class TestBuildFuncHostEnv:
         unset) but must still be able to authenticate its own export-fetch calls
         via a test X-MS-CLIENT-PRINCIPAL header — CANOPEX_ALLOW_TEST_PRINCIPAL is
         the decoupled flag for exactly that."""
-        env = build_func_host_env({}, test_mode=False)
+        env = runner.build_func_host_env({}, test_mode=False)
         assert env["CANOPEX_ALLOW_TEST_PRINCIPAL"] == "1"
 
     def test_test_mode_true_does_not_need_allow_test_principal(self):
         """Stub-imagery runs already get test-principal auth via CANOPEX_TEST_MODE
         itself — no need to also set the decoupled flag."""
-        env = build_func_host_env({})
+        env = runner.build_func_host_env({})
         assert "CANOPEX_ALLOW_TEST_PRINCIPAL" not in env
 
 
 class TestAssertPipelineSucceeded:
     def test_passes_for_a_real_successful_run(self):
-        assert_pipeline_succeeded(
+        runner.assert_pipeline_succeeded(
             {
                 "runtimeStatus": "Completed",
                 "output": {
@@ -109,11 +101,11 @@ class TestAssertPipelineSucceeded:
 
     def test_rejects_non_completed_status(self):
         with pytest.raises(AssertionError, match="Failed"):
-            assert_pipeline_succeeded({"runtimeStatus": "Failed", "output": {}})
+            runner.assert_pipeline_succeeded({"runtimeStatus": "Failed", "output": {}})
 
     def test_rejects_zero_completed_downloads(self):
         with pytest.raises(AssertionError, match="completed download"):
-            assert_pipeline_succeeded(
+            runner.assert_pipeline_succeeded(
                 {
                     "runtimeStatus": "Completed",
                     "output": {"downloadsCompleted": 0, "artifacts": {"rawImageryPaths": []}},
@@ -122,7 +114,7 @@ class TestAssertPipelineSucceeded:
 
     def test_rejects_missing_raw_imagery_paths(self):
         with pytest.raises(AssertionError, match="rawImageryPaths"):
-            assert_pipeline_succeeded(
+            runner.assert_pipeline_succeeded(
                 {
                     "runtimeStatus": "Completed",
                     "output": {"downloadsCompleted": 1, "artifacts": {"rawImageryPaths": []}},
@@ -134,14 +126,14 @@ class TestStopFuncHost:
     def test_returns_immediately_if_already_exited(self):
         proc = MagicMock()
         proc.poll.return_value = 0
-        stop_func_host(proc)
+        runner.stop_func_host(proc)
         proc.terminate.assert_not_called()
 
     def test_terminates_cleanly_when_process_responds(self):
         proc = MagicMock()
         proc.poll.return_value = None
         proc.wait.return_value = 0
-        stop_func_host(proc)
+        runner.stop_func_host(proc)
         proc.terminate.assert_called_once()
         proc.kill.assert_not_called()
 
@@ -149,22 +141,20 @@ class TestStopFuncHost:
         proc = MagicMock()
         proc.poll.return_value = None
         proc.wait.side_effect = [subprocess.TimeoutExpired(cmd="func", timeout=10.0), 0]
-        stop_func_host(proc)
+        runner.stop_func_host(proc)
         proc.terminate.assert_called_once()
         proc.kill.assert_called_once()
 
 
 class TestRepresentativeScenario:
     def test_rejected_event_fails_without_polling(self, monkeypatch):
-        import scripts.e2e_local as runner
-
         monkeypatch.setattr(runner, "upload_kml", lambda *_: ("sample.kml", "url", 1))
         submit = MagicMock(side_effect=RuntimeError("Webhook rejected with HTTP 500"))
         poll = MagicMock()
         monkeypatch.setattr(runner, "fire_event_grid", submit)
         monkeypatch.setattr(runner, "poll_orchestration", poll)
 
-        result = runner._run_single_case(build_representative_case_matrix()[0], timeout=1)
+        result = runner._run_single_case(runner.build_representative_case_matrix()[0], timeout=1)
 
         assert submit.call_args.kwargs == {"strict": True}
         poll.assert_not_called()
@@ -175,12 +165,10 @@ class TestRepresentativeScenario:
     def test_matrix_containers_match_trigger_contract(self):
         from blueprints.pipeline._blob_url import _validate_blob_event
 
-        for case in build_representative_case_matrix():
+        for case in runner.build_representative_case_matrix():
             _validate_blob_event("sample.kml", case["container"], {"contentLength": 1})
 
     def test_timed_out_case_retains_instance_id(self, monkeypatch):
-        import scripts.e2e_local as runner
-
         monkeypatch.setattr(runner, "upload_kml", lambda *_: ("sample.kml", "url", 1))
         monkeypatch.setattr(runner, "fire_event_grid", lambda *args, **kwargs: "pending-instance")
 
@@ -188,14 +176,12 @@ class TestRepresentativeScenario:
             raise TimeoutError("last_status=Running")
 
         monkeypatch.setattr(runner, "poll_orchestration", timeout)
-        result = runner._run_single_case(build_representative_case_matrix()[0], timeout=1)
+        result = runner._run_single_case(runner.build_representative_case_matrix()[0], timeout=1)
         assert result["instanceId"] == "pending-instance"
         assert result["status"] == "Failed"
         assert "Running" in result["error"]
 
     def test_scenario_continues_after_failure_and_stops_host(self, monkeypatch):
-        import scripts.e2e_local as runner
-
         host = MagicMock()
         stop = MagicMock()
         monkeypatch.setattr(runner, "start_func_host", lambda **kwargs: host)
@@ -209,23 +195,19 @@ class TestRepresentativeScenario:
             ]
         )
         monkeypatch.setattr(runner, "_run_single_case", run_case)
-        summary = run_scenario("representative", dry_run_matrix=False, timeout=17, interval=0.1)
+        summary = runner.run_scenario("representative", dry_run_matrix=False, timeout=17, interval=0.1)
         assert summary["totals"] == {"succeeded": 2, "failed": 1, "dryRun": 0}
         assert run_case.call_count == 3
         assert run_case.call_args.kwargs == {"timeout": 17, "interval": 0.1}
         stop.assert_called_once_with(host)
 
     def test_dry_run_never_starts_host(self, monkeypatch):
-        import scripts.e2e_local as runner
-
         host = MagicMock(side_effect=AssertionError("dry run started host"))
         monkeypatch.setattr(runner, "start_func_host", host)
-        run_scenario("representative", dry_run_matrix=True)
+        runner.run_scenario("representative", dry_run_matrix=True)
         host.assert_not_called()
 
     def test_failed_case_retains_orchestration_evidence(self, monkeypatch):
-        import scripts.e2e_local as runner
-
         monkeypatch.setattr(runner, "upload_kml", lambda *_: ("sample.kml", "url", 1))
         monkeypatch.setattr(runner, "fire_event_grid", lambda *args, **kwargs: "failed-instance")
         monkeypatch.setattr(
@@ -233,13 +215,13 @@ class TestRepresentativeScenario:
             "poll_orchestration",
             lambda *args, **kwargs: {"runtimeStatus": "Failed", "output": {"message": "failure"}},
         )
-        result = runner._run_single_case(build_representative_case_matrix()[0], timeout=1)
+        result = runner._run_single_case(runner.build_representative_case_matrix()[0], timeout=1)
         assert result["status"] == "Failed"
         assert result["instanceId"] == "failed-instance"
         assert result["runtimeStatus"] == "Failed"
 
     def test_representative_case_matrix_uses_stable_case_ids(self):
-        matrix = build_representative_case_matrix()
+        matrix = runner.build_representative_case_matrix()
         assert [case["caseId"] for case in matrix] == [
             "rep-001-single-upload",
             "rep-002-repeat-upload",
@@ -247,14 +229,14 @@ class TestRepresentativeScenario:
         ]
 
     def test_run_scenario_dry_run_tracks_each_case_and_totals(self):
-        summary = run_scenario("representative", dry_run_matrix=True)
+        summary = runner.run_scenario("representative", dry_run_matrix=True)
         assert summary["scenario"] == "representative"
         assert summary["totalCases"] == 3
         assert summary["cases"] == [
             {
                 "caseId": "rep-001-single-upload",
-                "container": DEFAULT_CONTAINER,
-                "inputPath": str(REPO_ROOT / "tests" / "fixtures" / "sample.kml"),
+                "container": runner.DEFAULT_CONTAINER,
+                "inputPath": str(runner.REPO_ROOT / "tests" / "fixtures" / "sample.kml"),
                 "status": "DryRun",
                 "instanceId": None,
                 "runtimeStatus": None,
@@ -262,8 +244,8 @@ class TestRepresentativeScenario:
             },
             {
                 "caseId": "rep-002-repeat-upload",
-                "container": DEFAULT_CONTAINER,
-                "inputPath": str(REPO_ROOT / "tests" / "fixtures" / "sample.kml"),
+                "container": runner.DEFAULT_CONTAINER,
+                "inputPath": str(runner.REPO_ROOT / "tests" / "fixtures" / "sample.kml"),
                 "status": "DryRun",
                 "instanceId": None,
                 "runtimeStatus": None,
@@ -271,8 +253,8 @@ class TestRepresentativeScenario:
             },
             {
                 "caseId": "rep-003-alt-container",
-                "container": f"rep-alt-{DEFAULT_CONTAINER}",
-                "inputPath": str(REPO_ROOT / "tests" / "fixtures" / "sample.kml"),
+                "container": f"rep-alt-{runner.DEFAULT_CONTAINER}",
+                "inputPath": str(runner.REPO_ROOT / "tests" / "fixtures" / "sample.kml"),
                 "status": "DryRun",
                 "instanceId": None,
                 "runtimeStatus": None,
@@ -283,14 +265,104 @@ class TestRepresentativeScenario:
 
     def test_run_scenario_raises_for_unknown_scenario(self):
         with pytest.raises(ValueError, match="Unknown scenario"):
-            run_scenario("unknown-scenario", dry_run_matrix=True)
+            runner.run_scenario("unknown-scenario", dry_run_matrix=True)
+
+
+class TestScenarioCommand:
+    def test_partial_failure_persists_evidence_before_raising(self, monkeypatch, tmp_path: Path):
+        result_path = tmp_path / "result.json"
+        result_path.write_text('{"stale": true}')
+        monkeypatch.setattr(runner, "E2E_RESULT_PATH", result_path)
+        monkeypatch.setattr(
+            runner,
+            "_parse_args",
+            lambda: SimpleNamespace(
+                scenario="representative",
+                dry_run_matrix=False,
+                orchestration_timeout_seconds=17,
+                poll_interval_seconds=0.1,
+            ),
+        )
+        summary = {
+            "scenario": "representative",
+            "totalCases": 3,
+            "cases": [
+                {"caseId": "rep-001-single-upload", "status": "Failed", "instanceId": "failed-instance"},
+                {"caseId": "rep-002-repeat-upload", "status": "Succeeded", "instanceId": "second-instance"},
+                {"caseId": "rep-003-alt-container", "status": "Succeeded", "instanceId": "third-instance"},
+            ],
+            "totals": {"succeeded": 2, "failed": 1, "dryRun": 0},
+        }
+        scenario = MagicMock(return_value=summary)
+        monkeypatch.setattr(runner, "run_scenario", scenario)
+
+        with pytest.raises(AssertionError, match="1 failing case"):
+            runner.main()
+
+        assert json.loads(result_path.read_text()) == summary
+        scenario.assert_called_once_with("representative", dry_run_matrix=False, timeout=17, interval=0.1)
+
+    def test_dry_run_preserves_proof_without_starting_host(self, monkeypatch, tmp_path: Path, capsys):
+        result_path = tmp_path / "result.json"
+        previous_proof = '{"previous": "completed"}'
+        result_path.write_text(previous_proof)
+        monkeypatch.setattr(runner, "E2E_RESULT_PATH", result_path)
+        monkeypatch.setattr(
+            runner,
+            "_parse_args",
+            lambda: SimpleNamespace(
+                scenario="representative",
+                dry_run_matrix=True,
+                orchestration_timeout_seconds=17,
+                poll_interval_seconds=0.1,
+            ),
+        )
+        host = MagicMock(side_effect=AssertionError("dry run started host"))
+        monkeypatch.setattr(runner, "start_func_host", host)
+
+        runner.main()
+
+        host.assert_not_called()
+        assert result_path.read_text() == previous_proof
+        output = capsys.readouterr().out
+        summary = json.loads(output.split("Scenario summary:\n", 1)[1])
+        assert summary["totals"] == {"succeeded": 0, "failed": 0, "dryRun": 3}
+        assert "PASS" not in output
+
+    def test_default_single_command_preserves_proof_format(self, monkeypatch, tmp_path: Path):
+        result_path = tmp_path / "result.json"
+        monkeypatch.setattr(runner, "E2E_RESULT_PATH", result_path)
+        monkeypatch.setattr(runner, "write_e2e_result", partial(runner.write_e2e_result, path=result_path))
+        monkeypatch.setattr("sys.argv", ["e2e_local.py"])
+        completed = {
+            "runtimeStatus": "Completed",
+            "instanceId": "single-instance",
+            "output": {"downloadsCompleted": 1},
+        }
+        scenario = MagicMock(
+            return_value={
+                "scenario": "single",
+                "cases": [completed],
+                "totals": {"succeeded": 1, "failed": 0, "dryRun": 0},
+            }
+        )
+        monkeypatch.setattr(runner, "run_scenario", scenario)
+
+        runner.main()
+
+        assert scenario.call_args.args == ("single",)
+        assert scenario.call_args.kwargs["dry_run_matrix"] is False
+        assert json.loads(result_path.read_text()) == {
+            "fixture": "tests/fixtures/sample.kml",
+            **completed,
+        }
 
 
 class TestWriteE2eResult:
     def test_writes_validated_run_summary(self, tmp_path: Path):
         result_path = tmp_path / "result.json"
 
-        write_e2e_result(
+        runner.write_e2e_result(
             {
                 "runtimeStatus": "Completed",
                 "instanceId": "instance-1",
@@ -307,6 +379,6 @@ class TestWriteE2eResult:
         result_path = tmp_path / "result.json"
         result_path.write_text("old")
 
-        write_e2e_result({"runtimeStatus": "Completed", "output": {}}, result_path)
+        runner.write_e2e_result({"runtimeStatus": "Completed", "output": {}}, result_path)
 
         assert result_path.read_text().startswith("{")

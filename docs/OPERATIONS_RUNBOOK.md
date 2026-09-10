@@ -43,9 +43,11 @@ then omit `--dry-run-matrix`. The script owns the Functions host lifecycle;
 the caller owns storage startup and teardown. It persists per-case outcomes
 in `.e2e-local-result.json` and exits nonzero if any case fails. Rejected
 webhooks fail immediately; accepted cases retain orchestration IDs even on
-timeout. Fresh alternate-container execution is currently blocked by the
-storage creation race tracked in #1479; a warm-storage pass is not acceptance
-evidence for that issue.
+timeout. The storage creation race in #1479 is fixed by #1487. Acceptance
+still requires all three cases to pass on fresh storage without precreating
+the alternate output container; a warm-storage pass is not equivalent proof.
+Dry runs print their summary but neither overwrite existing proof nor report
+a runtime pass. A partial failure is persisted before the command exits nonzero.
 
 Local blob CORS defaults to `http://localhost:4280` and
 `http://127.0.0.1:4280`. Both initializers accept a comma-separated
