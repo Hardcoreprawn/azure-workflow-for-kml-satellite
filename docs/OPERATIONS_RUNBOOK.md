@@ -65,7 +65,16 @@ concurrency, per-case elapsed seconds, and matrix elapsed seconds excluding host
 startup. Dry runs report the selected mode without starting work. Serial mode
 always uses one worker; parallel mode caps workers at the case count.
 
-The current representative matrix uses `sample.kml` (2 polygons) three times;
+The representative matrix is loaded from
+`tests/fixtures/catalogues/representative.json`, not hardcoded in the runner.
+Use `--manifest /path/to/catalogue.json` with `--scenario representative` for
+another fixture library. Paths resolve relative to that JSON file. The loader
+validates the version, fields, unique IDs, file existence, and supported expected
+outcomes before starting the host. See `tests/fixtures/catalogues/README.md` for
+the format and extension boundaries. Dry runs validate and display the catalogue;
+they do not parse fixture contents or prove pipeline outcomes.
+
+The default smoke catalogue uses `sample.kml` (2 polygons) three times;
 it does not yet validate high-AOI fan-out. Existing fixtures include
 `medium_50.kml` (50 polygons), `global_monitoring_55.kml` (56 polygons despite its
 name), and `monster_200.kml` (200 polygons). Mixed workloads and large/negative

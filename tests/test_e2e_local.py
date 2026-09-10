@@ -273,6 +273,127 @@ class TestRepresentativeScenario:
             runner.run_scenario("unknown-scenario", dry_run_matrix=True)
 
 
+class TestFixtureManifest:
+    def test_distinct_fixtures_cannot_share_a_blob_key(self, monkeypatch, tmp_path):
+        cases = []
+        for directory in ("first", "second"):
+            folder = tmp_path / directory
+            folder.mkdir()
+            (folder / "field.kml").write_text(directory)
+            cases.append(
+                {
+                    "caseId": directory,
+                    "inputPath": f"{directory}/field.kml",
+                    "container": "kml-input",
+                    "expectedStatus": "Succeeded",
+                }
+            )
+        manifest = tmp_path / "catalogue.json"
+        manifest.write_text(json.dumps({"schemaVersion": 1, "cases": cases}))
+        host = MagicMock(side_effect=AssertionError("invalid catalogue started host"))
+        monkeypatch.setattr(runner, "start_func_host", host)
+
+        with pytest.raises(ValueError, match="share a blob key"):
+            runner.run_scenario("representative", dry_run_matrix=False, manifest=manifest, execution="parallel")
+        host.assert_not_called()
+
+    def test_external_manifest_defines_matrix_relative_to_its_location(self, tmp_path):
+        fixture = tmp_path / "field.kml"
+        fixture.write_text("fixture")
+        manifest = tmp_path / "catalogue.json"
+        manifest.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "cases": [
+                        {
+                            "caseId": "field-001",
+                            "inputPath": "field.kml",
+                            "container": "kml-input",
+                            "expectedStatus": "Succeeded",
+                        }
+                    ],
+                }
+            )
+        )
+
+        cases = runner.build_representative_case_matrix(manifest)
+
+        assert cases == [{"caseId": "field-001", "inputPath": str(fixture), "container": "kml-input"}]
+
+    @pytest.mark.parametrize(
+        "defect", ["empty", "duplicate", "missing", "unsupported-outcome", "version", "unknown-field"]
+    )
+    def test_invalid_manifest_fails_before_host_start(self, monkeypatch, tmp_path, defect):
+        fixture = tmp_path / "field.kml"
+        fixture.write_text("fixture")
+        case = {
+            "caseId": "field-001",
+            "inputPath": "field.kml",
+            "container": "kml-input",
+            "expectedStatus": "Succeeded",
+        }
+        payload = {"schemaVersion": 1, "cases": [case]}
+        if defect == "empty":
+            payload["cases"] = []
+        elif defect == "duplicate":
+            payload["cases"] = [case, case]
+        elif defect == "missing":
+            case["inputPath"] = "missing.kml"
+        elif defect == "unsupported-outcome":
+            case["expectedStatus"] = "Failed"
+        elif defect == "version":
+            payload["schemaVersion"] = 2
+        else:
+            case["expectdStatus"] = "Succeeded"
+        manifest = tmp_path / "catalogue.json"
+        manifest.write_text(json.dumps(payload))
+        host = MagicMock()
+        monkeypatch.setattr(runner, "start_func_host", host)
+
+        with pytest.raises(ValueError):
+            runner.run_scenario("representative", dry_run_matrix=False, manifest=manifest)
+        host.assert_not_called()
+
+    def test_cli_loads_external_catalogue_in_parallel_dry_run(self, monkeypatch, tmp_path, capsys):
+        fixture = tmp_path / "external.kmz"
+        fixture.write_bytes(b"fixture")
+        manifest = tmp_path / "catalogue.json"
+        manifest.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "cases": [
+                        {
+                            "caseId": "external-case",
+                            "inputPath": "external.kmz",
+                            "container": "kml-input",
+                            "expectedStatus": "Succeeded",
+                        }
+                    ],
+                }
+            )
+        )
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "e2e_local.py",
+                "--scenario",
+                "representative",
+                "--manifest",
+                str(manifest),
+                "--execution",
+                "parallel",
+                "--dry-run-matrix",
+            ],
+        )
+        runner.main()
+        summary = json.loads(capsys.readouterr().out.split("Scenario summary:\n", 1)[1])
+        assert summary["totalCases"] == 1
+        assert summary["cases"][0]["inputPath"] == str(fixture)
+        assert summary["manifest"] == str(manifest)
+
+
 class TestExecutionMode:
     def test_parallel_reports_completion_before_slow_first_case(self, monkeypatch, capsys):
         release_first = Event()
@@ -424,6 +545,7 @@ class TestScenarioCommand:
                 dry_run_matrix=False,
                 execution="serial",
                 concurrency=runner.E2E_DEFAULT_CONCURRENCY,
+                manifest=None,
                 orchestration_timeout_seconds=17,
                 poll_interval_seconds=0.1,
             ),
@@ -452,6 +574,7 @@ class TestScenarioCommand:
             interval=0.1,
             execution="serial",
             concurrency=runner.E2E_DEFAULT_CONCURRENCY,
+            manifest=None,
         )
 
     def test_dry_run_preserves_proof_without_starting_host(self, monkeypatch, tmp_path: Path, capsys):
@@ -467,6 +590,7 @@ class TestScenarioCommand:
                 dry_run_matrix=True,
                 execution="serial",
                 concurrency=runner.E2E_DEFAULT_CONCURRENCY,
+                manifest=None,
                 orchestration_timeout_seconds=17,
                 poll_interval_seconds=0.1,
             ),

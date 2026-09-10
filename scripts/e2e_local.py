@@ -31,10 +31,11 @@ import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from _azurite import AZURITE_CONN_STR
+from pydantic import BaseModel, ConfigDict, Field
 from simulate_upload import DEFAULT_CONTAINER, fire_event_grid, upload_kml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -48,6 +49,7 @@ from treesight.constants import (  # noqa: E402 - support direct execution witho
 
 FUNC_BASE = "http://localhost:7071"
 DEFAULT_KML = REPO_ROOT / "tests" / "fixtures" / "sample.kml"
+DEFAULT_MANIFEST = REPO_ROOT / "tests" / "fixtures" / "catalogues" / "representative.json"
 FUNC_HOST_LOG_PATH = REPO_ROOT / ".e2e-local-func-host.log"
 E2E_RESULT_PATH = REPO_ROOT / ".e2e-local-result.json"
 
@@ -254,21 +256,49 @@ def assert_pipeline_succeeded(status_payload: dict[str, Any]) -> None:
         raise AssertionError(f"No rawImageryPaths in artifacts. Summary: {output}")
 
 
-def build_representative_case_matrix() -> list[dict[str, str]]:
-    """Return the deterministic representative case matrix."""
-    sample_path = str(DEFAULT_KML)
-    return [
-        {"caseId": "rep-001-single-upload", "inputPath": sample_path, "container": DEFAULT_CONTAINER},
-        {"caseId": "rep-002-repeat-upload", "inputPath": sample_path, "container": DEFAULT_CONTAINER},
-        {"caseId": "rep-003-alt-container", "inputPath": sample_path, "container": f"rep-alt-{DEFAULT_CONTAINER}"},
-    ]
+class FixtureCase(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    case_id: str = Field(alias="caseId", min_length=1)
+    input_path: str = Field(alias="inputPath", min_length=1)
+    container: str = Field(min_length=1)
+    expected_status: Literal["Succeeded"] = Field(alias="expectedStatus")
 
 
-def _build_case_matrix(scenario: str) -> list[dict[str, str]]:
+class FixtureCatalogue(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    schema_version: Literal[1] = Field(alias="schemaVersion")
+    cases: list[FixtureCase] = Field(min_length=1)
+
+
+def build_representative_case_matrix(manifest: Path = DEFAULT_MANIFEST) -> list[dict[str, str]]:
+    """Load validated cases in catalogue order; paths are relative to the catalogue."""
+    catalogue = FixtureCatalogue.model_validate_json(manifest.read_text())
+    identifiers = [case.case_id for case in catalogue.cases]
+    if len(set(identifiers)) != len(identifiers):
+        raise ValueError("Fixture catalogue contains duplicate case IDs")
+    cases = []
+    blob_paths: dict[tuple[str, str], Path] = {}
+    for case in catalogue.cases:
+        path = (manifest.parent / case.input_path).resolve()
+        if not path.is_file() or path.suffix.lower() not in {".kml", ".kmz"}:
+            raise ValueError(f"Fixture must be an existing KML/KMZ file: {path}")
+        blob_key = (case.container, path.name)
+        if blob_key in blob_paths and blob_paths[blob_key] != path:
+            raise ValueError(f"Distinct fixtures share a blob key: {blob_key}")
+        blob_paths[blob_key] = path
+        cases.append({"caseId": case.case_id, "inputPath": str(path), "container": case.container})
+    return cases
+
+
+def _build_case_matrix(scenario: str, manifest: Path | None = None) -> list[dict[str, str]]:
+    if manifest is not None and scenario != _REPRESENTATIVE_SCENARIO:
+        raise ValueError("--manifest requires --scenario representative")
     if scenario == _DEFAULT_SCENARIO:
         return [{"caseId": "single-001-default-upload", "inputPath": str(DEFAULT_KML), "container": DEFAULT_CONTAINER}]
     if scenario == _REPRESENTATIVE_SCENARIO:
-        return build_representative_case_matrix()
+        return build_representative_case_matrix(manifest or DEFAULT_MANIFEST)
     raise ValueError(f"Unknown scenario {scenario!r}. Expected one of: {_DEFAULT_SCENARIO}, {_REPRESENTATIVE_SCENARIO}")
 
 
@@ -331,15 +361,18 @@ def run_scenario(
     interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
     execution: str = "serial",
     concurrency: int = E2E_DEFAULT_CONCURRENCY,
+    manifest: Path | None = None,
 ) -> dict[str, Any]:
     """Run one scenario and return a structured summary."""
     if execution not in {"serial", "parallel"}:
         raise ValueError("execution must be serial or parallel")
     if concurrency < 1:
         raise ValueError("concurrency must be positive")
-    cases = _build_case_matrix(scenario)
+    cases = _build_case_matrix(scenario, manifest)
     workers = 1 if execution == "serial" else min(concurrency, len(cases))
     metadata = {"scenario": scenario, "totalCases": len(cases), "execution": execution, "concurrency": workers}
+    if scenario == _REPRESENTATIVE_SCENARIO:
+        metadata["manifest"] = str((manifest or DEFAULT_MANIFEST).resolve())
     results: list[dict[str, Any]] = []
     totals = {"succeeded": 0, "failed": 0, "dryRun": 0}
 
@@ -392,6 +425,7 @@ def run_scenario(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run local pipeline e2e scenarios")
+    parser.add_argument("--manifest", type=Path, help="Fixture catalogue JSON (representative scenario only)")
     parser.add_argument("--execution", choices=["serial", "parallel"], default="serial")
     parser.add_argument(
         "--concurrency",
@@ -440,6 +474,7 @@ def main() -> None:
             interval=args.poll_interval_seconds,
             execution=args.execution,
             concurrency=args.concurrency,
+            manifest=args.manifest,
         )
         print("\nScenario summary:")
         print(json.dumps(summary, indent=2))
