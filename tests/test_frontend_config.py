@@ -21,6 +21,7 @@ INDEX_HTML = WEBSITE / "index.html"
 APP_INDEX_HTML = WEBSITE / "app" / "index.html"
 EUDR_INDEX_HTML = WEBSITE / "eudr" / "index.html"
 ACCOUNT_INDEX_HTML = WEBSITE / "account" / "index.html"
+INVITE_INDEX_HTML = WEBSITE / "account" / "invite" / "index.html"
 LANDING_JS = WEBSITE / "js" / "landing.js"
 APP_SHELL_JS = WEBSITE / "js" / "app-shell.js"
 APP_RUNS_JS = WEBSITE / "js" / "app-runs.js"
@@ -601,6 +602,17 @@ class TestAuthConfig:
             "account/index.html's updateAuthUI must check authEnabled() before gating"
         )
 
+    def test_invite_page_does_not_capture_ciam_before_it_loads(self):
+        """account/invite/index.html must resolve CIAM only after deferred scripts load."""
+        html = INVITE_INDEX_HTML.read_text()
+        assert "var ciam = {};" in html, (
+            "account/invite/index.html must start with an empty ciam placeholder, not "
+            "window.CanopexCiam || {} at parse time"
+        )
+        assert "ciam = window.CanopexCiam || {};" in html, (
+            "account/invite/index.html must resolve ciam during init(), after deferred scripts run"
+        )
+
     def test_landing_msal_script_is_pinned_and_has_sri(self, index_html):
         """Landing MSAL script must use an exact version and SRI."""
         assert "@azure/msal-browser@3.30.0/lib/msal-browser.min.js" in index_html, (
@@ -1001,6 +1013,14 @@ class TestEudrUsageConsistency:
         assert "window.showEudrSubscribeModal" in modal_js.read_text(), (
             "app-eudr-subscribe-modal.js must expose window.showEudrSubscribeModal "
             "for the app shell to call on entitlement failure"
+        )
+
+    def test_eudr_subscribe_modal_binds_auth_token_getter(self):
+        """Subscribe modal API client must use CanopexAuth token getter for signed-in users."""
+        modal_js = (WEBSITE / "js" / "app-eudr-subscribe-modal.js").read_text()
+        assert "client.setGetToken(authModule.getToken);" in modal_js, (
+            "app-eudr-subscribe-modal.js must bind CanopexAuth.getToken on the modal API "
+            "client before posting /api/eudr/subscribe"
         )
 
     def test_app_eudr_updates_hero_parcels_and_unavailable_state(self, app_eudr_js):
