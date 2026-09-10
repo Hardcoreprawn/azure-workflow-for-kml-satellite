@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
+from azure.core.exceptions import HttpResponseError, ResourceExistsError, ServiceRequestError
 
 import treesight.storage.client as storage_client
 
@@ -113,6 +115,52 @@ class TestBlobStorageClientMethods:
 
         assert fake.container.created is True
         assert fake.container.create_calls == 1
+
+    def test_ensure_container_accepts_concurrent_creation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = _FakeServiceClient()
+        conflict = ResourceExistsError("ContainerAlreadyExists")
+        conflict.error_code = "ContainerAlreadyExists"
+        create = Mock(side_effect=conflict)
+        monkeypatch.setattr(fake.container, "create_container", create)
+        client = storage_client.BlobStorageClient.__new__(storage_client.BlobStorageClient)
+        client._client = fake
+
+        assert client.upload_bytes("kml-output", "first.json", b"first") == fake.blob.url
+        assert client.upload_bytes("kml-output", "second.json", b"second") == fake.blob.url
+
+        create.assert_called_once_with()
+        assert len(fake.blob.upload_calls) == 2
+        assert "kml-output" in client._known_containers
+
+    @pytest.mark.parametrize(
+        ("error", "error_code"),
+        [
+            (ResourceExistsError("unclassified conflict"), None),
+            (ResourceExistsError("container being deleted"), "ContainerBeingDeleted"),
+            (HttpResponseError("authorization denied"), "AuthorizationFailure"),
+            (ServiceRequestError("connection failed"), None),
+        ],
+    )
+    def test_ensure_container_propagates_creation_errors(
+        self, monkeypatch: pytest.MonkeyPatch, error: Exception, error_code: str | None
+    ) -> None:
+        fake = _FakeServiceClient()
+        if error_code is not None:
+            monkeypatch.setattr(error, "error_code", error_code, raising=False)
+        create = Mock(side_effect=error)
+        monkeypatch.setattr(fake.container, "create_container", create)
+        client = storage_client.BlobStorageClient.__new__(storage_client.BlobStorageClient)
+        client._client = fake
+
+        with pytest.raises(type(error)) as raised:
+            client.upload_bytes("kml-output", "first.json", b"first")
+
+        assert raised.value is error
+        assert "kml-output" not in client._known_containers
+        assert not fake.blob.upload_calls
+        create.side_effect = None
+        client.ensure_container("kml-output")
+        assert create.call_count == 2
 
     def test_upload_bytes_uploads_and_returns_url(self):
         fake = _FakeServiceClient()
