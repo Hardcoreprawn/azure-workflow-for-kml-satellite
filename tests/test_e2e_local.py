@@ -156,7 +156,7 @@ class TestStopFuncHost:
 
 class TestRepresentativeScenario:
     def test_rejected_event_fails_without_polling(self, monkeypatch):
-        import scripts.e2e_local as runner
+        from scripts import e2e_local as runner
 
         monkeypatch.setattr(runner, "upload_kml", lambda *_: ("sample.kml", "url", 1))
         submit = MagicMock(side_effect=RuntimeError("Webhook rejected with HTTP 500"))
@@ -179,7 +179,7 @@ class TestRepresentativeScenario:
             _validate_blob_event("sample.kml", case["container"], {"contentLength": 1})
 
     def test_timed_out_case_retains_instance_id(self, monkeypatch):
-        import scripts.e2e_local as runner
+        from scripts import e2e_local as runner
 
         monkeypatch.setattr(runner, "upload_kml", lambda *_: ("sample.kml", "url", 1))
         monkeypatch.setattr(runner, "fire_event_grid", lambda *args, **kwargs: "pending-instance")
@@ -194,7 +194,7 @@ class TestRepresentativeScenario:
         assert "Running" in result["error"]
 
     def test_scenario_continues_after_failure_and_stops_host(self, monkeypatch):
-        import scripts.e2e_local as runner
+        from scripts import e2e_local as runner
 
         host = MagicMock()
         stop = MagicMock()
@@ -216,7 +216,7 @@ class TestRepresentativeScenario:
         stop.assert_called_once_with(host)
 
     def test_dry_run_never_starts_host(self, monkeypatch):
-        import scripts.e2e_local as runner
+        from scripts import e2e_local as runner
 
         host = MagicMock(side_effect=AssertionError("dry run started host"))
         monkeypatch.setattr(runner, "start_func_host", host)
@@ -224,7 +224,7 @@ class TestRepresentativeScenario:
         host.assert_not_called()
 
     def test_failed_case_retains_orchestration_evidence(self, monkeypatch):
-        import scripts.e2e_local as runner
+        from scripts import e2e_local as runner
 
         monkeypatch.setattr(runner, "upload_kml", lambda *_: ("sample.kml", "url", 1))
         monkeypatch.setattr(runner, "fire_event_grid", lambda *args, **kwargs: "failed-instance")
