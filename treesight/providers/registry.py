@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from treesight.config import is_test_mode_enabled
 from treesight.providers.base import ImageryProvider, ProviderConfig
 
 _registry: dict[str, type[ImageryProvider]] = {}
-_cache: dict[tuple[str, str, str, str, str], ImageryProvider] = {}
+_cache: dict[tuple[str, str, str, str, str, bool], ImageryProvider] = {}
 
 
 def register_provider(name: str, cls: type[ImageryProvider]) -> None:
@@ -16,6 +17,7 @@ def register_provider(name: str, cls: type[ImageryProvider]) -> None:
 def get_provider(name: str, config: ProviderConfig | None = None) -> ImageryProvider:
     """Return a (cached) provider instance, creating it if necessary."""
     config = config or {}
+    test_mode = is_test_mode_enabled()
     extra = config.get("extra_params")
     extra_key = str(sorted(extra.items())) if isinstance(extra, dict) else ""
     cache_key = (
@@ -24,6 +26,7 @@ def get_provider(name: str, config: ProviderConfig | None = None) -> ImageryProv
         str(config.get("auth_mechanism", "")),
         str(config.get("keyvault_secret", "")),
         extra_key,
+        test_mode,
     )
     if cache_key in _cache:
         return _cache[cache_key]
@@ -41,7 +44,12 @@ def get_provider(name: str, config: ProviderConfig | None = None) -> ImageryProv
         else:
             raise ValueError(f"Unknown imagery provider: {name}")
 
-    provider = _registry[name](config)
+    provider_class = _registry[name]
+    if name == "planetary_computer" and test_mode:
+        from treesight.providers.stub import StubPlanetaryComputerProvider
+
+        provider_class = StubPlanetaryComputerProvider
+    provider = provider_class(config)
     _cache[cache_key] = provider
     return provider
 

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "caseId": "scale-050-kml",
+      "inputPath": "../medium_50.kml",
+      "container": "kml-input",
+      "expectedStatus": "Succeeded"
+    }
+  ]
+}

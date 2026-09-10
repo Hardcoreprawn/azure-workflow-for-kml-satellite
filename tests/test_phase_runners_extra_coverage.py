@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
+from treesight.pipeline.enrichment import _phase_runners as phases
 from treesight.pipeline.enrichment._phase_runners import (
     _run_aoi_metrics_phase,
     _run_change_detection_phase,
@@ -105,6 +106,51 @@ class TestWeatherPhase:
 
         assert results["weather_daily"] is None
         assert results["weather_monthly"] is None
+
+
+class TestSyntheticImageryPhase:
+    def test_synthetic_frames_never_fetch_external_mosaics_or_ndvi(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "1")
+        caplog.set_level("INFO")
+        external = MagicMock(side_effect=AssertionError("external enrichment in synthetic mode"))
+        for name in ("register_mosaic", "compute_ndvi", "compute_landsat_ndvi", "fetch_ndvi_stat"):
+            monkeypatch.setattr(phases, name, external)
+        frames = [
+            {
+                "collection": collection,
+                "is_naip": collection == "naip",
+                "year": 2024,
+                "season": "summer",
+                "start": "2024-06-01",
+                "end": "2024-08-31",
+            }
+            for collection in ("naip", "sentinel-2-l2a", "landsat-c2-l2")
+        ]
+        results: dict = {}
+        acc = ResourceAccumulator()
+
+        stats, paths = phases._run_mosaic_ndvi_phase(
+            BBOX,
+            BBOX,
+            frames,
+            "synthetic",
+            "run",
+            "output",
+            MagicMock(),
+            results,
+            acc=acc,
+        )
+
+        external.assert_not_called()
+        assert stats == paths == [None, None, None]
+        assert results["search_ids"] == [None, None, None]
+        assert all(frame["provenance"]["ndvi_scene_id"] is None for frame in frames)
+        assert acc.to_dict()["api_calls"] == {}
+        skipped = [record for record in caplog.records if "external_imagery_skipped" in record.message]
+        assert len(skipped) == 1
+        assert skipped[0].custom_properties["reason"] == "test_mode"
 
 
 class TestFloodFirePhase:

@@ -51,6 +51,45 @@ Tools. The runner owns the Functions host, not storage startup or cleanup.
   explicit stage/error assertions in #1455; an arbitrary failure or timeout must
   never count as a successful rejection test.
 
+## Local Scale Exercises
+
+`scale-50.json` and `scale-200.json` opt into the existing 50- and 200-polygon
+fixtures. They are not part of the fast smoke default. These workloads need an
+explicit local enterprise ticket: without one the free-tier AOI limit rejects
+them. Against disposable Azurite, in the same container/network namespace used
+by the harness:
+
+```bash
+PYTHONPATH=scripts:. uv run python -c \
+  'from corpus_runner import _upload_ticket; _upload_ticket("medium_50.kml", "kml-input", user_id="offline-capacity-exercise")'
+uv run python scripts/e2e_local.py --scenario representative \
+  --manifest tests/fixtures/catalogues/scale-50.json \
+  --orchestration-timeout-seconds 600
+```
+
+For 200 AOIs, replace `medium_50.kml` with `monster_200.kml` in the ticket command
+and select `scale-200.json`. This direct trigger/ticket path tests internal
+workload handling, not authenticated submission, production tier admission,
+tenant isolation, or EUDR compliance. Do not use it against shared/cloud storage.
+
+On 2026-09-10, isolated Docker runs with a pre-cached Functions extension bundle
+and no external network access produced:
+
+| Workload | Elapsed (excluding host startup) | AOIs | Downloads / raw paths |
+| --- | ---: | ---: | ---: |
+| Three smoke cases, serial | 9.64 s | 2 per case | 14 / 14 per case |
+| Three smoke cases, parallel (3) | 6.84 s | 2 per case | 14 / 14 per case |
+| One 50-AOI case | 42.67 s | 50 | 350 / 350 |
+| One 200-AOI case | 236.08 s | 200 | 1400 / 1400 |
+
+The serial and parallel comparison used fresh storage for each run. Scale runs
+used the same local Azurite after the parallel run; these are single observations,
+not controlled throughput benchmarks. Counts were checked separately from the
+runner's success-only oracle, and host logs had no SDK DNS/retry markers.
+The synthetic provider emits small rasters; remote mosaic/NDVI and weather
+evidence are intentionally unavailable. These results do not measure full-size
+imagery, sustained capacity, CPU/memory ceilings, or scientific accuracy.
+
 ## Growth Plan
 
 Keep the three smoke entries as a fast subset. Grow the fixture library through

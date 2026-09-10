@@ -236,6 +236,9 @@ def _run_mosaic_ndvi_phase(
     ``None`` for the single-AOI/union path (path unchanged).
     """
     t0 = time.monotonic()
+    test_mode = is_test_mode_enabled()
+    if test_mode:
+        log_phase("enrichment", "external_imagery_skipped", reason="test_mode")
     # 2. Mosaic registration (parallel — each frame is independent)
     log_phase("enrichment", "mosaic_start", frames=len(frame_plan))
     search_ids: list[str | None] = [None] * len(frame_plan)
@@ -243,6 +246,8 @@ def _run_mosaic_ndvi_phase(
     display_collections: list[str] = [str(f.get("collection", "")) for f in frame_plan]
 
     def _register_one(idx: int, f: dict[str, Any]) -> tuple[int, str | None, str | None, str]:
+        if test_mode:
+            return idx, None, None, str(f.get("collection", ""))
         cloud_collections = {"sentinel-2-l2a", "landsat-c2-l2"}
         extra: list[dict[str, Any]] = (
             [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}] if f["collection"] in cloud_collections else []
@@ -326,6 +331,8 @@ def _run_mosaic_ndvi_phase(
     ndvi_raster_paths: list[str | None] = [None] * len(frame_plan)
 
     def _compute_one_ndvi(idx: int, f: dict[str, Any]) -> tuple[int, dict[str, Any] | None, str | None]:
+        if test_mode:
+            return idx, None, None
         cog_result = None
         if f["collection"] == "landsat-c2-l2":
             cog_result = compute_landsat_ndvi(flat_bbox, f["start"], f["end"])
@@ -424,7 +431,8 @@ def _run_mosaic_ndvi_phase(
             acc.add_source("sentinel-2-l2a")
             acc.increment("sentinel2_scenes_registered", s2_count)
         # PC API calls: 1 per mosaic registration + 1 per NDVI computation
-        acc.add_api_call("planetary_computer", count=mosaic_count + ndvi_count)
+        if not test_mode:
+            acc.add_api_call("planetary_computer", count=mosaic_count + ndvi_count)
         acc.record_phase_duration("mosaic_ndvi", time.monotonic() - t0)
 
     return ndvi_stats, ndvi_raster_paths

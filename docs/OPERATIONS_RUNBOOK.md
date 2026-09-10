@@ -75,7 +75,10 @@ the format and extension boundaries. Dry runs validate and display the catalogue
 they do not parse fixture contents or prove pipeline outcomes.
 
 The default smoke catalogue uses `sample.kml` (2 polygons) three times;
-it does not yet validate high-AOI fan-out. Existing fixtures include
+it does not validate high-AOI fan-out. Opt-in `scale-50.json` and `scale-200.json`
+catalogues exercise the larger fixtures; see the catalogue README for the required
+local enterprise ticket, observed timings, and explicit acceptance limits.
+Existing fixtures include
 `medium_50.kml` (50 polygons), `global_monitoring_55.kml` (56 polygons despite its
 name), and `monster_200.kml` (200 polygons). Mixed workloads and large/negative
 cases are tracked by #1454 and #1455. Concurrency here measures local synthetic
@@ -89,6 +92,26 @@ flag or set it to `0` for real weather acquisition. This is not synthetic weathe
 evidence and does not establish scientific validity. The weather guard alone is
 not a global egress guarantee: SDK/native remote reads and other enrichment
 providers require their own controls and network-isolated acceptance checks.
+
+The provider registry also selects synthetic Planetary Computer acquisition in
+test mode, including direct composite acquisition; cached live and synthetic
+instances cannot cross modes. Mosaic/NDVI enrichment skips its external adapters,
+logs `external_imagery_skipped` with reason `test_mode`, and retains frame metadata
+with null search IDs, NDVI statistics, and raster paths. It records no PC API
+usage for skipped work. Other provider paths still require their own controls;
+this is not a universal HTTP/SDK egress switch or fabricated compliance evidence.
+
+For a strict offline exercise, run disposable Azurite with `--network none` and
+run the harness in its network namespace (`--network container:<azurite-name>`).
+Only loopback storage is then reachable. Pre-download the Functions extension
+bundle in a separate online preparation step (`func bundles download`), mounting
+the same disposable volume at `/FuncExtensionBundles` and
+`/home/data/Functions/ExtensionBundles` for both preparation and execution. Verify
+the version directory contains `bin/extensions.json` before disconnecting; merely
+printing `func bundles path` does not populate the cache (#1490). Do not expose
+credentials to the preparation or synthetic runtime containers. Preserve the
+result JSON and host log for each workload, check exact AOI/download/path counts,
+and inspect caught request failures even when the terminal result is successful.
 
 Local blob CORS defaults to `http://localhost:4280` and
 `http://127.0.0.1:4280`. Both initializers accept a comma-separated

@@ -54,6 +54,10 @@ def _block_network_calls(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestMosaicNdviParallel:
     """Verify _run_mosaic_ndvi_phase parallelization correctness."""
 
+    @pytest.fixture(autouse=True)
+    def real_provider_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "0")
+
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_results_at_correct_indices(self, mock_mosaic, mock_ndvi):
