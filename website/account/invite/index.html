@@ -256,7 +256,7 @@
 (function() {
   'use strict';
 
-  var ciam = window.CanopexCiam || {};
+  var ciam = {};
   var apiClient = null;
 
   // Extract token from URL query parameter or path
@@ -414,7 +414,18 @@
     }
   }
 
-  function init() {
+  async function init() {
+    ciam = window.CanopexCiam || {};
+    try {
+      if (typeof ciam.ensureMsalReady !== 'function') {
+        throw new Error('Authentication module unavailable');
+      }
+      await ciam.ensureMsalReady();
+    } catch (err) {
+      console.error('[invite-app] Authentication initialization failed:', err);
+      showError('Unable to initialize sign-in. Please reload the page.');
+      return;
+    }
     apiClient = initApiClient();
     if (!apiClient) {
       showError('Unable to initialize application. Please try again.');
