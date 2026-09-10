@@ -9,7 +9,7 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '../..');
 const HTML = fs.readFileSync(path.join(ROOT, 'website/account/invite/index.html'), 'utf8');
 const AUTH = fs.readFileSync(path.join(ROOT, 'website/js/canopex-auth.js'), 'utf8');
-const INVITE_SCRIPT = HTML.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
+const INVITE_SCRIPT = HTML.match(/<script>\s*([\s\S]*?)<\/script>/i)[1];
 
 function loadInvite(accounts, initialize = () => Promise.resolve()) {
   const elements = new Map();
