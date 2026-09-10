@@ -12,6 +12,7 @@ import json
 import subprocess
 from functools import partial
 from pathlib import Path
+from threading import Barrier, Event, Lock
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -272,6 +273,104 @@ class TestRepresentativeScenario:
             runner.run_scenario("unknown-scenario", dry_run_matrix=True)
 
 
+class TestExecutionMode:
+    def test_parallel_reports_completion_before_slow_first_case(self, monkeypatch, capsys):
+        release_first = Event()
+        matrix = runner.build_representative_case_matrix()
+        monkeypatch.setattr(runner, "start_func_host", lambda **kwargs: MagicMock())
+        monkeypatch.setattr(runner, "stop_func_host", lambda *_: None)
+        monkeypatch.setattr(runner, "wait_for_func_host", lambda **kwargs: None)
+
+        def run_case(case, **kwargs):
+            if case == matrix[0]:
+                assert release_first.wait(timeout=5), "first case blocked completion reporting"
+            return {"caseId": case["caseId"], "status": "Succeeded"}
+
+        def report(message, **kwargs):
+            builtins.print(message, **kwargs)
+            if "rep-002-repeat-upload: Succeeded" in message:
+                assert "passed=1 failed=0 remaining=2" in message
+                assert kwargs["flush"] is True
+                release_first.set()
+
+        monkeypatch.setattr(runner, "_run_single_case", run_case)
+        monkeypatch.setattr(runner, "print", report, raising=False)
+        summary = runner.run_scenario("representative", dry_run_matrix=False, execution="parallel", concurrency=2)
+
+        output = capsys.readouterr().out
+        assert output.index("rep-002-repeat-upload: Succeeded") < output.index("rep-001-single-upload: Succeeded")
+        assert [case["caseId"] for case in summary["cases"]] == [case["caseId"] for case in matrix]
+
+    @pytest.mark.parametrize("scenario,expected", [("representative", 3), ("single", 1)])
+    def test_parallel_clamps_workers_to_case_count(self, scenario, expected):
+        summary = runner.run_scenario(scenario, dry_run_matrix=True, execution="parallel", concurrency=99)
+        assert summary["concurrency"] == expected
+
+    def test_parallel_overlaps_cases_with_bounded_concurrency_and_retains_failures(self, monkeypatch):
+        rendezvous = Barrier(2, timeout=5)
+        lock = Lock()
+        active = {"count": 0, "peak": 0}
+        matrix = runner.build_representative_case_matrix()
+        host = MagicMock()
+        stop = MagicMock()
+        monkeypatch.setattr(runner, "start_func_host", lambda **kwargs: host)
+        monkeypatch.setattr(runner, "stop_func_host", stop)
+        monkeypatch.setattr(runner, "wait_for_func_host", lambda **kwargs: None)
+
+        def run_case(case, **kwargs):
+            with lock:
+                active["count"] += 1
+                active["peak"] = max(active["peak"], active["count"])
+            if case != matrix[-1]:
+                rendezvous.wait()
+            with lock:
+                active["count"] -= 1
+            return {"caseId": case["caseId"], "status": "Failed" if case == matrix[0] else "Succeeded"}
+
+        monkeypatch.setattr(runner, "_run_single_case", run_case)
+        summary = runner.run_scenario("representative", dry_run_matrix=False, execution="parallel", concurrency=2)
+
+        assert active == {"count": 0, "peak": 2}
+        assert [case["caseId"] for case in summary["cases"]] == [case["caseId"] for case in matrix]
+        assert summary["totals"] == {"succeeded": 2, "failed": 1, "dryRun": 0}
+        assert summary["execution"] == "parallel"
+        assert summary["concurrency"] == 2
+        assert summary["elapsedSeconds"] >= 0
+        stop.assert_called_once_with(host)
+
+    @pytest.mark.parametrize("execution,concurrency", [("unknown", 2), ("parallel", 0), ("serial", -1)])
+    def test_invalid_execution_is_rejected_before_starting_host(self, monkeypatch, execution, concurrency):
+        host = MagicMock()
+        monkeypatch.setattr(runner, "start_func_host", host)
+        with pytest.raises(ValueError):
+            runner.run_scenario("representative", dry_run_matrix=False, execution=execution, concurrency=concurrency)
+        host.assert_not_called()
+
+    def test_cli_parallel_dry_run_reports_effective_concurrency(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "e2e_local.py",
+                "--scenario",
+                "representative",
+                "--execution",
+                "parallel",
+                "--concurrency",
+                "2",
+                "--dry-run-matrix",
+            ],
+        )
+        runner.main()
+        summary = json.loads(capsys.readouterr().out.split("Scenario summary:\n", 1)[1])
+        assert summary["execution"] == "parallel"
+        assert summary["concurrency"] == 2
+        assert summary["totals"]["dryRun"] == 3
+
+    def test_serial_dry_run_uses_one_worker(self):
+        summary = runner.run_scenario("representative", dry_run_matrix=True, execution="serial", concurrency=3)
+        assert summary["concurrency"] == 1
+
+
 class TestPollingProgress:
     def test_running_orchestration_emits_flushed_heartbeat(self, monkeypatch, capsys):
         clock = {"seconds": 0.0}
@@ -323,6 +422,8 @@ class TestScenarioCommand:
             lambda: SimpleNamespace(
                 scenario="representative",
                 dry_run_matrix=False,
+                execution="serial",
+                concurrency=runner.E2E_DEFAULT_CONCURRENCY,
                 orchestration_timeout_seconds=17,
                 poll_interval_seconds=0.1,
             ),
@@ -344,7 +445,14 @@ class TestScenarioCommand:
             runner.main()
 
         assert json.loads(result_path.read_text()) == summary
-        scenario.assert_called_once_with("representative", dry_run_matrix=False, timeout=17, interval=0.1)
+        scenario.assert_called_once_with(
+            "representative",
+            dry_run_matrix=False,
+            timeout=17,
+            interval=0.1,
+            execution="serial",
+            concurrency=runner.E2E_DEFAULT_CONCURRENCY,
+        )
 
     def test_dry_run_preserves_proof_without_starting_host(self, monkeypatch, tmp_path: Path, capsys):
         result_path = tmp_path / "result.json"
@@ -357,6 +465,8 @@ class TestScenarioCommand:
             lambda: SimpleNamespace(
                 scenario="representative",
                 dry_run_matrix=True,
+                execution="serial",
+                concurrency=runner.E2E_DEFAULT_CONCURRENCY,
                 orchestration_timeout_seconds=17,
                 poll_interval_seconds=0.1,
             ),
@@ -396,6 +506,7 @@ class TestScenarioCommand:
 
         assert scenario.call_args.args == ("single",)
         assert scenario.call_args.kwargs["dry_run_matrix"] is False
+        assert scenario.call_args.kwargs["execution"] == "serial"
         assert json.loads(result_path.read_text()) == {
             "fixture": "tests/fixtures/sample.kml",
             **completed,

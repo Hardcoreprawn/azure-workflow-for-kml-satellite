@@ -28,6 +28,8 @@ import os
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +42,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from treesight.constants import (  # noqa: E402 - support direct execution without an editable install
+    E2E_DEFAULT_CONCURRENCY,
     E2E_PROGRESS_INTERVAL_SECONDS,
 )
 
@@ -294,15 +297,49 @@ def _run_single_case(
     return result
 
 
+def _run_case_with_progress(
+    index: int, case: dict[str, str], total: int, *, timeout: float, interval: float
+) -> dict[str, Any]:
+    print(f"  [{index + 1}/{total}] Running case {case['caseId']} ({case['container']})", flush=True)
+    started_at = time.monotonic()
+    result = _run_single_case(case, timeout=timeout, interval=interval)
+    return {**result, "elapsedSeconds": time.monotonic() - started_at}
+
+
+def _execute_cases(
+    cases: list[dict[str, str]], *, concurrency: int, timeout: float, interval: float
+) -> Iterator[tuple[int, dict[str, Any]]]:
+    """Overlap blocking client I/O; AOI scheduling remains owned by Durable Functions."""
+    if concurrency == 1:
+        for index, case in enumerate(cases):
+            yield index, _run_case_with_progress(index, case, len(cases), timeout=timeout, interval=interval)
+        return
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = {
+            executor.submit(_run_case_with_progress, index, case, len(cases), timeout=timeout, interval=interval): index
+            for index, case in enumerate(cases)
+        }
+        for future in as_completed(futures):
+            yield futures[future], future.result()
+
+
 def run_scenario(
     scenario: str,
     *,
     dry_run_matrix: bool,
     timeout: float = DEFAULT_ORCH_TIMEOUT_SECONDS,
     interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+    execution: str = "serial",
+    concurrency: int = E2E_DEFAULT_CONCURRENCY,
 ) -> dict[str, Any]:
     """Run one scenario and return a structured summary."""
+    if execution not in {"serial", "parallel"}:
+        raise ValueError("execution must be serial or parallel")
+    if concurrency < 1:
+        raise ValueError("concurrency must be positive")
     cases = _build_case_matrix(scenario)
+    workers = 1 if execution == "serial" else min(concurrency, len(cases))
+    metadata = {"scenario": scenario, "totalCases": len(cases), "execution": execution, "concurrency": workers}
     results: list[dict[str, Any]] = []
     totals = {"succeeded": 0, "failed": 0, "dryRun": 0}
 
@@ -320,27 +357,32 @@ def run_scenario(
                 }
             )
         totals["dryRun"] = len(results)
-        return {"scenario": scenario, "totalCases": len(cases), "cases": results, "totals": totals}
+        return {**metadata, "cases": results, "totals": totals}
 
     proc = start_func_host(log_path=FUNC_HOST_LOG_PATH)
     try:
         print("[1/2] Waiting for func host to become ready...", flush=True)
         wait_for_func_host(timeout=120.0)
-        print("[2/2] Executing scenario matrix...", flush=True)
-        for index, case in enumerate(cases, start=1):
-            print(f"  [{index}/{len(cases)}] Running case {case['caseId']} ({case['container']})", flush=True)
-            result = _run_single_case(case, timeout=timeout, interval=interval)
+        print(f"[2/2] Executing scenario matrix (execution={execution} concurrency={workers})...", flush=True)
+        started_at = time.monotonic()
+        indexed_results: dict[int, dict[str, Any]] = {}
+        for index, result in _execute_cases(cases, concurrency=workers, timeout=timeout, interval=interval):
             if result["status"] == "Succeeded":
                 totals["succeeded"] += 1
             else:
                 totals["failed"] += 1
-            results.append(result)
+            indexed_results[index] = result
             print(
-                f"  [{index}/{len(cases)}] {case['caseId']}: {result['status']} "
-                f"(passed={totals['succeeded']} failed={totals['failed']} remaining={len(cases) - index})",
+                f"  [{index + 1}/{len(cases)}] {cases[index]['caseId']}: {result['status']} "
+                f"(passed={totals['succeeded']} failed={totals['failed']} remaining={len(cases) - len(indexed_results)})",
                 flush=True,
             )
-        return {"scenario": scenario, "totalCases": len(cases), "cases": results, "totals": totals}
+        return {
+            **metadata,
+            "cases": [indexed_results[index] for index in range(len(cases))],
+            "totals": totals,
+            "elapsedSeconds": time.monotonic() - started_at,
+        }
     except Exception:
         print(f"\nHost execution failed; see {FUNC_HOST_LOG_PATH}", file=sys.stderr)
         raise
@@ -350,6 +392,13 @@ def run_scenario(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run local pipeline e2e scenarios")
+    parser.add_argument("--execution", choices=["serial", "parallel"], default="serial")
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=E2E_DEFAULT_CONCURRENCY,
+        help="Maximum simultaneous cases in parallel mode (serial always uses one)",
+    )
     parser.add_argument(
         "--scenario",
         default=_DEFAULT_SCENARIO,
@@ -389,6 +438,8 @@ def main() -> None:
             dry_run_matrix=args.dry_run_matrix,
             timeout=args.orchestration_timeout_seconds,
             interval=args.poll_interval_seconds,
+            execution=args.execution,
+            concurrency=args.concurrency,
         )
         print("\nScenario summary:")
         print(json.dumps(summary, indent=2))

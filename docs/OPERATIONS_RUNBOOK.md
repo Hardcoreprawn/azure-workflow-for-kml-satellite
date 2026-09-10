@@ -56,6 +56,22 @@ and timeout on status changes and approximately every 15 seconds between them
 (subject to HTTP request duration). An unchanged status or unavailable endpoint
 still produces progress; this is a heartbeat, not a fabricated percentage.
 
+Execution defaults to `--execution serial`. Use `--execution parallel --concurrency 3`
+to overlap up to three submissions on the same Functions host. The bound covers
+upload through terminal polling; AOI fan-out inside each orchestration still uses
+Durable Functions. Completion lines appear as cases finish, while saved results
+remain in matrix order. Representative summaries include execution mode, effective
+concurrency, per-case elapsed seconds, and matrix elapsed seconds excluding host
+startup. Dry runs report the selected mode without starting work. Serial mode
+always uses one worker; parallel mode caps workers at the case count.
+
+The current representative matrix uses `sample.kml` (2 polygons) three times;
+it does not yet validate high-AOI fan-out. Existing fixtures include
+`medium_50.kml` (50 polygons), `global_monitoring_55.kml` (56 polygons despite its
+name), and `monster_200.kml` (200 polygons). Mixed workloads and large/negative
+cases are tracked by #1454 and #1455. Concurrency here measures local synthetic
+pipeline plumbing, not live-provider capacity or scientific accuracy.
+
 Local blob CORS defaults to `http://localhost:4280` and
 `http://127.0.0.1:4280`. Both initializers accept a comma-separated
 `AZURITE_CORS_ORIGINS` override for another local website port. Pass this
