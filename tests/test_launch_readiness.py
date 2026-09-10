@@ -2669,6 +2669,45 @@ class TestCiamTofuOwnership:
 class TestCanonicalCIContexts:
     """Required Lint/Test contexts must have one authoritative workflow."""
 
+    def test_required_pipeline_gate_is_not_path_gated(self):
+        workflow = yaml.safe_load(CI_YML.read_text())
+        pipeline = workflow["jobs"]["pipeline-e2e"]
+        assert "if" not in pipeline
+        assert pipeline["needs"] == ["lint", "test"]
+        assert pipeline["name"] == "Pipeline e2e (local gate)"
+
+    def test_required_security_jobs_are_not_path_gated(self):
+        required_jobs = {
+            "codeql.yml": ["analyze"],
+            "security.yml": ["semgrep", "pip-audit", "trivy-iac", "trivy-fs"],
+        }
+        for filename, job_ids in required_jobs.items():
+            workflow = yaml.safe_load((ROOT / ".github" / "workflows" / filename).read_text())
+            triggers = workflow.get(True) or {}
+            for event in ("pull_request", "push", "merge_group"):
+                assert event in triggers
+                assert "paths" not in (triggers[event] or {})
+                assert "paths-ignore" not in (triggers[event] or {})
+            for job_id in job_ids:
+                job = workflow["jobs"][job_id]
+                assert "if" not in job, f"{filename}:{job_id} must run its actual required scan"
+                assert "needs" not in job, f"{filename}:{job_id} must not depend on path detection"
+                assert job["steps"], f"{filename}:{job_id} must not be an empty success placeholder"
+
+    def test_required_scanner_context_names_remain_stable(self):
+        codeql = yaml.safe_load((ROOT / ".github" / "workflows" / "codeql.yml").read_text())
+        analyze = codeql["jobs"]["analyze"]
+        assert analyze["name"] == "Analyze Python"
+        assert analyze["strategy"]["matrix"] == {"language": ["python"]}
+        security = yaml.safe_load((ROOT / ".github" / "workflows" / "security.yml").read_text())
+        for job_id, context in {
+            "semgrep": "Semgrep SAST",
+            "pip-audit": "Dependency Audit",
+            "trivy-iac": "Trivy IaC Scan",
+            "trivy-fs": "Trivy Filesystem Scan",
+        }.items():
+            assert security["jobs"][job_id]["name"] == context
+
     def test_canonical_ci_runs_for_all_pr_and_push_changes(self):
         workflow = yaml.safe_load(CI_YML.read_text())
         on = workflow.get(True) or {}
