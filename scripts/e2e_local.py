@@ -35,6 +35,8 @@ import httpx
 from _azurite import AZURITE_CONN_STR
 from simulate_upload import DEFAULT_CONTAINER, fire_event_grid, upload_kml
 
+from treesight.constants import E2E_PROGRESS_INTERVAL_SECONDS
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FUNC_BASE = "http://localhost:7071"
 DEFAULT_KML = REPO_ROOT / "tests" / "fixtures" / "sample.kml"
@@ -157,8 +159,8 @@ def wait_for_func_host(*, timeout: float, interval: float = 2.0) -> None:
             if resp.status_code == 200:
                 return
         except httpx.TransportError as exc:
-            print(f"  ... health check transport error on attempt {attempt}: {exc}")
-        print(f"  ... waiting for func host (attempt {attempt})")
+            print(f"  ... health check transport error on attempt {attempt}: {exc}", flush=True)
+        print(f"  ... waiting for func host (attempt {attempt})", flush=True)
         time.sleep(interval)
     raise TimeoutError(f"func host did not become ready within {timeout}s")
 
@@ -182,10 +184,20 @@ def poll_orchestration(
     state is reached within *timeout* — never loops unbounded.
     """
     url = f"{base}/api/orchestrator/{instance_id}"
-    deadline = time.monotonic() + timeout
+    started_at = time.monotonic()
+    deadline = started_at + timeout
+    last_reported_at = started_at
     last_status = ""
     last_payload: dict[str, Any] | None = None
     while time.monotonic() < deadline:
+        now = time.monotonic()
+        if now - last_reported_at >= E2E_PROGRESS_INTERVAL_SECONDS:
+            print(
+                f"  [{instance_id}] status={last_status or 'Awaiting status'} "
+                f"elapsed={now - started_at:.0f}s timeout={timeout:.0f}s",
+                flush=True,
+            )
+            last_reported_at = now
         try:
             resp = httpx.get(url, timeout=10.0)
         except httpx.TransportError:
@@ -198,7 +210,12 @@ def poll_orchestration(
         last_payload = data
         status = data.get("runtimeStatus", "Unknown")
         if status != last_status:
-            print(f"  status: {status}")
+            now = time.monotonic()
+            print(
+                f"  [{instance_id}] status={status} elapsed={now - started_at:.0f}s timeout={timeout:.0f}s",
+                flush=True,
+            )
+            last_reported_at = now
             last_status = status
         if status in _TERMINAL_STATUSES:
             return data
@@ -302,17 +319,22 @@ def run_scenario(
 
     proc = start_func_host(log_path=FUNC_HOST_LOG_PATH)
     try:
-        print("[1/2] Waiting for func host to become ready...")
+        print("[1/2] Waiting for func host to become ready...", flush=True)
         wait_for_func_host(timeout=120.0)
-        print("[2/2] Executing scenario matrix...")
+        print("[2/2] Executing scenario matrix...", flush=True)
         for index, case in enumerate(cases, start=1):
-            print(f"  [{index}/{len(cases)}] Running case {case['caseId']} ({case['container']})")
+            print(f"  [{index}/{len(cases)}] Running case {case['caseId']} ({case['container']})", flush=True)
             result = _run_single_case(case, timeout=timeout, interval=interval)
             if result["status"] == "Succeeded":
                 totals["succeeded"] += 1
             else:
                 totals["failed"] += 1
             results.append(result)
+            print(
+                f"  [{index}/{len(cases)}] {case['caseId']}: {result['status']} "
+                f"(passed={totals['succeeded']} failed={totals['failed']} remaining={len(cases) - index})",
+                flush=True,
+            )
         return {"scenario": scenario, "totalCases": len(cases), "cases": results, "totals": totals}
     except Exception:
         print(f"\nHost execution failed; see {FUNC_HOST_LOG_PATH}", file=sys.stderr)

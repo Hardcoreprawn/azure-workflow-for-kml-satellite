@@ -7,6 +7,7 @@ real by ``make test-pipeline-local``, not something worth mocking in unit tests.
 
 from __future__ import annotations
 
+import builtins
 import json
 import subprocess
 from functools import partial
@@ -181,7 +182,7 @@ class TestRepresentativeScenario:
         assert result["status"] == "Failed"
         assert "Running" in result["error"]
 
-    def test_scenario_continues_after_failure_and_stops_host(self, monkeypatch):
+    def test_scenario_continues_after_failure_and_stops_host(self, monkeypatch, capsys):
         host = MagicMock()
         stop = MagicMock()
         monkeypatch.setattr(runner, "start_func_host", lambda **kwargs: host)
@@ -200,6 +201,9 @@ class TestRepresentativeScenario:
         assert run_case.call_count == 3
         assert run_case.call_args.kwargs == {"timeout": 17, "interval": 0.1}
         stop.assert_called_once_with(host)
+        output = capsys.readouterr().out
+        assert "[1/3] rep-001-single-upload: Failed (passed=0 failed=1 remaining=2)" in output
+        assert "[3/3] rep-003-alt-container: Succeeded (passed=2 failed=1 remaining=0)" in output
 
     def test_dry_run_never_starts_host(self, monkeypatch):
         host = MagicMock(side_effect=AssertionError("dry run started host"))
@@ -266,6 +270,46 @@ class TestRepresentativeScenario:
     def test_run_scenario_raises_for_unknown_scenario(self):
         with pytest.raises(ValueError, match="Unknown scenario"):
             runner.run_scenario("unknown-scenario", dry_run_matrix=True)
+
+
+class TestPollingProgress:
+    def test_running_orchestration_emits_flushed_heartbeat(self, monkeypatch, capsys):
+        clock = {"seconds": 0.0}
+        monkeypatch.setattr(runner.time, "monotonic", lambda: clock["seconds"])
+        monkeypatch.setattr(runner.time, "sleep", lambda seconds: clock.update(seconds=clock["seconds"] + seconds))
+        responses = [
+            SimpleNamespace(status_code=200, json=lambda: {"runtimeStatus": "Running"}),
+            SimpleNamespace(status_code=200, json=lambda: {"runtimeStatus": "Running"}),
+            SimpleNamespace(status_code=200, json=lambda: {"runtimeStatus": "Running"}),
+            SimpleNamespace(status_code=200, json=lambda: {"runtimeStatus": "Completed"}),
+        ]
+        monkeypatch.setattr(runner.httpx, "get", MagicMock(side_effect=responses))
+        output = MagicMock(wraps=builtins.print)
+        monkeypatch.setattr(runner, "print", output, raising=False)
+
+        result = runner.poll_orchestration("run-1", timeout=60, interval=10)
+
+        assert result["runtimeStatus"] == "Completed"
+        captured = capsys.readouterr().out
+        assert "[run-1] status=Running elapsed=0s" in captured
+        assert "[run-1] status=Running elapsed=20s" in captured
+        assert "[run-1] status=Completed elapsed=30s" in captured
+        assert all(call.kwargs.get("flush") is True for call in output.call_args_list)
+
+    @pytest.mark.parametrize("unavailable", [404, "transport"])
+    def test_unavailable_status_emits_progress_before_timeout(self, monkeypatch, capsys, unavailable):
+        clock = {"seconds": 0.0}
+        monkeypatch.setattr(runner.time, "monotonic", lambda: clock["seconds"])
+        monkeypatch.setattr(runner.time, "sleep", lambda seconds: clock.update(seconds=clock["seconds"] + seconds))
+        response = MagicMock(return_value=SimpleNamespace(status_code=404))
+        if unavailable == "transport":
+            response.side_effect = runner.httpx.ConnectError("unavailable")
+        monkeypatch.setattr(runner.httpx, "get", response)
+
+        with pytest.raises(TimeoutError, match="did not reach a terminal state"):
+            runner.poll_orchestration("waiting-run", timeout=30, interval=10)
+
+        assert "[waiting-run] status=Awaiting status elapsed=20s" in capsys.readouterr().out
 
 
 class TestScenarioCommand:

@@ -49,6 +49,13 @@ the alternate output container; a warm-storage pass is not equivalent proof.
 Dry runs print their summary but neither overwrite existing proof nor report
 a runtime pass. A partial failure is persisted before the command exits nonzero.
 
+CLI progress is flushed immediately for container logs and redirected output.
+Each case shows its index, case ID, input container, and completion counters.
+Polling prints the orchestration ID, latest observed status, elapsed seconds,
+and timeout on status changes and approximately every 15 seconds between them
+(subject to HTTP request duration). An unchanged status or unavailable endpoint
+still produces progress; this is a heartbeat, not a fabricated percentage.
+
 Local blob CORS defaults to `http://localhost:4280` and
 `http://127.0.0.1:4280`. Both initializers accept a comma-separated
 `AZURITE_CORS_ORIGINS` override for another local website port. Pass this
