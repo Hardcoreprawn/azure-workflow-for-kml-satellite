@@ -260,6 +260,24 @@ is not reachable, so they do not affect the standard `make test` suite. The
 `make test-int-live` gate converts an all-skipped run into a failure so missing
 dependencies cannot appear green.
 
+## Required PR Security Checks
+
+CodeQL and the required Security jobs run on every supported PR, push and
+merge-group event, including website-only and action-pin changes. CodeQL's
+Python matrix must produce `Analyze Python (python)`, not a skipped
+`Analyze Python` job. Semgrep SAST, Dependency Audit, Trivy IaC Scan and
+Trivy Filesystem Scan must execute their real scans; path-based success
+placeholders are not substitutes.
+
+The required `Pipeline e2e (local gate)` also runs after lint and test for
+every supported CI event. Website-only changes do not bypass this gate.
+
+Missing, skipped or approval-blocked checks are not green. Inspect the
+workflow run and approval state, then validate the current PR revision
+after resolving the blocker. Do not weaken branch protection or the PR
+Watchdog to make an incomplete check set pass. These CI checks do not
+replace authenticated runtime evidence or owner approval for deployment.
+
 ## Monitor
 
 Primary telemetry:
