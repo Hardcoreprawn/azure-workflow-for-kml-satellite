@@ -35,9 +35,14 @@ import httpx
 from _azurite import AZURITE_CONN_STR
 from simulate_upload import DEFAULT_CONTAINER, fire_event_grid, upload_kml
 
-from treesight.constants import E2E_PROGRESS_INTERVAL_SECONDS
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from treesight.constants import (  # noqa: E402 - support direct execution without an editable install
+    E2E_PROGRESS_INTERVAL_SECONDS,
+)
+
 FUNC_BASE = "http://localhost:7071"
 DEFAULT_KML = REPO_ROOT / "tests" / "fixtures" / "sample.kml"
 FUNC_HOST_LOG_PATH = REPO_ROOT / ".e2e-local-func-host.log"
