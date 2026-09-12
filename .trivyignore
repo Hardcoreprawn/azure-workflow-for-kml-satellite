@@ -1,30 +1,21 @@
-# Temporary accepted-risk findings to keep the stack low-cost in dev.
-# Do not remove without replacing with an equivalent security control.
+# Temporary exceptions; expired entries remain blocking until reviewed.
+# Remove obsolete entries only with fresh scanner evidence and control review.
 # All entries must have an exp: date. Review any entry older than 30 days.
 #
 # AZU-0012 / AZU-0013 are tied to strict network ACL posture for Storage/Key Vault.
-# The low-cost dev setup currently keeps public endpoints enabled to avoid private
-# endpoint + private DNS recurring costs. Revisit when approved for paid hardening.
-AZU-0012 # exp:2026-09-11 Storage network ACL — accepted dev risk; #1362
-AZU-0013 # exp:2026-09-11 Key Vault network ACL — accepted dev risk; #1361
+# Both dev and prd templates lack deny-by-default ACLs. Owner accepted the current
+# pre-customer cost posture on 2026-09-12; review before customer onboarding or
+# expiry, whichever comes first. Production freeze and authentication stay intact.
+# Private networking and additional paid Defender coverage remain deferred;
+# obsolete scanner exceptions are not reinstated by this cost decision. #1500
+AZU-0012 # exp:2026-12-12 Storage network ACL - owner-accepted pre-customer risk; #1500; #1362
+AZU-0013 # exp:2026-12-12 Key Vault network ACL - owner-accepted pre-customer risk; #1500; #1361
 # AZU-0022 removed — Cosmos public network is now env-scoped via cosmos_public_network_access
 
-# AVD-AZU-0016: Trivy cannot resolve variable references. purge_protection_enabled
-# defaults to true via var.enable_key_vault_purge_protection.
-AVD-AZU-0016 # exp:2026-09-11 false positive — variable defaults to true
-
-# AVD-AZU-0057: Classic Storage Analytics logging superseded by
-# azurerm_monitor_diagnostic_setting.storage_blob (modern Log Analytics).
-AVD-AZU-0057 # exp:2026-09-11 false positive — modern diagnostics configured; #1360
-
-# AVD-AZU-0061: False positive — infrastructure_encryption_enabled = true is set
-# on the storage account resource. Trivy's dual-pass config scanner misses it.
-AVD-AZU-0061 # exp:2026-09-11 false positive — attribute already set
-
-# AZU-0045: Defender plan tier intentionally set to Free for non-used services
-# to keep costs controlled in this subscription. Active services are explicitly
-# pinned in infra/tofu/defender.tf and reviewed in cost/security decisions.
-AZU-0045 # exp:2026-09-11 accepted cost posture — unused plans Free; active plans Standard; #850
+# AVD-AZU-0057: Modern diagnostics cover blob writes/deletes, not reads or all
+# storage services. Equivalence to the scanner's logging requirement is unproven.
+# Owner accepted this residual coverage gap for the same pre-customer period.
+AVD-AZU-0057 # exp:2026-12-12 logging coverage - owner-accepted pre-customer risk; #1500; #1360
 
 # Container CVEs may only be suppressed when all of these are true:
 # - the component is vendored by an upstream runtime and cannot be upgraded here;
