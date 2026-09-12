@@ -95,10 +95,84 @@ records. Synthetic imagery does not prove real-provider scene identity, scientif
 accuracy, enrichment correctness, EUDR compliance, production auth, or billing.
 Storage/provider interruption and exactly-once charging remain untested.
 
-Next work: publish the success checks with issue-level traceability, then address
-worker-loss recovery and completed-instance duplicate delivery as separate slices.
+Next work at that point: publish the success checks with issue-level traceability,
+then address worker-loss handling and completed-instance duplicate delivery as
+separate slices. The #1498 results below select explicit terminal failure rather
+than claiming automatic recovery.
 The owner authorized publication on PR #1462. No deployments, production
 configuration, security-waiver renewals, or host-clock edits were made.
+
+## Worker-Loss Handling (#1498, 2026-09-12)
+
+Policy: preserve bounded activity retries, do not replay the entire AOI, and
+persist actionable parent failure status with parent/known-child correlation,
+validated completion counts and `inspect_failure_then_resubmit`. Exceptions
+remain chained; no raw exception text is added to custom status. This is failure
+handling, not a claim that interrupted work always recovers.
+
+Fresh isolated runs used the actual Functions host, one Python worker, synthetic
+50-parcel input and disposable Azurite with no outbound network. The strict
+control verified 350 imagery results and exactly 751 evidence artifacts.
+
+| Run | Observation |
+| --- | --- |
+| Control `7035f934-36a0-455a-a9d2-c8a33738f5d4` | Completed; 751 content/identity-verified artifacts with exact inventory; completion observed about 44s after submission |
+| SIGKILL `0fcd894f-65d8-4e9d-92db-37ca92134d55` | PID 49 killed during unfinished child `:aoi-1` download task 8; replacement PID 120; parent Failed observed about 39s after submission; accepted as `verified_terminal_failure`, never recovery |
+| Reviewed SIGKILL `ab503b45-549d-44ee-9688-1415cf3dfdf3` | PID 49 killed during child `:aoi-0` download task 10; replacement PID 122; parent Failed about 39s after submission; unique failed-child/invocation correlation passed the final gate |
+
+The terminal custom status identified failed child `:aoi-2`, zero results already
+validated by the parent out of 50, and the recovery action. Its history contains
+`acquire_composite` scheduling/completion followed by terminal failure, with no
+download scheduling or activity-retry timers in that child. The interrupted
+download child `:aoi-1` separately created and fired retry timers. This establishes
+that the parent failure followed a child-invocation failure, not exhaustion of
+the download activity's retry attempts.
+
+The host recorded the AOI invocation failing with exit 137. Durable persisted
+`Non-Deterministic workflow detected` because the interrupted replay returned no
+previously scheduled acquisition actions. No code changed during either run.
+Both errors are retained as evidence; the public status exposes correlation and
+operator action, not raw host internals. An earlier run
+`12431a6b-c733-43c0-8bb5-6e0d636fdfc3` was initially rejected because the oracle
+expected exit 137 directly in child history. That report remains unchanged; the
+corrected oracle requires the matching failed child history plus a unique
+AOI invocation exit-137 match for the replay-error case. The same child execution's
+replay start and completion must match the host invocation within 100 ms; the
+invocation must span the recorded injection and matching PID exit. Missing,
+stale-generation, or ambiguous correlations fail closed. This is timestamp-based
+local evidence matching, not a distributed tracing or causal certainty claim.
+
+Review caught and fixed both an overly broad log-only match and an offset-window
+ambiguity. The final reviewed run passed the stricter driver end to end, retaining
+failed child `:aoi-35`, execution `ce942ee420374ff9a141cf3043d3e74b`, invocation
+`79f3bb94-a4ce-4840-b253-e6c4bdc5369a`, and PID 49 in `failureCorrelation`.
+Its partial inventory snapshot contained 737 blobs, not a verified evidence set.
+Run `c806c866-7132-45c2-b716-4cff210aa9b1` reached actionable parent failure but
+was correctly rejected because three nearby child failures made attribution
+ambiguous. All outcomes are retained; accepted samples do not define a recovery
+rate. The concurrency profile remained unchanged throughout (one Python worker,
+160 activity and 160 orchestration concurrency limits).
+
+At observation time, the final failed run had 709 project-scoped blobs: 50
+metadata, 658 imagery, and one copied KML; no enrichment manifest. This is an
+inventory snapshot, not verified complete content, final sibling disposition,
+or a measure of lost production data. Siblings can continue after parent failure.
+No cleanup, exactly-once processing, billing effect, scientific correctness or
+production reliability is claimed. The 600-second gate limit is not an SLA;
+approximate poll durations are not performance comparisons.
+
+Local raw reports, full correlated history, inventories and host logs are retained
+under `.git/issue1498/` in `control`, `worker-kill`, `worker-kill-final`,
+`worker-kill-correlated`, and `worker-kill-reviewed`. The control and
+host-restart modes still require full artifact reconciliation. Missing failure
+status/cause, failed controls, timeouts and ambiguous worker replacement are not
+accepted. The historical evidence archived during workspace cleanup is unchanged.
+
+Eventual recovery is tracked separately in #1506: immutable stage inputs/results,
+append-only durable facts, stable idempotency keys, reconciliation that fills
+missing outputs, and counts derived from unique committed results. Replaying a
+stage twice must neither skip work nor double-count it. #1498 does not establish
+that contract, and terminal-failure acceptance must not close the recovery work.
 
 ## Historical Verdict (Before Fixes)
 

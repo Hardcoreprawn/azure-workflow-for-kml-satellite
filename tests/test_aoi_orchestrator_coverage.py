@@ -12,6 +12,62 @@ from __future__ import annotations
 import contextlib
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+
+@pytest.mark.parametrize("thrown", [False, True])
+def test_worker_exit_is_terminal_without_child_replay(thrown: bool) -> None:
+    from blueprints.pipeline.orchestrator import _progressive_pipeline
+
+    cause = RuntimeError("python3 exited with code 137 (0x89)")
+    child = MagicMock(result=cause)
+    context = MagicMock()
+    context.call_sub_orchestrator.return_value = child
+    references = [{"ref": "claims/parcel", "key": "parcel"}]
+    generator = _progressive_pipeline(context, {}, {}, {"aoi_refs": references, "aoi_area_by_name": {}}, "worker-loss")
+    next(generator)
+    with pytest.raises((ValueError, RuntimeError)) as caught:
+        if thrown:
+            generator.throw(cause)
+        else:
+            generator.send(child)
+    assert caught.value is cause or caught.value.__cause__ is cause
+    status = context.set_custom_status.call_args.args[0]
+    assert status["phase"] == "failed"
+    assert status["instance_id"] == "worker-loss"
+    assert status["failed_child_instance_id"] == (None if thrown else "worker-loss:aoi-0")
+    assert status["recovery_action"] == "inspect_failure_then_resubmit"
+    assert status["completed_aois"] == 0
+    context.call_sub_orchestrator.assert_called_once()
+    context.call_sub_orchestrator_with_retry.assert_not_called()
+
+
+@pytest.mark.parametrize("thrown", [False, True])
+def test_worker_failure_after_progress_does_not_reuse_successful_child(thrown: bool) -> None:
+    from blueprints.pipeline.orchestrator import _progressive_pipeline
+    from tests.test_pipeline import _make_aoi_result
+
+    references = [{"ref": f"claims/{index}", "key": str(index)} for index in range(2)]
+    cause = RuntimeError("python3 exited with code 137")
+    children = [MagicMock(result=cause), MagicMock(result={**_make_aoi_result("1"), "aoi_ref": references[1]})]
+    context = MagicMock()
+    context.call_sub_orchestrator.side_effect = children
+    generator = _progressive_pipeline(context, {}, {}, {"aoi_refs": references, "aoi_area_by_name": {}}, "run")
+    next(generator)
+    generator.send(children[1])
+    with pytest.raises((RuntimeError, ValueError)) as caught:
+        if thrown:
+            generator.throw(cause)
+        else:
+            generator.send(children[0])
+    assert caught.value is cause or caught.value.__cause__ is cause
+    status = context.set_custom_status.call_args.args[0]
+    assert status["completed_aois"] == 1
+    assert status["total_aois"] == 2
+    assert status["failed_child_instance_id"] == (None if thrown else "run:aoi-0")
+    assert context.call_sub_orchestrator.call_count == 2
+
+
 # ---------------------------------------------------------------------------
 # Helpers — generator stubs
 # ---------------------------------------------------------------------------

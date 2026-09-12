@@ -401,6 +401,43 @@ the startup logging installer ran before config validation and replay-store setu
 2. Review activity-specific exceptions in App Insights.
 3. Re-run with corrected input or configuration as needed.
 
+### Worker exit during an AOI pipeline (#1498)
+
+Download activities use three total attempts with a five-second first retry
+interval. These retries do not cover a failed invocation of the AOI orchestrator
+itself. The parent does not automatically replay entire AOIs: acquisition may
+have external side effects or select different scenes on a new execution.
+
+When progressive child fan-in fails, `/api/orchestrator/{instance_id}` retains
+`runtimeStatus: Failed` and `customStatus.phase: failed`. Custom status includes
+the parent `instance_id`, `failed_child_instance_id` when known (otherwise null),
+`completed_aois`, `total_aois`, and
+`recovery_action: inspect_failure_then_resubmit`. Counts describe results already
+validated by the parent, not the terminal states of every sibling. Raw exceptions
+are not copied into custom status; the original exception remains chained in
+diagnostics. A killed parent invocation may not execute this handler at all.
+
+1. Retain the input, parent/child IDs, terminal payload, Durable history and host
+   logs. Check the failed child and the active activity independently: one worker
+   can be running several AOIs.
+2. Correlate the child failure with `WorkerProcessExitException` / exit 137 and
+   invocation IDs. Durable can persist `Non-Deterministic workflow detected`
+   when a killed invocation returns no replay actions, even without a code
+   deployment. Do not assume every replay error is a worker exit; retain both
+   the host cause and persisted error.
+3. Inspect all remaining child states and partial output before resubmission.
+   Parent failure does not cancel siblings or delete their artifacts. Partial
+   artifacts must not be presented as a complete evidence assessment.
+4. Resolve the host/configuration problem or escalate with the captured evidence.
+   Once outstanding work is understood, submit the original input as a new run
+   through the normal admission path. This is not resumption, an exactly-once
+   guarantee, or a promise about duplicate charges.
+
+The local worker-kill gate observes for at most 600 seconds and accepts either
+complete verified recovery or a correlated, actionable terminal failure. Timeout
+and ambiguous evidence fail the gate. This observation limit is not a production
+termination SLA. See `docs/LOCAL_RELIABILITY_AUDIT.md` for measured evidence.
+
 ### Provider transient failures
 
 1. Confirm retry/backoff behavior in logs.
