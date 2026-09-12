@@ -493,6 +493,35 @@ class TestExecutionMode:
 
 
 class TestPollingProgress:
+    @pytest.mark.parametrize("payload", [[], {}, {"runtimeStatus": []}, {"runtimeStatus": "private payload"}])
+    def test_invalid_status_payloads_are_classified_without_leaking_content(self, monkeypatch, payload):
+        monkeypatch.setattr(
+            runner.httpx, "get", lambda *args, **kwargs: SimpleNamespace(status_code=200, json=lambda: payload)
+        )
+        assert runner._fetch_poll_status("http://localhost/status") == (200, "invalid_status", None)
+
+    def test_http_errors_are_observed_without_becoming_runtime_status(self, monkeypatch, capsys):
+        clock = {"seconds": 0.0}
+        monkeypatch.setattr(runner.time, "monotonic", lambda: clock["seconds"])
+        monkeypatch.setattr(runner.time, "sleep", lambda seconds: clock.update(seconds=clock["seconds"] + seconds))
+        responses = [
+            SimpleNamespace(status_code=429, json=lambda: {"error": "private payload"}),
+            SimpleNamespace(status_code=503, json=lambda: {"error": "private payload"}),
+            SimpleNamespace(status_code=200, json=lambda: {"runtimeStatus": "Completed"}),
+        ]
+        monkeypatch.setattr(runner.httpx, "get", MagicMock(side_effect=responses))
+        observations = []
+
+        result = runner.poll_orchestration("run-1", timeout=60, interval=3, observations=observations)
+
+        assert result["runtimeStatus"] == "Completed"
+        assert [sample["httpStatus"] for sample in observations] == [429, 503, 200]
+        assert [sample["category"] for sample in observations] == ["rate_limited", "http_error", "status"]
+        assert "private payload" not in json.dumps(observations)
+        output = capsys.readouterr().out
+        assert "http_status=429 category=rate_limited" in output
+        assert "Unknown" not in output
+
     def test_running_orchestration_emits_flushed_heartbeat(self, monkeypatch, capsys):
         clock = {"seconds": 0.0}
         monkeypatch.setattr(runner.time, "monotonic", lambda: clock["seconds"])

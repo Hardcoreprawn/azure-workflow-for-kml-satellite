@@ -357,6 +357,21 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-storage-queue"
+version = "12.17.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "cryptography" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/84/7d/babb616eb1ed1ac5f13cbb336875fd91c9c6f8b1702bf2ff860b222cb833/azure_storage_queue-12.17.0.tar.gz", hash = "sha256:6eb108a88554be371feb2eba9715fa0e3f7baca7b3f00c19ec417fc7ce5b3834", size = 203777, upload-time = "2026-06-08T18:03:16.393Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8c/e3/6aee19df63974d87e55dc0ddf5bb18eb1022cd290b125a46792594a00673/azure_storage_queue-12.17.0-py3-none-any.whl", hash = "sha256:aaef08ee2613f84a3a85e60a059d29567361e5a2af455298bb0e529f0b47d5a1", size = 189526, upload-time = "2026-06-08T18:03:19.139Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2897,6 +2912,7 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "anyio" },
+    { name = "azure-storage-queue" },
     { name = "diff-cover" },
     { name = "hypothesis" },
     { name = "pytest" },
@@ -2934,6 +2950,7 @@ requires-dist = [
     { name = "azure-mgmt-resource", marker = "extra == 'infracost'", specifier = ">=23.0.0" },
     { name = "azure-monitor-query", marker = "extra == 'infracost'", specifier = ">=1.4.0,<3" },
     { name = "azure-storage-blob", specifier = ">=12.23.0" },
+    { name = "azure-storage-queue", marker = "extra == 'dev'", specifier = ">=12.12.0" },
     { name = "diff-cover", marker = "extra == 'dev'", specifier = ">=9.2" },
     { name = "fiona", specifier = ">=1.10.0" },
     { name = "fpdf2", specifier = ">=2.8.0" },

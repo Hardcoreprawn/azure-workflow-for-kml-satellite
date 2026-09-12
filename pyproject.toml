@@ -37,6 +37,7 @@ dev = [
     "diff-cover>=9.2",
     "ruff>=0.8.0",
     "hypothesis>=6.0",
+    "azure-storage-queue>=12.12.0",
 ]
 infracost = [
     "azure-identity>=1.19.0",

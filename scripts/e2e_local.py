@@ -30,6 +30,7 @@ import sys
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -158,21 +159,51 @@ def write_e2e_result(status_payload: dict[str, Any], path: Path = E2E_RESULT_PAT
     path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
 
 
-def wait_for_func_host(*, timeout: float, interval: float = 2.0) -> None:
+def wait_for_func_host(*, timeout: float, interval: float = 2.0, progress_interval: float | None = None) -> None:
     """Block until the func host answers /api/health, or raise TimeoutError."""
     deadline = time.monotonic() + timeout
     attempt = 0
-    while time.monotonic() < deadline:
+    next_progress = 0.0
+    while (now := time.monotonic()) < deadline:
         attempt += 1
+        report_progress = now >= next_progress
         try:
             resp = httpx.get(f"{FUNC_BASE}/api/health", timeout=5.0)
             if resp.status_code == 200:
                 return
         except httpx.TransportError as exc:
-            print(f"  ... health check transport error on attempt {attempt}: {exc}", flush=True)
-        print(f"  ... waiting for func host (attempt {attempt})", flush=True)
+            if report_progress:
+                print(f"  ... health check transport error on attempt {attempt}: {exc}", flush=True)
+        if report_progress:
+            print(f"  ... waiting for func host (attempt {attempt})", flush=True)
+            next_progress = now + (progress_interval if progress_interval is not None else 0.0)
         time.sleep(interval)
     raise TimeoutError(f"func host did not become ready within {timeout}s")
+
+
+def _fetch_poll_status(url: str) -> tuple[int | None, str, dict[str, Any] | None]:
+    try:
+        response = httpx.get(url, timeout=10.0)
+    except httpx.TransportError:
+        return None, "transport_error", None
+    if response.status_code == 429:
+        return 429, "rate_limited", None
+    if response.status_code == 404:
+        return 404, "not_found", None
+    if response.status_code != 200:
+        return response.status_code, "http_error", None
+    try:
+        payload = response.json()
+    except ValueError:
+        return 200, "invalid_json", None
+    statuses = _TERMINAL_STATUSES | {"Pending", "Running", "ContinuedAsNew", "Suspended"}
+    if (
+        not isinstance(payload, dict)
+        or not isinstance(payload.get("runtimeStatus"), str)
+        or payload["runtimeStatus"] not in statuses
+    ):
+        return 200, "invalid_status", None
+    return 200, "status", payload
 
 
 def poll_orchestration(
@@ -181,6 +212,7 @@ def poll_orchestration(
     timeout: float,
     interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
     base: str = FUNC_BASE,
+    observations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Poll the orchestrator status endpoint to a terminal state.
 
@@ -208,17 +240,24 @@ def poll_orchestration(
                 flush=True,
             )
             last_reported_at = now
-        try:
-            resp = httpx.get(url, timeout=10.0)
-        except httpx.TransportError:
+        request_started = time.monotonic()
+        http_status, category, data = _fetch_poll_status(url)
+        sample = {
+            "time": datetime.now(UTC).isoformat(),
+            "monotonic": time.monotonic(),
+            "httpStatus": http_status,
+            "category": category,
+            "requestSeconds": time.monotonic() - request_started,
+            "runtimeStatus": data["runtimeStatus"] if data else None,
+        }
+        if observations is not None:
+            observations.append(sample)
+        if data is None:
+            print(f"  [{instance_id}] http_status={http_status} category={category}", flush=True)
             time.sleep(interval)
             continue
-        if resp.status_code == 404:
-            time.sleep(interval)
-            continue
-        data = resp.json()
         last_payload = data
-        status = data.get("runtimeStatus", "Unknown")
+        status = data["runtimeStatus"]
         if status != last_status:
             now = time.monotonic()
             print(
@@ -313,11 +352,14 @@ def _run_single_case(
         "instanceId": None,
         "runtimeStatus": None,
         "error": None,
+        "pollObservations": [],
     }
     try:
         blob_name, blob_url, content_length = upload_kml(Path(case["inputPath"]), case["container"])
         result["instanceId"] = fire_event_grid(blob_url, blob_name, content_length, case["container"], strict=True)
-        payload = poll_orchestration(result["instanceId"], timeout=timeout, interval=interval)
+        payload = poll_orchestration(
+            result["instanceId"], timeout=timeout, interval=interval, observations=result["pollObservations"]
+        )
         result["runtimeStatus"] = payload.get("runtimeStatus")
         result["output"] = payload.get("output") or {}
         assert_pipeline_succeeded(payload)
