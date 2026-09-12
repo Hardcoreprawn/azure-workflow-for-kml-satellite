@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 from typing import Any, ClassVar, cast
 
-from azure.core.exceptions import ResourceExistsError
+from azure.core import MatchConditions
+from azure.core.exceptions import ResourceExistsError, ResourceModifiedError, ResourceNotFoundError
 from azure.storage.blob import BlobServiceClient, ContentSettings, StorageStreamDownloader
 
 from treesight.config import STORAGE_ACCOUNT_NAME, STORAGE_CONNECTION_STRING
@@ -99,6 +101,34 @@ class BlobStorageClient:
         """Serialise *data* as JSON and upload it."""
         payload = json.dumps(data, indent=2, default=str).encode("utf-8")
         return self.upload_bytes(container, blob_path, payload, content_type="application/json")
+
+    def create_json_if_absent(self, container: str, blob_path: str, data: dict[str, Any]) -> bool:
+        """Create a JSON blob once; return false when another writer won."""
+        payload = json.dumps(data, indent=2, default=str).encode("utf-8")
+        try:
+            self.upload_bytes(container, blob_path, payload, content_type="application/json", overwrite=False)
+        except ResourceExistsError:
+            return False
+        return True
+
+    def delete_blob(self, container: str, blob_path: str) -> None:
+        """Delete a blob used by a failed create-if-absent operation."""
+        blob_path = _safe_blob_path(blob_path)
+        self._client.get_blob_client(container, blob_path).delete_blob()
+
+    def delete_blob_if_older_than(self, container: str, blob_path: str, max_age_seconds: float) -> bool:
+        """Conditionally delete an expired marker; return whether this call won."""
+        blob_path = _safe_blob_path(blob_path)
+        blob = self._client.get_blob_client(container, blob_path)
+        try:
+            properties = blob.get_blob_properties()
+            last_modified = properties.last_modified
+            if last_modified is None or datetime.now(UTC) - last_modified < timedelta(seconds=max_age_seconds):
+                return False
+            blob.delete_blob(etag=properties.etag, match_condition=MatchConditions.IfNotModified)
+        except (ResourceModifiedError, ResourceNotFoundError):
+            return False
+        return True
 
     def download_bytes(self, container: str, blob_path: str) -> bytes:
         """Download a blob and return its raw bytes."""

@@ -242,6 +242,21 @@ def test_duplicate_probe_rejects_second_execution(monkeypatch, tmp_path) -> None
     assert evidence["after"] == ["second"]
 
 
+def test_duplicate_probe_accepts_same_execution(monkeypatch, tmp_path) -> None:
+    from scripts import reliability_exercise
+
+    log = tmp_path / "host.log"
+    log.write_text("Started orchestration instance=run\n")
+    monkeypatch.setattr(reliability_exercise, "execution_ids", lambda instance: {"first"})
+    monkeypatch.setattr(reliability_exercise.harness, "fire_event_grid", lambda *args, **kwargs: None)
+    monkeypatch.setattr(reliability_exercise, "DUPLICATE_DEDUP_TIMEOUT_SECONDS", 0.01)
+    evidence = {}
+    reliability_exercise.exercise_duplicate("run", log, "url", "file", 1, "container", evidence)
+    assert evidence["before"] == ["first"]
+    assert evidence["after"] == ["first"]
+    assert evidence["deduplicated"] is True
+
+
 def test_worker_fault_targets_exactly_one_observed_python_worker(monkeypatch):
     from scripts import reliability_exercise
 

@@ -34,7 +34,11 @@ class _FakeBlob:
             size=11,
             content_settings=SimpleNamespace(content_type="application/json"),
             last_modified=datetime(2026, 1, 2, tzinfo=UTC),
+            etag='"etag-1"',
         )
+
+    def delete_blob(self, **_kwargs):
+        return None
 
 
 class _FakeContainer:
@@ -171,6 +175,32 @@ class TestBlobStorageClientMethods:
 
         assert url == fake.blob.url
         assert fake.blob.upload_calls
+
+    def test_create_json_if_absent_reports_atomic_winner_or_conflict(self):
+        fake = _FakeServiceClient()
+        client = storage_client.BlobStorageClient.__new__(storage_client.BlobStorageClient)
+        client._client = fake
+
+        assert client.create_json_if_absent("kml-input", "marker.json", {"id": "run"}) is True
+        assert fake.blob.upload_calls[-1][1] is False
+
+        conflict = ResourceExistsError("BlobAlreadyExists")
+        fake.blob.upload_blob = Mock(side_effect=conflict)
+        assert client.create_json_if_absent("kml-input", "marker.json", {"id": "run"}) is False
+
+    def test_delete_blob_uses_safe_marker_path(self):
+        fake = _FakeServiceClient()
+        client = storage_client.BlobStorageClient.__new__(storage_client.BlobStorageClient)
+        client._client = fake
+
+        client.delete_blob("kml-input", "marker.json")
+
+    def test_delete_blob_if_older_than_uses_etag_condition(self):
+        fake = _FakeServiceClient()
+        client = storage_client.BlobStorageClient.__new__(storage_client.BlobStorageClient)
+        client._client = fake
+
+        assert client.delete_blob_if_older_than("kml-input", "marker.json", 1) is True
 
     def test_download_json_requires_dict(self):
         fake = _FakeServiceClient()

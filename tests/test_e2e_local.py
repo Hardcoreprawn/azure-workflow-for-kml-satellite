@@ -611,6 +611,31 @@ class TestPollingProgress:
 
         assert "[waiting-run] status=Awaiting status elapsed=20s" in capsys.readouterr().out
 
+    def test_not_found_status_has_explicit_early_abort(self, monkeypatch):
+        clock = {"seconds": 0.0}
+        monkeypatch.setattr(runner.time, "monotonic", lambda: clock["seconds"])
+        monkeypatch.setattr(runner.time, "sleep", lambda seconds: clock.update(seconds=clock["seconds"] + seconds))
+        monkeypatch.setattr(runner.httpx, "get", MagicMock(return_value=SimpleNamespace(status_code=404)))
+
+        with pytest.raises(TimeoutError, match="remained not found for 30s"):
+            runner.poll_orchestration("missing-run", timeout=600, interval=10, not_found_timeout=30)
+
+    def test_poll_request_timeout_is_clamped_to_remaining_deadline(self, monkeypatch):
+        clock = {"seconds": 0.0}
+        monkeypatch.setattr(runner.time, "monotonic", lambda: clock["seconds"])
+        monkeypatch.setattr(runner.time, "sleep", lambda seconds: clock.update(seconds=clock["seconds"] + seconds))
+        requests = []
+
+        def fetch(*_args, **kwargs):
+            requests.append(kwargs["timeout"])
+            clock["seconds"] += kwargs["timeout"]
+            return SimpleNamespace(status_code=404)
+
+        monkeypatch.setattr(runner.httpx, "get", fetch)
+        with pytest.raises(TimeoutError):
+            runner.poll_orchestration("slow-run", timeout=3, interval=10, not_found_timeout=30)
+        assert requests == [3.0]
+
 
 class TestScenarioCommand:
     def test_partial_failure_persists_evidence_before_raising(self, monkeypatch, tmp_path: Path):

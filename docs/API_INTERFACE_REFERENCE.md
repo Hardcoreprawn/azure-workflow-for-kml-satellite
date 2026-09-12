@@ -79,6 +79,22 @@ auth, quota, or billing contract changes. See the worker-exit runbook section.
 - Event Grid trigger: `blob_trigger` (blueprints/pipeline/blob_trigger.py)
 - Main orchestrator: `treesight_orchestrator` (blueprints/pipeline/orchestrator.py)
 
+### Event Delivery Identity
+
+For API-managed `analysis/{submission_id}.kml|kmz` blobs, the submission UUID is
+the Durable instance identity. A redelivered Event Grid notification reuses the
+existing instance and does not start a second execution generation, including
+after completion. Concurrent deliveries resolve to the instance admitted first.
+Admission is guarded by a write-once Blob Storage marker created with
+`overwrite=false`; the marker winner is the only delivery allowed to call
+`start_new`. If start fails before Durable admission, that delivery removes its
+own marker so Event Grid can retry. A marker conflict is a duplicate, not a new
+attempt.
+An explicit user retry must create a new submission ID; it is not represented by
+redelivering the original blob event. Storage-native uploads without a submission
+UUID continue to use their Event Grid event ID and do not receive this API-managed
+deduplication contract.
+
 ## Activity Functions and Contracts
 
 Durable activity functions are defined in blueprints/pipeline/activities.py.

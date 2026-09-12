@@ -395,6 +395,21 @@ the startup logging installer ran before config validation and replay-store setu
 2. Confirm uploaded blob is in expected input container and has .kml suffix.
 3. Check trigger logs for validation rejection.
 
+### Duplicate Event Grid delivery
+
+API-managed submissions use their submission UUID as the Durable instance ID.
+Repeated or concurrent delivery of the same blob event is a no-op when that
+instance already exists; it must not create a new generation after completion.
+The trigger first creates a hashed write-once marker in `kml-input` with
+`overwrite=false`. Only the marker winner calls Durable `start_new`; a failed
+start removes its marker so the Event Grid retry can make another attempt.
+Check the original instance history and status rather than resubmitting the same
+event. A user-requested retry must create a new submission ID and follow normal
+admission/quota handling. This ingress guarantee prevents duplicate orchestration
+generations; it does not claim exactly-once physical provider execution, stage
+idempotency, or billing semantics. Those recovery concerns are tracked separately
+in #1506.
+
 ### Orchestration failed in activity stage
 
 1. Use /api/orchestrator/{instance_id} for stage/output summary.

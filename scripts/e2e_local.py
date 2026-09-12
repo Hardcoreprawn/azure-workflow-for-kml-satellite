@@ -181,9 +181,9 @@ def wait_for_func_host(*, timeout: float, interval: float = 2.0, progress_interv
     raise TimeoutError(f"func host did not become ready within {timeout}s")
 
 
-def _fetch_poll_status(url: str) -> tuple[int | None, str, dict[str, Any] | None]:
+def _fetch_poll_status(url: str, *, timeout: float = 10.0) -> tuple[int | None, str, dict[str, Any] | None]:
     try:
-        response = httpx.get(url, timeout=10.0)
+        response = httpx.get(url, timeout=timeout)
     except httpx.TransportError:
         return None, "transport_error", None
     if response.status_code == 429:
@@ -213,6 +213,7 @@ def poll_orchestration(
     interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
     base: str = FUNC_BASE,
     observations: list[dict[str, Any]] | None = None,
+    not_found_timeout: float | None = None,
 ) -> dict[str, Any]:
     """Poll the orchestrator status endpoint to a terminal state.
 
@@ -231,6 +232,7 @@ def poll_orchestration(
     last_reported_at = started_at
     last_status = ""
     last_payload: dict[str, Any] | None = None
+    not_found_started_at: float | None = None
     while time.monotonic() < deadline:
         now = time.monotonic()
         if now - last_reported_at >= E2E_PROGRESS_INTERVAL_SECONDS:
@@ -241,7 +243,8 @@ def poll_orchestration(
             )
             last_reported_at = now
         request_started = time.monotonic()
-        http_status, category, data = _fetch_poll_status(url)
+        request_timeout = max(0.001, min(10.0, deadline - time.monotonic()))
+        http_status, category, data = _fetch_poll_status(url, timeout=request_timeout)
         sample = {
             "time": datetime.now(UTC).isoformat(),
             "monotonic": time.monotonic(),
@@ -254,8 +257,16 @@ def poll_orchestration(
             observations.append(sample)
         if data is None:
             print(f"  [{instance_id}] http_status={http_status} category={category}", flush=True)
-            time.sleep(interval)
+            if category == "not_found" and not_found_timeout is not None:
+                not_found_started_at = not_found_started_at or now
+                if now - not_found_started_at >= not_found_timeout:
+                    raise TimeoutError(
+                        f"Orchestration {instance_id} remained not found for {not_found_timeout}s; "
+                        "aborting before the full execution timeout"
+                    )
+            time.sleep(min(interval, max(0.0, deadline - time.monotonic())))
             continue
+        not_found_started_at = None
         last_payload = data
         status = data["runtimeStatus"]
         if status != last_status:
@@ -268,7 +279,7 @@ def poll_orchestration(
             last_status = status
         if status in _TERMINAL_STATUSES:
             return data
-        time.sleep(interval)
+        time.sleep(min(interval, max(0.0, deadline - time.monotonic())))
     custom = (last_payload or {}).get("customStatus")
     raise TimeoutError(
         "Orchestration "
