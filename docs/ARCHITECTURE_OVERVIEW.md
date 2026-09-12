@@ -16,6 +16,14 @@ Use this as the default mental model when building features:
 4. Event Grid webhook target must resolve to orchestrator `blob_trigger`.
 5. Route registration and auth behavior must stay symmetric across entrypoints via shared modules.
 
+Activity retries and child-orchestration failures are separate boundaries.
+Downloads use Durable activity retries (three attempts, five-second first
+interval); a failed AOI orchestrator invocation is not retried as a whole. The
+parent's progressive fan-in persists actionable failed status and preserves the
+cause chain instead of replaying acquisition. Worker replacement alone does not
+prove recovery. See the worker-exit section in `docs/OPERATIONS_RUNBOOK.md` and
+the local evidence in `docs/LOCAL_RELIABILITY_AUDIT.md`.
+
 ### Naming Convention
 
 All resources are named using `{prefix}-{project_code}-{environment}` where:

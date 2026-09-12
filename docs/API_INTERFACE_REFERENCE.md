@@ -60,6 +60,22 @@ so replay retains the namespace. Drain in-flight runs before deploying these
 internal pre-live contract/replay changes; old child results lack the reference.
 No auth, quota, billing, or public request shape is changed.
 
+### Progressive Failure Semantics
+
+If progressive child fan-in fails, the parent re-raises the original failure
+(preserving the cause chain) without automatically replaying the AOI. The existing
+`customStatus` object records `phase: failed`, `step: aoi_pipeline`, the parent
+`instance_id`, `failed_child_instance_id` (null if a thrown failure cannot be
+attributed), `completed_aois`, `total_aois`, and
+`recovery_action: inspect_failure_then_resubmit`. Completed counts are only the
+results validated by the parent, not a claim that remaining children stopped.
+`runtimeStatus: Failed` is authoritative; partial outputs are not complete evidence.
+Raw failure details remain in diagnostics, not the added custom-status fields.
+Consumers should inspect the correlated failure and outstanding child work before
+submitting a new run. A killed parent invocation may bypass this application
+handler; do not require custom status for every possible failure. No request,
+auth, quota, or billing contract changes. See the worker-exit runbook section.
+
 - Event Grid trigger: `blob_trigger` (blueprints/pipeline/blob_trigger.py)
 - Main orchestrator: `treesight_orchestrator` (blueprints/pipeline/orchestrator.py)
 

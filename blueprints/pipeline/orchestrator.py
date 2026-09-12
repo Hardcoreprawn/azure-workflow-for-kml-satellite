@@ -101,8 +101,25 @@ def _progressive_pipeline(
     pending = list(sub_tasks)
     all_results: list[dict[str, Any]] = []
     while pending:
-        winner = yield context.task_any(pending)
-        _validate_aoi_results([winner.result], [aoi_refs[sub_tasks.index(winner)]])
+        failed_child_instance_id = None
+        try:
+            winner = yield context.task_any(pending)
+            child_index = sub_tasks.index(winner)
+            failed_child_instance_id = f"{instance_id}:aoi-{child_index}"
+            _validate_aoi_results([winner.result], [aoi_refs[child_index]])
+        except Exception:
+            context.set_custom_status(
+                {
+                    "phase": "failed",
+                    "step": "aoi_pipeline",
+                    "instance_id": instance_id,
+                    "failed_child_instance_id": failed_child_instance_id,
+                    "completed_aois": len(all_results),
+                    "total_aois": total,
+                    "recovery_action": "inspect_failure_then_resubmit",
+                }
+            )
+            raise
         all_results.append(winner.result)
         pending.remove(winner)
         context.set_custom_status(

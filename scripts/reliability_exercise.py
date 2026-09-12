@@ -16,8 +16,9 @@ from azure.data.tables import TableServiceClient
 from azure.storage.blob import BlobServiceClient
 
 from scripts import local_capacity as capacity
-from scripts.capacity_telemetry import ACTIVITY_START, HUB_NAME, STORAGE_TIMEOUT_SECONDS
+from scripts.capacity_telemetry import ACTIVITY_START, HISTORY_FIELDS, HUB_NAME, STORAGE_TIMEOUT_SECONDS
 from scripts.local_capacity import harness, process_snapshot
+from scripts.worker_failure_evidence import correlate_worker_exit
 
 
 def kill_worker() -> int:
@@ -90,6 +91,60 @@ def execution_ids(instance: str) -> set[str]:
             "PartitionKey eq @instance", parameters={"instance": instance}, select=["ExecutionId"]
         )
         return {row["ExecutionId"] for row in rows if row.get("ExecutionId")}
+
+
+def collect_failure_evidence(instance: str, project: str) -> dict:
+    with TableServiceClient.from_connection_string(
+        harness.AZURITE_CONN_STR,
+        retry_total=0,
+        connection_timeout=STORAGE_TIMEOUT_SECONDS,
+        read_timeout=STORAGE_TIMEOUT_SECONDS,
+    ) as service:
+        rows = service.get_table_client(HUB_NAME + "History").query_entities(
+            "PartitionKey ge @lower and PartitionKey lt @upper",
+            parameters={"lower": instance, "upper": instance + ";"},
+            select=[*HISTORY_FIELDS, "InstanceId", "Reason", "Details", "Result"],
+        )
+        history = [dict(row) for row in rows]
+    with BlobServiceClient.from_connection_string(harness.AZURITE_CONN_STR) as service:
+        blobs = service.get_container_client("kml-output").list_blobs()
+        inventory = [
+            {"name": blob.name, "size": blob.size} for blob in blobs if project in PurePosixPath(blob.name).parts
+        ]
+    return {"history": history, "partialInventory": inventory, "inventoryIsTerminal": False}
+
+
+def verify_worker_failure(result: dict, history: list[dict], log: str, injection: dict | None = None) -> dict:
+    status = result.get("customStatus") or {}
+    instance = result["instanceId"]
+    child = status.get("failed_child_instance_id")
+    if (
+        result.get("runtimeStatus") != "Failed"
+        or result.get("status") != "Failed"
+        or status.get("phase") != "failed"
+        or status.get("instance_id") != instance
+        or child not in {f"{instance}:aoi-{index}" for index in range(50)}
+        or status.get("recovery_action") != "inspect_failure_then_resubmit"
+        or status.get("total_aois") != 50
+        or type(status.get("completed_aois")) is not int
+        or not 0 <= status["completed_aois"] < 50
+    ):
+        raise ValueError("worker failure lacks actionable correlated terminal status")
+    failures = [
+        row
+        for row in history
+        if row.get("PartitionKey") == child
+        and row.get("EventType") == "ExecutionCompleted"
+        and row.get("OrchestrationStatus") == "Failed"
+    ]
+    if len(failures) != 1:
+        raise ValueError("failed child history does not retain the worker-exit cause")
+    cause = str(failures[0].get("Result", ""))
+    if "exited with code 137" in cause:
+        return {"childInstanceId": child, "cause": cause}
+    if cause.startswith("Non-Deterministic workflow detected:"):
+        return correlate_worker_exit(child, history, log, injection or {})
+    raise ValueError("failed child history does not retain the worker-exit cause")
 
 
 def exercise_duplicate(
@@ -182,11 +237,21 @@ def run_exercise(fault: str, directory: Path) -> dict:
             "status": "Succeeded" if payload["runtimeStatus"] == "Completed" else "Failed",
             "runtimeStatus": payload["runtimeStatus"],
             "output": payload.get("output", {}),
+            "customStatus": payload.get("customStatus"),
         }
         report["result"] = result
-        capacity.assert_complete(result, parcels=50, images=350)
-        report["verifiedBlobs"] = capacity.verify_artifacts(result)
-        verify_inventory(result)
+        if fault == "worker-kill":
+            report["failureEvidence"] = collect_failure_evidence(instance, Path(case["inputPath"]).stem)
+        if fault == "worker-kill" and result["runtimeStatus"] == "Failed":
+            report["failureCorrelation"] = verify_worker_failure(
+                result, report["failureEvidence"]["history"], log.read_text(errors="replace"), report["injection"]
+            )
+            report["outcome"] = "verified_terminal_failure"
+        else:
+            capacity.assert_complete(result, parcels=50, images=350)
+            report["verifiedBlobs"] = capacity.verify_artifacts(result)
+            verify_inventory(result)
+            report["outcome"] = "verified_recovery"
         if fault == "duplicate-event":
             exercise_duplicate(instance, log, blob_url, blob_name, length, case["container"], report["injection"])
         report["accepted"] = True
@@ -203,7 +268,7 @@ def run_exercise(fault: str, directory: Path) -> dict:
             except Exception as exc:
                 report["accepted"] = False
                 report.setdefault("shutdownErrors", []).append(str(exc))
-        (directory / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+        (directory / "report.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
         print(f"RELIABILITY accepted={report['accepted']} fault={fault}", flush=True)
     return report
 
