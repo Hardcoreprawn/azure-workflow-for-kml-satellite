@@ -77,12 +77,15 @@ class TestBuildPipelineSummary:
                 "downloads_completed": 2,
                 "downloads_succeeded": 2,
                 "downloads_failed": 0,
-                "download_results": [{"state": "completed"}] * 2,
+                "download_results": [{"state": "completed", "blob_path": f"raw/{index}.tif"} for index in range(2)],
                 "pp_completed": 2,
                 "pp_clipped": 2,
                 "pp_reprojected": 1,
                 "pp_failed": 0,
-                "post_process_results": [{"state": "completed"}] * 2,
+                "post_process_results": [
+                    {"source_blob_path": f"raw/{index}.tif", "clipped_blob_path": f"clip/{index}.tif"}
+                    for index in range(2)
+                ],
             },
         )
         assert result["status"] == "completed"
@@ -1145,7 +1148,7 @@ class TestProgressivePipeline:
 
         ctx = MagicMock()
         task_a = MagicMock()
-        task_a.result = _make_aoi_result("A")
+        task_a.result = {**_make_aoi_result("A"), "aoi_ref": {"ref": "blob://1", "key": "A"}}
         ctx.call_sub_orchestrator.return_value = task_a
         ctx.task_any.return_value = "any_sentinel"
 

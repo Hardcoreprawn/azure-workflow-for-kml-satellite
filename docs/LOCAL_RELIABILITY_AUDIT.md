@@ -7,6 +7,53 @@ is not scientific validation or legal compliance certification.
 
 ## Follow-up: Tightened Checks (2026-09-12)
 
+### Acceptance Follow-through
+
+The parent now validates each winner against the reference of the task that was
+actually dispatched, before accepting its result. Generator regressions reject
+swapped, missing, and unexpected references while allowing out-of-order winners
+with duplicate display names. The final expected-reference-set check remains.
+
+Serverless summary completion additionally requires distinct, nonempty raw and
+clipped paths, exactly one post-process source per raw download, and disjoint raw
+and clipped output sets. Duplicate downloads, substituted sources, missing outputs,
+and raw-as-clipped aliases produce `partial_imagery`; available metadata remains
+visible. A valid no-imagery search also produces `partial_imagery`, not a claim of
+complete imagery evidence.
+
+The synthetic oracle compares raster shape, band types, nodata, valid-value count,
+and extrema against the canonical constant-valued stub. Manifests must pass the
+existing Pydantic schema. Known raster-reference fields, including frame-plan
+references, must resolve to verified TIFFs; extensionless and JSON-as-raster
+references are rejected.
+
+Fresh 50-parcel control `c396a4af-4e90-4445-9088-93b01fce5ae7` produced 751
+verified blobs. The final oracle reaccepted that healthy control, then rejected
+eight real Azurite injections: corrupt, empty, truncated, wrong pixels, wrong
+parcel geometry, stale metadata run identity, dangling manifest reference, and
+missing blob. Each injection used a unique copied path; only probe-owned blobs
+were removed. Reproduce against a control report using:
+
+```sh
+uv run python -m scripts.artifact_fault_probe \
+  --control .capacity-evidence/requirements-control/report.json \
+  --output .capacity-evidence/artifact-probes.json
+```
+
+Local evidence: `requirements-control/report.json` and
+`requirements-artifact-probes-final.json` under `.capacity-evidence/`. The final
+representative serial and parallel results are preserved separately as
+`requirements-final-serial.json` and `requirements-final-parallel.json`, with
+matching host logs. Both used fresh network-isolated storage and the real host.
+
+This closes the tested false-acceptance gaps, not every reliability requirement.
+Batch remains counter-based. Scene basenames reconcile raw to clipped outputs,
+but there is no independent expected acquisition ledger: synthetic scene IDs are
+random, and enrichment frames in this profile have unavailable scene references.
+The tests do not establish arbitrary metadata semantic validity, general recovery,
+scientific accuracy, or clock-valid capacity comparisons. Those issue criteria
+remain open; no additional issue is marked closed by this evidence.
+
 Local changes for #1495/#1496/#1497 and error masking in #1489 now reject the
 tested false-success conditions. Final status reconciles successful records with
 counts; progressive fan-in checks the exact original claim-reference set and
@@ -50,7 +97,8 @@ Storage/provider interruption and exactly-once charging remain untested.
 
 Next work: publish the success checks with issue-level traceability, then address
 worker-loss recovery and completed-instance duplicate delivery as separate slices.
-No commits, deployments, production configuration, or host-clock edits were made.
+The owner authorized publication on PR #1462. No deployments, production
+configuration, security-waiver renewals, or host-clock edits were made.
 
 ## Historical Verdict (Before Fixes)
 

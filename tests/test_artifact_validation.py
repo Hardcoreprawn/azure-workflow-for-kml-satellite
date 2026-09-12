@@ -7,6 +7,53 @@ import pytest
 from scripts.artifact_validation import validate_content
 
 
+@pytest.mark.parametrize("fault", ["pixels", "nodata"])
+def test_synthetic_content_rejects_readable_but_wrong_pixels(fault: str) -> None:
+    from rasterio.io import MemoryFile
+
+    from scripts.artifact_validation import validate_synthetic_raster
+    from treesight.providers.stub import make_stub_geotiff
+
+    payload = make_stub_geotiff([0, 0, 1, 1])
+    validate_synthetic_raster(validate_content("raw.tif", payload))
+    with MemoryFile(payload) as memory:
+        with memory.open() as source:
+            pixels, profile = source.read(), source.profile
+    profile.pop("blockxsize", None)
+    if fault == "pixels":
+        pixels[:, 0, 0] = 17
+    else:
+        profile["nodata"] = 0
+    with MemoryFile() as changed:
+        with changed.open(**profile) as destination:
+            destination.write(pixels)
+        with pytest.raises(ValueError, match="synthetic"):
+            validate_synthetic_raster(validate_content("wrong.tif", changed.read()))
+
+
+@pytest.mark.parametrize("fault", ["schema", "missing-reference", "extensionless", "wrong-type", "singular"])
+def test_manifest_schema_and_references_are_validated(fault: str) -> None:
+    from scripts.artifact_validation import validate_manifest
+
+    manifest = {
+        "schema_version": "enrichment-manifest/v2",
+        "run": {},
+        "summary": {},
+        "ndvi_raster_paths": ["enrichment/missing.tif"],
+    }
+    if fault == "schema":
+        manifest["summary"] = "invalid"
+    elif fault == "extensionless":
+        manifest["ndvi_raster_paths"] = ["missing"]
+    elif fault == "wrong-type":
+        manifest["ndvi_raster_paths"] = ["meta.json"]
+    elif fault == "singular":
+        manifest["ndvi_raster_paths"] = []
+        manifest["summary"] = {"frame_plan": [{"ndvi_raster_path": "missing"}]}
+    with pytest.raises(ValueError, match="artifact"):
+        validate_manifest(manifest, {"meta.json"})
+
+
 def test_fixture_reconciliation_rejects_substituted_parcel(tmp_path) -> None:
     from scripts.artifact_validation import validate_fixture_metadata
 

@@ -198,6 +198,7 @@ class PipelineSummary(PipelineSummaryCounts):
             and self.metadata_count == self.aoi_count
             and self.post_process_completed + batch_succeeded == self.downloads_succeeded
             and self._records_complete(batch_succeeded)
+            and self._output_identities_complete()
         )
         self.status = "completed" if all_good else "partial_imagery"
         self.message = (
@@ -224,6 +225,20 @@ class PipelineSummary(PipelineSummaryCounts):
                 result.state == "completed" and not result.error and not result.clip_error
                 for result in self.post_process_results
             )
+        )
+
+    def _output_identities_complete(self) -> bool:
+        raw = [result.blob_path for result in self.download_results]
+        clipped = [result.clipped_blob_path for result in self.post_process_results]
+        sources = [result.source_blob_path for result in self.post_process_results]
+        return (
+            all(raw)
+            and all(clipped)
+            and len(raw) == len(set(raw))
+            and len(clipped) == len(set(clipped))
+            and len(sources) == len(set(sources))
+            and set(sources) == set(raw)
+            and set(raw).isdisjoint(clipped)
         )
 
     @computed_field  # type: ignore[prop-decorator]

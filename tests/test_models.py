@@ -288,8 +288,11 @@ class TestPipelineSummary:
             post_process_failed=0,
             metadata_results=[MetadataResult(metadata_path=f"meta-{index}.json") for index in range(2)],
             imagery_outcomes=[ImageryOutcome(state="ready") for _ in range(2)],
-            download_results=[DownloadResult(state="completed") for _ in range(2)],
-            post_process_results=[PostProcessResult(state="completed") for _ in range(2)],
+            download_results=[DownloadResult(blob_path=f"raw/{index}.tif") for index in range(2)],
+            post_process_results=[
+                PostProcessResult(source_blob_path=f"raw/{index}.tif", clipped_blob_path=f"clip/{index}.tif")
+                for index in range(2)
+            ],
         )
         s.compute_status()
         assert s.status == "completed"

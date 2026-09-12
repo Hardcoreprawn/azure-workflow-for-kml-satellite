@@ -49,10 +49,17 @@ def test_summary_fault_characterization(fault: str, expected_status: str) -> Non
                 "downloads_completed": 1,
                 "downloads_succeeded": 1,
                 "downloads_failed": 0,
-                "download_results": [{"aoi_feature_name": name, "state": "completed"}],
+                "download_results": [{"aoi_feature_name": name, "state": "completed", "blob_path": f"raw/{name}.tif"}],
                 "pp_completed": 1,
                 "pp_failed": 0,
-                "post_process_results": [{"aoi_feature_name": name, "clipped": True}],
+                "post_process_results": [
+                    {
+                        "aoi_feature_name": name,
+                        "clipped": True,
+                        "source_blob_path": f"raw/{name}.tif",
+                        "clipped_blob_path": f"clip/{name}.tif",
+                    }
+                ],
             },
         }
         for name in ("parcel-a", "parcel-b")
@@ -94,8 +101,10 @@ def test_completed_batch_work_does_not_require_serverless_postprocessing() -> No
             "downloads_completed": 2,
             "batch_succeeded": 1,
             "pp_completed": 1,
-            "download_results": [{"state": "completed"}],
-            "post_process_results": [{"state": "completed"}],
+            "download_results": [{"state": "completed", "blob_path": "raw.tif"}],
+            "post_process_results": [
+                {"state": "completed", "source_blob_path": "raw.tif", "clipped_blob_path": "clip.tif"}
+            ],
         },
     )
     assert summary["status"] == "completed"

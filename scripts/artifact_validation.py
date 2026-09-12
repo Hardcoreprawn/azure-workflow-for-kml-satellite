@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from functools import cache
 from pathlib import Path, PurePosixPath
 
 import numpy as np
@@ -15,7 +16,9 @@ from treesight.constants import (
     LOCAL_AUDIT_MAX_ARTIFACT_BYTES,
     LOCAL_AUDIT_MAX_RASTER_VALUES,
 )
+from treesight.models.enrichment_manifest import EnrichmentManifestV2
 from treesight.parsers.lxml_parser import parse_kml_lxml
+from treesight.providers.stub import make_stub_geotiff
 
 
 def validate_content(path: str, payload: bytes) -> dict:
@@ -38,7 +41,16 @@ def validate_content(path: str, payload: bytes) -> dict:
             pixels = raster.read(masked=True)
             if not pixels.count() or not np.isfinite(pixels.compressed()).all():
                 raise ValueError(f"invalid raster artifact pixels: {path}")
-            return {"bounds": list(raster.bounds), "crs": raster.crs.to_string()}
+            return {
+                "bounds": list(raster.bounds),
+                "crs": raster.crs.to_string(),
+                "shape": [raster.count, raster.height, raster.width],
+                "dtypes": list(raster.dtypes),
+                "nodata": raster.nodata,
+                "minimum": float(pixels.min()),
+                "maximum": float(pixels.max()),
+                "validValues": int(pixels.count()),
+            }
     except RasterioIOError as exc:
         raise ValueError(f"invalid raster artifact: {path}") from exc
 
@@ -107,7 +119,51 @@ def validate_fixture_outputs(output: dict, documents: dict[str, dict], fixture: 
         counts = Counter(PurePosixPath(path).parent.name for path in output["artifacts"][group])
         if counts != expected:
             raise ValueError("artifact per-parcel scene count mismatch")
+        for path in output["artifacts"][group]:
+            validate_synthetic_raster(documents[path])
     manifest_path = PurePosixPath(output["enrichmentManifest"])
     run = documents[str(manifest_path)].get("run", {})
     if run.get("project_name") != fixture.stem or run.get("timestamp") != manifest_path.parent.name:
         raise ValueError("artifact manifest run identity mismatch")
+    validate_manifest(documents[str(manifest_path)], set(documents))
+
+
+@cache
+def _synthetic_signature() -> dict:
+    return validate_content("expected.tif", make_stub_geotiff())
+
+
+def validate_synthetic_raster(document: dict) -> None:
+    expected = _synthetic_signature()
+    fields = ("shape", "dtypes", "nodata", "minimum", "maximum", "validValues")
+    if any(document.get(field) != expected[field] for field in fields):
+        raise ValueError("artifact differs from expected synthetic raster content")
+
+
+def validate_manifest(manifest: dict, verified_paths: set[str]) -> None:
+    try:
+        EnrichmentManifestV2.model_validate(manifest)
+    except ValueError as exc:
+        raise ValueError("invalid artifact manifest schema") from exc
+    pending = [manifest]
+    for _ in range(LOCAL_AUDIT_MAX_ARTIFACT_BYTES):
+        if not pending:
+            return
+        value = pending.pop()
+        if isinstance(value, dict):
+            _validate_raster_references(value.get("ndvi_raster_paths", []), verified_paths)
+            _validate_raster_references([value.get("ndvi_raster_path"), value.get("artifact_path")], verified_paths)
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+        elif isinstance(value, str) and value.endswith((".tif", ".json")) and value not in verified_paths:
+            raise ValueError(f"unverified artifact manifest reference: {value}")
+    raise ValueError("artifact manifest exceeds validation budget")
+
+
+def _validate_raster_references(paths: list, verified_paths: set[str]) -> None:
+    if not isinstance(paths, list):
+        raise ValueError("invalid artifact raster reference list")
+    for path in paths:
+        if path is not None and (not isinstance(path, str) or not path.endswith(".tif") or path not in verified_paths):
+            raise ValueError("unverified artifact raster reference")

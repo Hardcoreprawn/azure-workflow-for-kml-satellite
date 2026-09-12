@@ -2,10 +2,81 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 import pytest
 
 from blueprints.pipeline._aggregation import _aggregate_aoi_results
+
+
+@pytest.mark.parametrize(
+    "fault", ["none", "duplicate-download", "wrong-source", "missing-output", "aliased-output", "no-imagery"]
+)
+def test_summary_reconciles_output_identity_and_retains_partial_evidence(fault: str) -> None:
+    from treesight.models.outcomes import PipelineSummary
+
+    summary = PipelineSummary.model_validate(
+        {
+            "aoi_count": 2,
+            "metadata_count": 2,
+            "imagery_ready": 2,
+            "downloads_completed": 2,
+            "downloads_succeeded": 2,
+            "post_process_completed": 2,
+            "metadata_results": [{"metadata_path": f"meta/{index}.json"} for index in range(2)],
+            "imagery_outcomes": [{"state": "ready"}] * 2,
+            "download_results": [{"blob_path": f"raw/{index}.tif"} for index in range(2)],
+            "post_process_results": [
+                {"source_blob_path": f"raw/{index}.tif", "clipped_blob_path": f"clip/{index}.tif"} for index in range(2)
+            ],
+        }
+    )
+    if fault == "duplicate-download":
+        summary.download_results[1].blob_path = summary.download_results[0].blob_path
+    elif fault == "wrong-source":
+        summary.post_process_results[1].source_blob_path = "other-run.tif"
+    elif fault == "missing-output":
+        summary.post_process_results[1].clipped_blob_path = ""
+    elif fault == "aliased-output":
+        summary.post_process_results[1].clipped_blob_path = summary.download_results[1].blob_path
+    elif fault == "no-imagery":
+        summary.imagery_ready = 0
+        summary.imagery_outcomes = []
+        summary.downloads_succeeded = summary.downloads_completed = summary.post_process_completed = 0
+        summary.download_results = []
+        summary.post_process_results = []
+    summary.compute_status()
+    assert summary.status == ("completed" if fault == "none" else "partial_imagery")
+    assert len(summary.artifacts["metadataPaths"]) == 2
+
+
+@pytest.mark.parametrize("fault", ["none", "swapped", "missing", "unexpected", "exception"])
+def test_dispatch_validates_out_of_order_winners_against_their_tasks(fault: str) -> None:
+    from blueprints.pipeline.orchestrator import _dispatch_acq_ful
+    from tests.test_pipeline import _make_aoi_result
+
+    refs = [{"ref": "claims/first", "key": "same"}, {"ref": "claims/second", "key": "same"}]
+    tasks = [MagicMock(result={**_make_aoi_result("same"), "aoi_ref": ref}) for ref in refs]
+    if fault == "swapped":
+        tasks[0].result["aoi_ref"], tasks[1].result["aoi_ref"] = refs[1], refs[0]
+    elif fault == "missing":
+        tasks[1].result.pop("aoi_ref")
+    elif fault == "unexpected":
+        tasks[1].result["aoi_ref"] = {"ref": "claims/other", "key": "same"}
+    elif fault == "exception":
+        tasks[1].result = RuntimeError("original child cause")
+    context = MagicMock()
+    context.call_sub_orchestrator.side_effect = tasks
+    generator = _dispatch_acq_ful(context, {}, {}, {"aoi_refs": refs, "aoi_area_by_name": {}}, "run")
+    next(generator)
+    if fault != "none":
+        with pytest.raises(ValueError):
+            generator.send(tasks[1])
+        return
+    generator.send(tasks[1])
+    with pytest.raises(StopIteration) as completed:
+        generator.send(tasks[0])
+    assert completed.value.value[0]["ready_count"] == 2
 
 
 @pytest.mark.parametrize("fault", ["empty", "claimed_counts", "failed_record"])
