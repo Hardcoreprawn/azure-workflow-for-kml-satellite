@@ -108,12 +108,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #1462 | Representative serial/parallel local E2E harness, synthetic weather/provider isolation, and stricter result/artifact validation (closes #1453, #1488, #1491). Fresh isolated matrices passed 3/3 in both modes; broader recovery, capacity, and scientific validation remain separate. |
 | #1505 | Reviewed pre-customer infrastructure exceptions through 2026-12-12 and removed obsolete IaC and patched MessagePack CVE waivers (closes #1500). Full CI and fresh local base-image scan/smoke passed; image publication and deployment are not implied. |
 | #1458 | Disposable pipeline gate with durable result proof, explicit Azurite isolation, restricted local CORS, and retryable relay delivery (closes #1457). Clean entrypoint restored; bootstrap invalidates stale proof and cleanup reports failures. |
 | #1451 | Backlog priority normalization (closes #939): priority-only API writes preserve unrelated labels, reject blank input, and verify concurrent update outcomes before dispatch. |
 | #1449 | Canonical v2 AOI enrichment manifests, direct/split SAFE_MODE parity, and nested EUDR export evidence (closes #1448 and #1450). Merge review added unavailable-weather regressions for both multi-AOI paths. |
 | #1473 | SHA-pinned CodeQL action patch update to v4.37.8; local checks and all required CI checks passed. |
-| #1477 | Non-root devcontainer and project-scoped sibling Docker lifecycle; cached startup, ordered storage initialization, explicit cleanup, and CPU-default Ollama (closes #1475). Local `make check` and startup/shutdown checks passed; window-close UI and GPU validation remain outstanding. |
 | —  | **MILESTONE (2026-07-12): Domain-model overhaul begun — Organisation as the single ownership root** (epic #1057; model documented in `docs/DATA_MODEL.md` — conceptual/logical/physical + D1–D5 divergences). **D3 landed**: per-user quota retired, org pool is the sole accounting unit. D1 (auth active-org resolution) in progress; D2 (org-partitioning) sequenced after D1. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 
