@@ -313,6 +313,8 @@ class FixtureCatalogue(BaseModel):
 
 def build_representative_case_matrix(manifest: Path = DEFAULT_MANIFEST) -> list[dict[str, str]]:
     """Load validated cases in catalogue order; paths are relative to the catalogue."""
+    from blueprints.pipeline._blob_url import _validate_blob_event
+
     catalogue = FixtureCatalogue.model_validate_json(manifest.read_text())
     identifiers = [case.case_id for case in catalogue.cases]
     if len(set(identifiers)) != len(identifiers):
@@ -323,6 +325,7 @@ def build_representative_case_matrix(manifest: Path = DEFAULT_MANIFEST) -> list[
         path = (manifest.parent / case.input_path).resolve()
         if not path.is_file() or path.suffix.lower() not in {".kml", ".kmz"}:
             raise ValueError(f"Fixture must be an existing KML/KMZ file: {path}")
+        _validate_blob_event(path.name, case.container, {"contentLength": path.stat().st_size})
         blob_key = (case.container, path.name)
         if blob_key in blob_paths and blob_paths[blob_key] != path:
             raise ValueError(f"Distinct fixtures share a blob key: {blob_key}")

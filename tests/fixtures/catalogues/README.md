@@ -40,10 +40,13 @@ Tools. The runner owns the Functions host, not storage startup or cleanup.
 - Unknown fields, duplicate IDs, empty catalogues, and unsupported versions or
   expected outcomes are rejected before execution.
 - Use trigger-compatible input containers such as `kml-input`. Initialize shared
-  containers before parallel execution. Different files with the same basename
-  cannot share an input container: the loader rejects these collisions because
-  the current uploader uses that basename as the blob key. Repeats of the same
-  resolved file remain valid.
+  containers before parallel execution. Before starting the host, the loader uses
+  the trigger's validator to require the `-input` suffix and a nonempty KML/KMZ
+  file no larger than `MAX_KML_FILE_SIZE_BYTES` (inclusive). This checks metadata,
+  not KML contents; parsing still belongs to the pipeline. Different files with
+  the same basename cannot share an input container: the loader rejects these
+  collisions because the current uploader uses that basename as the blob key.
+  Repeats of the same resolved file remain valid.
 - `Succeeded` currently means terminal `Completed`, at least one completed
   download, and nonempty raw imagery paths. It does not assert every AOI succeeded,
   numerical accuracy, or user isolation.

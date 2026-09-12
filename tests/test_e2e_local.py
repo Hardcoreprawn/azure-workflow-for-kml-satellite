@@ -274,6 +274,57 @@ class TestRepresentativeScenario:
 
 
 class TestFixtureManifest:
+    def test_trigger_size_limit_is_inclusive(self, tmp_path):
+        from treesight.constants import MAX_KML_FILE_SIZE_BYTES
+
+        fixture = tmp_path / "field.KMZ"
+        with fixture.open("wb") as stream:
+            stream.truncate(MAX_KML_FILE_SIZE_BYTES)
+        manifest = tmp_path / "catalogue.json"
+        manifest.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "cases": [
+                        {
+                            "caseId": "limit",
+                            "inputPath": fixture.name,
+                            "container": "alternate-input",
+                            "expectedStatus": "Succeeded",
+                        }
+                    ],
+                }
+            )
+        )
+        assert runner.build_representative_case_matrix(manifest)[0]["inputPath"] == str(fixture)
+
+    @pytest.mark.parametrize("defect", ["container", "empty-blob", "oversized"])
+    def test_trigger_invalid_fixture_fails_before_host_start(self, monkeypatch, tmp_path, defect):
+        from treesight.constants import MAX_KML_FILE_SIZE_BYTES
+        from treesight.errors import ContractError
+
+        fixture = tmp_path / "field.kml"
+        fixture.write_bytes(b"fixture")
+        if defect == "empty-blob":
+            fixture.write_bytes(b"")
+        elif defect == "oversized":
+            with fixture.open("r+b") as stream:
+                stream.truncate(MAX_KML_FILE_SIZE_BYTES + 1)
+        case = {
+            "caseId": "field-001",
+            "inputPath": fixture.name,
+            "container": "kml-output" if defect == "container" else "kml-input",
+            "expectedStatus": "Succeeded",
+        }
+        manifest = tmp_path / "catalogue.json"
+        manifest.write_text(json.dumps({"schemaVersion": 1, "cases": [case]}))
+        host = MagicMock(side_effect=AssertionError("invalid catalogue started host"))
+        monkeypatch.setattr(runner, "start_func_host", host)
+
+        with pytest.raises(ContractError):
+            runner.run_scenario("representative", dry_run_matrix=False, manifest=manifest)
+        host.assert_not_called()
+
     def test_distinct_fixtures_cannot_share_a_blob_key(self, monkeypatch, tmp_path):
         cases = []
         for directory in ("first", "second"):

@@ -51,10 +51,21 @@ def test_identified_child_cannot_omit_phase_fields() -> None:
         )
 
 
-@pytest.mark.parametrize("fault", ["missing", "empty", "duplicate", "unexpected", "exception"])
-def test_fan_in_rejects_unreconciled_child_results(fault: str) -> None:
+@pytest.mark.parametrize(
+    ("fault", "message"),
+    [
+        ("missing", "count or expected identity mismatch"),
+        ("empty", "missing AOI child reference"),
+        ("duplicate", "unexpected or duplicate AOI child identity"),
+        ("unexpected", "unexpected or duplicate AOI child identity"),
+        ("exception", "original cause retained"),
+    ],
+)
+def test_fan_in_rejects_unreconciled_child_results(fault: str, message: str) -> None:
+    from tests.test_pipeline import _make_aoi_result
+
     references = [{"ref": "claims/1", "key": "same name"}, {"ref": "claims/2", "key": "same name"}]
-    results = [{"aoi_ref": ref, "aoi_name": ref["key"], "acquisition": {}, "fulfilment": {}} for ref in references]
+    results = [{**_make_aoi_result(ref["key"]), "aoi_ref": ref} for ref in references]
     if fault == "missing":
         results.pop()
     elif fault == "empty":
@@ -65,8 +76,10 @@ def test_fan_in_rejects_unreconciled_child_results(fault: str) -> None:
         results[1]["aoi_ref"] = {"ref": "claims/other", "key": "same name"}
     elif fault == "exception":
         results[1] = RuntimeError("original child failure")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=message) as caught:
         _aggregate_aoi_results(results, expected_refs=references)
+    if fault == "exception":
+        assert caught.value.__cause__ is results[1]
 
 
 def test_fan_in_accepts_out_of_order_results_with_duplicate_display_names() -> None:
