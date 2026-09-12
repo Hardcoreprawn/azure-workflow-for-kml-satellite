@@ -378,7 +378,9 @@ All endpoints return JSON unless otherwise specified.
 **Trigger behaviour:**
 
 1. Receives Event Grid BlobCreated event for `*-input` containers
-2. Ignores direct submission prefixes (`analysis/`, `demo/`) because `/api/analysis/submit` already starts those orchestrations synchronously
+2. Processes validated `analysis/` and storage-native uploads through the same trigger
+   path; API-managed `analysis/{submission_id}.kml|kmz` deliveries use an atomic
+   admission marker so duplicate events do not start a second generation
 3. Validates: blob name non-empty, `.kml` extension, container ends with `-input`, 0 < size ≤ 10 MiB
 4. Builds canonical orchestrator input (BlobEvent → OrchestratorInput dict)
 5. Starts durable orchestration with `instance_id = correlation_id`
