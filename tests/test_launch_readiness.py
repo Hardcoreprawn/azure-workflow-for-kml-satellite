@@ -1425,6 +1425,17 @@ class TestTrivySignalQuality:
     def test_trivy_ignore_file_exists(self):
         assert TRIVY_IGNORE.exists(), ".trivyignore must exist for temporary, documented risk exceptions"
 
+    @pytest.mark.parametrize(
+        "finding", ["AVD-AZU-0016", "AVD-AZU-0061", "AZU-0045", "CVE-2026-48109", "CVE-2026-48506"]
+    )
+    def test_obsolete_security_exceptions_are_removed(self, finding: str) -> None:
+        entries = {
+            line.split()[0]
+            for line in TRIVY_IGNORE.read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+        assert finding not in entries, "Reintroducing an obsolete exception requires fresh evidence and owner review"
+
     def test_trivy_ignore_tracks_low_cost_network_acl_exceptions(self):
         ignore = TRIVY_IGNORE.read_text()
         assert "AZU-0012" in ignore and "AZU-0013" in ignore, (
