@@ -67,8 +67,9 @@ Mitigations in place:
 - Production storage, Cosmos DB, and Key Vault access uses managed
   identity with minimal RBAC grants; local development may still use
   connection strings where required.
-- Network: Container Apps environment, Key Vault network rules, and Cosmos
-  DB firewall restrict inbound surface.
+- Network: Storage and Key Vault currently lack deny-by-default network ACLs
+  in both dev and prod templates. The temporary acceptance below does not
+  replace authentication, RBAC, or production promotion gates.
 - Ephemeral operational identifiers (deployed hostnames, SWA URLs) are not
   stored in this repository — retrieve them from the Azure portal or
   `tofu output` after provisioning.
@@ -78,21 +79,32 @@ Mitigations in place:
 
 ## Trivy Triage Policy
 
-To keep findings actionable while staying cost-conscious in dev environments:
+To keep findings actionable while staying cost-conscious before customer onboarding:
 
 - Trivy image/filesystem scans are configured with `ignore-unfixed: true`.
   This suppresses vulnerabilities that currently have no upstream fix version.
 - Temporary low-cost infra exceptions are tracked in `.trivyignore` with
   explicit rationale. These are not blanket suppressions and must be revisited
-  when a paid hardening change is approved.
+  before customer onboarding or expiry, whichever comes first.
 
-Current temporary exceptions:
+Current temporary exceptions, accepted by the owner on 2026-09-12 until
+2026-12-12 under #1500, cover the shared dev/prod template posture:
 
 - `AZU-0012` (Storage account network default deny policy)
 - `AZU-0013` (Key Vault network ACL strictness)
-- `AVD-AZU-0016` (Key Vault purge protection — variable defaults to `true`; Trivy cannot resolve variable refs)
-- `AVD-AZU-0057` (Storage Analytics logging — superseded by `azurerm_monitor_diagnostic_setting`)
-- `AVD-AZU-0061` (Infrastructure encryption — already enabled; Trivy false positive)
+- `AVD-AZU-0057` (Logging coverage: modern blob write/delete diagnostics exist,
+  but read and other storage-service coverage equivalence is unproven)
+
+Private networking and additional paid Defender coverage are deferred. Obsolete
+purge-protection, infrastructure-encryption, and Defender scanner exceptions
+were removed after revalidation, not renewed. Production freeze is unchanged.
+
+The 2026-09-12 local base rebuild consumed Functions extension bundle 4.38.1
+with MessagePack 2.5.301, which patches CVE-2026-48109 and CVE-2026-48506.
+Container smoke checks and a Trivy 0.73.0 image scan without ignore-file
+exceptions passed (fixable HIGH/CRITICAL scope), so both CVE exceptions were
+removed. This is candidate evidence, not proof that older published or deployed
+images are patched; publishing and promotion require their own release gates.
 
 HIGH/CRITICAL container findings must be fixed at source when the repository
 controls or can directly upgrade the affected component. A temporary container
@@ -105,17 +117,17 @@ CVE exception is allowed only when all of the following are true:
 - the entry links a tracking issue, records the upstream owner and rationale,
   and expires within 30 days.
 
-All other container findings remain blocking. The reconciler removes an
-exception automatically when a patched upstream artifact becomes available.
+All other container findings remain blocking. The reconciler proposes removing
+an exception when a patched upstream artifact becomes available.
 
 ### Build-time auto-reconciliation
 
-Container-CVE suppressions (the `CVE-*` entries) are reconciled automatically by
-the daily base-image build (`.github/workflows/base-image.yml`), so a calendar
-expiry never breaks a working image and a dead suppression never lingers.
+Container-CVE suppressions (the `CVE-*` entries) are reviewed by the weekly
+base-image workflow (`.github/workflows/base-image.yml`). Expiry remains a
+blocking gate until a reviewed change is merged.
 
 After the base image is rebuilt (which runs `apt-get upgrade -y`) and published,
-a dedicated least-privilege job rescans the fresh image **without** `.trivyignore`
+a dedicated least-privilege job reuses the build's scan **without** `.trivyignore`
 (`--severity CRITICAL,HIGH --ignore-unfixed`) and runs
 `scripts/reconcile_trivyignore.py`:
 
