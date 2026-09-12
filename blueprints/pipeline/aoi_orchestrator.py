@@ -188,6 +188,7 @@ def aoi_pipeline(context: df.DurableOrchestrationContext):  # type: ignore[retur
 
     return {
         "aoi_name": aoi_name,
+        "aoi_ref": aoi_ref,
         "acquisition": acq["acquisition"],
         "fulfilment": ful["fulfilment"],
     }

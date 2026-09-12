@@ -60,9 +60,10 @@ def fire_event_grid(
     function_key: str | None = None,
     strict: bool = True,
     func_base: str = FUNC_BASE,
+    event_id: str | None = None,
 ) -> str:
     """Send a mock Event Grid BlobCreated event to the local func host."""
-    event_id = str(uuid.uuid4())
+    event_id = event_id or str(uuid.uuid4())
     data: dict[str, Any] = {
         "api": "PutBlob",
         "clientRequestId": str(uuid.uuid4()),

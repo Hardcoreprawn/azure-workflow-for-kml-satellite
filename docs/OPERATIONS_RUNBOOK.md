@@ -34,6 +34,85 @@ storage to its selected Azurite endpoint, retains fresh result and host-log
 evidence, and removes its containers, volumes, and any temporary network
 attachment on exit. Cleanup errors fail the command rather than being hidden.
 
+The scenario runner also accepts `--scenario representative` for a single
+upload, repeat upload, and alternate input container. Inspect its deterministic
+case list without starting services using
+`uv run python scripts/e2e_local.py --scenario representative --dry-run-matrix`.
+For execution, provide initialized disposable Azurite storage and Core Tools,
+then omit `--dry-run-matrix`. The script owns the Functions host lifecycle;
+the caller owns storage startup and teardown. It persists per-case outcomes
+in `.e2e-local-result.json` and exits nonzero if any case fails. Rejected
+webhooks fail immediately; accepted cases retain orchestration IDs even on
+timeout. The storage creation race in #1479 is fixed by #1487. Acceptance
+still requires all three cases to pass on fresh storage without precreating
+the alternate output container; a warm-storage pass is not equivalent proof.
+Dry runs print their summary but neither overwrite existing proof nor report
+a runtime pass. A partial failure is persisted before the command exits nonzero.
+
+CLI progress is flushed immediately for container logs and redirected output.
+Each case shows its index, case ID, input container, and completion counters.
+Polling prints the orchestration ID, latest observed status, elapsed seconds,
+and timeout on status changes and approximately every 15 seconds between them
+(subject to HTTP request duration). An unchanged status or unavailable endpoint
+still produces progress; this is a heartbeat, not a fabricated percentage.
+
+Execution defaults to `--execution serial`. Use `--execution parallel --concurrency 3`
+to overlap up to three submissions on the same Functions host. The bound covers
+upload through terminal polling; AOI fan-out inside each orchestration still uses
+Durable Functions. Completion lines appear as cases finish, while saved results
+remain in matrix order. Representative summaries include execution mode, effective
+concurrency, per-case elapsed seconds, and matrix elapsed seconds excluding host
+startup. Dry runs report the selected mode without starting work. Serial mode
+always uses one worker; parallel mode caps workers at the case count.
+
+The representative matrix is loaded from
+`tests/fixtures/catalogues/representative.json`, not hardcoded in the runner.
+Use `--manifest /path/to/catalogue.json` with `--scenario representative` for
+another fixture library. Paths resolve relative to that JSON file. The loader
+validates the version, fields, unique IDs, file existence, and supported expected
+outcomes before starting the host. See `tests/fixtures/catalogues/README.md` for
+the format and extension boundaries. Dry runs validate and display the catalogue;
+they do not parse fixture contents or prove pipeline outcomes.
+
+The default smoke catalogue uses `sample.kml` (2 polygons) three times;
+it does not validate high-AOI fan-out. Opt-in `scale-50.json` and `scale-200.json`
+catalogues exercise the larger fixtures; see the catalogue README for the required
+local enterprise ticket, observed timings, and explicit acceptance limits.
+Existing fixtures include
+`medium_50.kml` (50 polygons), `global_monitoring_55.kml` (56 polygons despite its
+name), and `monster_200.kml` (200 polygons). Mixed workloads and large/negative
+cases are tracked by #1454 and #1455. Concurrency here measures local synthetic
+pipeline plumbing, not live-provider capacity or scientific accuracy.
+
+With `CANOPEX_TEST_MODE=1`, weather enrichment is intentionally unavailable:
+`weather_daily` and `weather_monthly` are null, the phase logs `weather_skipped`
+with structured reason `test_mode`, and no Open-Meteo request or usage is recorded.
+Direct weather-provider calls obey the same centrally configured mode. Unset the
+flag or set it to `0` for real weather acquisition. This is not synthetic weather
+evidence and does not establish scientific validity. The weather guard alone is
+not a global egress guarantee: SDK/native remote reads and other enrichment
+providers require their own controls and network-isolated acceptance checks.
+
+The provider registry also selects synthetic Planetary Computer acquisition in
+test mode, including direct composite acquisition; cached live and synthetic
+instances cannot cross modes. Mosaic/NDVI enrichment skips its external adapters,
+logs `external_imagery_skipped` with reason `test_mode`, and retains frame metadata
+with null search IDs, NDVI statistics, and raster paths. It records no PC API
+usage for skipped work. Other provider paths still require their own controls;
+this is not a universal HTTP/SDK egress switch or fabricated compliance evidence.
+
+For a strict offline exercise, run disposable Azurite with `--network none` and
+run the harness in its network namespace (`--network container:<azurite-name>`).
+Only loopback storage is then reachable. Pre-download the Functions extension
+bundle in a separate online preparation step (`func bundles download`), mounting
+the same disposable volume at `/FuncExtensionBundles` and
+`/home/data/Functions/ExtensionBundles` for both preparation and execution. Verify
+the version directory contains `bin/extensions.json` before disconnecting; merely
+printing `func bundles path` does not populate the cache (#1490). Do not expose
+credentials to the preparation or synthetic runtime containers. Preserve the
+result JSON and host log for each workload, check exact AOI/download/path counts,
+and inspect caught request failures even when the terminal result is successful.
+
 Local blob CORS defaults to `http://localhost:4280` and
 `http://127.0.0.1:4280`. Both initializers accept a comma-separated
 `AZURITE_CORS_ORIGINS` override for another local website port. Pass this

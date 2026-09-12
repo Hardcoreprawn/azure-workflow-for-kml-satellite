@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "caseId": "scale-200-kml",
+      "inputPath": "../monster_200.kml",
+      "container": "kml-input",
+      "expectedStatus": "Succeeded"
+    }
+  ]
+}

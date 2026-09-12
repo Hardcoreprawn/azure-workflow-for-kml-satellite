@@ -15,6 +15,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 from treesight.pipeline.enrichment.frames import build_frame_plan
 
@@ -259,6 +260,10 @@ class TestFindBestLandsatScene:
 
 class TestLandsatNdviRouting:
     """Landsat frames should be routed through compute_landsat_ndvi."""
+
+    @pytest.fixture(autouse=True)
+    def real_provider_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "0")
 
     @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")

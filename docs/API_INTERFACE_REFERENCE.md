@@ -37,6 +37,29 @@ Production API base URL: `https://{productionHost}/api`
 
 ## Trigger and Orchestrator Entry Points
 
+### Completion Semantics
+
+Durable `runtimeStatus: Completed` means orchestration code returned, not that all
+requested evidence is complete. Consumers must also inspect pipeline output
+status. `completed` requires nonempty AOI work, distinct metadata records for every
+AOI and concrete serverless output identities: distinct nonempty raw/clipped
+paths, one post-process source per raw download, and no raw/clipped path overlap.
+Successful imagery/transfer records must match reported counts, and serverless
+post-processing must be complete. A valid search with no imagery is
+`partial_imagery`; available metadata remains accessible, but no complete imagery
+evidence is claimed. Batch successes are counted separately; the summary
+does not independently read Batch artifacts. Missing or unsuccessful evidence
+produces `partial_imagery`. Malformed, missing, duplicate, or unexpected progressive
+child results fail aggregation instead of contributing zero. Original child
+exceptions remain chained. This does not certify imagery quality, enrichment
+completeness, or EUDR compliance.
+
+Progressive child results now include the original `aoi_ref` (`ref`, `key`) for
+expected-set reconciliation. Namespace timestamps use recorded orchestration time
+so replay retains the namespace. Drain in-flight runs before deploying these
+internal pre-live contract/replay changes; old child results lack the reference.
+No auth, quota, billing, or public request shape is changed.
+
 - Event Grid trigger: `blob_trigger` (blueprints/pipeline/blob_trigger.py)
 - Main orchestrator: `treesight_orchestrator` (blueprints/pipeline/orchestrator.py)
 

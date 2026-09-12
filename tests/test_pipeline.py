@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import json
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
+
+import pytest
 
 from blueprints.pipeline._helpers import (
     _acq_payload,
@@ -24,16 +27,16 @@ from treesight.storage.offload import PayloadOffloader
 
 class TestDeriveProjectContext:
     def test_extracts_stem(self):
-        ctx = derive_project_context("uploads/my-farm.kml")
+        ctx = derive_project_context("uploads/my-farm.kml", datetime(2026, 9, 11, tzinfo=UTC))
         assert ctx["project_name"] == "my-farm"
 
     def test_timestamp_format(self):
-        ctx = derive_project_context("test.kml")
+        ctx = derive_project_context("test.kml", datetime(2026, 9, 11, tzinfo=UTC))
         assert "T" in ctx["timestamp"]
         assert ctx["timestamp"].endswith("Z")
 
     def test_nested_path(self):
-        ctx = derive_project_context("a/b/c/orchard.kml")
+        ctx = derive_project_context("a/b/c/orchard.kml", datetime(2026, 9, 11, tzinfo=UTC))
         assert ctx["project_name"] == "orchard"
 
 
@@ -67,19 +70,22 @@ class TestBuildPipelineSummary:
                 "feature_count": 2,
                 "aoi_count": 2,
                 "metadata_count": 2,
-                "metadata_results": [],
+                "metadata_results": [{"metadata_path": f"meta-{index}.json"} for index in range(2)],
             },
-            acquisition={"ready_count": 2, "failed_count": 0, "imagery_outcomes": []},
+            acquisition={"ready_count": 2, "failed_count": 0, "imagery_outcomes": [{"state": "ready"}] * 2},
             fulfilment={
                 "downloads_completed": 2,
                 "downloads_succeeded": 2,
                 "downloads_failed": 0,
-                "download_results": [],
+                "download_results": [{"state": "completed", "blob_path": f"raw/{index}.tif"} for index in range(2)],
                 "pp_completed": 2,
                 "pp_clipped": 2,
                 "pp_reprojected": 1,
                 "pp_failed": 0,
-                "post_process_results": [],
+                "post_process_results": [
+                    {"source_blob_path": f"raw/{index}.tif", "clipped_blob_path": f"clip/{index}.tif"}
+                    for index in range(2)
+                ],
             },
         )
         assert result["status"] == "completed"
@@ -932,6 +938,7 @@ def _make_aoi_result(
     """Build a minimal per-AOI sub-orchestrator result for test helpers."""
     return {
         "aoi_name": name,
+        "aoi_ref": {"ref": f"claims/{name}", "key": name},
         "acquisition": {
             "imagery_outcomes": [{"aoi": name}] * (ready + failed),
             "ready_count": ready,
@@ -962,7 +969,7 @@ class TestAggregateAoiResults:
             _make_aoi_result("A", ready=3, failed=1),
             _make_aoi_result("B", ready=2, failed=0),
         ]
-        acq, _ful = _aggregate_aoi_results(results)
+        acq, _ful = _aggregate_aoi_results(results, expected_refs=[result["aoi_ref"] for result in results])
         assert acq["ready_count"] == 5
         assert acq["failed_count"] == 1
         assert len(acq["imagery_outcomes"]) == 6
@@ -979,7 +986,7 @@ class TestAggregateAoiResults:
                 pp_failed=1,
             ),
         ]
-        _acq, ful = _aggregate_aoi_results(results)
+        _acq, ful = _aggregate_aoi_results(results, expected_refs=[result["aoi_ref"] for result in results])
         assert ful["downloads_succeeded"] == 5
         assert ful["downloads_failed"] == 1
         assert ful["downloads_completed"] == 6
@@ -988,15 +995,14 @@ class TestAggregateAoiResults:
         assert ful["pp_failed"] == 1
 
     def test_handles_empty_results(self):
-        acq, ful = _aggregate_aoi_results([])
+        acq, ful = _aggregate_aoi_results([], expected_refs=[])
         assert acq["ready_count"] == 0
         assert ful["downloads_completed"] == 0
         assert ful["pp_completed"] == 0
 
     def test_handles_missing_keys(self):
-        acq, ful = _aggregate_aoi_results([{"aoi_name": "A"}])
-        assert acq["ready_count"] == 0
-        assert ful["downloads_completed"] == 0
+        with pytest.raises(ValueError, match="reference"):
+            _aggregate_aoi_results([{"aoi_name": "A"}], expected_refs=[{"ref": "claims/A", "key": "A"}])
 
 
 class TestAoiPipelineSubOrchestrator:
@@ -1142,7 +1148,7 @@ class TestProgressivePipeline:
 
         ctx = MagicMock()
         task_a = MagicMock()
-        task_a.result = _make_aoi_result("A")
+        task_a.result = {**_make_aoi_result("A"), "aoi_ref": {"ref": "blob://1", "key": "A"}}
         ctx.call_sub_orchestrator.return_value = task_a
         ctx.task_any.return_value = "any_sentinel"
 
@@ -1227,7 +1233,7 @@ class TestAggregateAoiResultsEdgeCases:
     def test_empty_list_returns_default_summaries(self):
         from blueprints.pipeline._helpers import _aggregate_aoi_results
 
-        acq, ful = _aggregate_aoi_results([])
+        acq, ful = _aggregate_aoi_results([], expected_refs=[])
         assert acq["ready_count"] == 0
         assert acq["failed_count"] == 0
         assert acq["imagery_outcomes"] == []
@@ -1238,6 +1244,8 @@ class TestAggregateAoiResultsEdgeCases:
         from blueprints.pipeline._helpers import _aggregate_aoi_results
 
         aoi_result = {
+            "aoi_name": "farm",
+            "aoi_ref": {"ref": "claims/farm", "key": "farm"},
             "acquisition": {
                 "ready_count": 1,
                 "failed_count": 0,
@@ -1258,7 +1266,7 @@ class TestAggregateAoiResultsEdgeCases:
                 "pp_failed": 0,
             },
         }
-        acq, ful = _aggregate_aoi_results([aoi_result])
+        acq, ful = _aggregate_aoi_results([aoi_result], expected_refs=[aoi_result["aoi_ref"]])
         assert acq["ready_count"] == 1
         assert len(acq["imagery_outcomes"]) == 1
         assert ful["downloads_completed"] == 1

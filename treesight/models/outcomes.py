@@ -186,13 +186,19 @@ class PipelineSummary(PipelineSummaryCounts):
     post_process_results: list[PostProcessResult] = Field(default_factory=list)
     per_aoi_summaries: list[AoiSummary] = Field(default_factory=list)
 
-    def compute_status(self) -> None:
+    def compute_status(self, *, batch_succeeded: int = 0) -> None:
         """Compute ``status`` and ``message`` from phase results (§3.4)."""
         all_good = (
-            self.imagery_failed == 0
+            self.aoi_count > 0
+            and self.imagery_ready >= self.aoi_count
+            and self.imagery_failed == 0
             and self.downloads_failed == 0
             and self.downloads_succeeded == self.imagery_ready
             and self.post_process_failed == 0
+            and self.metadata_count == self.aoi_count
+            and self.post_process_completed + batch_succeeded == self.downloads_succeeded
+            and self._records_complete(batch_succeeded)
+            and self._output_identities_complete()
         )
         self.status = "completed" if all_good else "partial_imagery"
         self.message = (
@@ -203,6 +209,36 @@ class PipelineSummary(PipelineSummaryCounts):
             f"downloaded={self.downloads_completed}, "
             f"clipped={self.post_process_clipped} "
             f"reprojected={self.post_process_reprojected}."
+        )
+
+    def _records_complete(self, batch_succeeded: int) -> bool:
+        metadata_paths = [result.metadata_path for result in self.metadata_results]
+        return (
+            len(metadata_paths) == len(set(metadata_paths)) == self.metadata_count
+            and all(metadata_paths)
+            and len(self.imagery_outcomes) == self.imagery_ready
+            and all(result.state in {"ready", "completed"} and not result.error for result in self.imagery_outcomes)
+            and len(self.download_results) + batch_succeeded == self.downloads_succeeded == self.downloads_completed
+            and all(result.state == "completed" and not result.error for result in self.download_results)
+            and len(self.post_process_results) == self.post_process_completed
+            and all(
+                result.state == "completed" and not result.error and not result.clip_error
+                for result in self.post_process_results
+            )
+        )
+
+    def _output_identities_complete(self) -> bool:
+        raw = [result.blob_path for result in self.download_results]
+        clipped = [result.clipped_blob_path for result in self.post_process_results]
+        sources = [result.source_blob_path for result in self.post_process_results]
+        return (
+            all(raw)
+            and all(clipped)
+            and len(raw) == len(set(raw))
+            and len(clipped) == len(set(clipped))
+            and len(sources) == len(set(sources))
+            and set(sources) == set(raw)
+            and set(raw).isdisjoint(clipped)
         )
 
     @computed_field  # type: ignore[prop-decorator]

@@ -6,7 +6,7 @@ bindings (triggers, activities) live in blueprints/pipeline.py.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -99,7 +99,7 @@ def build_pipeline_summary(
         post_process_results=fulfilment.get("post_process_results", []),
         per_aoi_summaries=_group_per_aoi(acquisition, fulfilment),
     )
-    summary.compute_status()
+    summary.compute_status(batch_succeeded=fulfilment.get("batch_succeeded", 0))
 
     log_phase(
         "pipeline",
@@ -135,9 +135,9 @@ def get_batch_config(overrides: dict[str, Any]) -> dict[str, int]:
     }
 
 
-def derive_project_context(blob_name: str) -> dict[str, str]:
+def derive_project_context(blob_name: str, started_at: datetime) -> dict[str, str]:
     """Derive project_name and timestamp from blob name."""
     return {
         "project_name": PurePosixPath(blob_name).stem,
-        "timestamp": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
+        "timestamp": started_at.strftime("%Y%m%dT%H%M%SZ"),
     }

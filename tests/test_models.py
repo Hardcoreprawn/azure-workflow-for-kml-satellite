@@ -272,16 +272,27 @@ class TestPostProcessResult:
 
 class TestPipelineSummary:
     def test_compute_status_completed(self):
+        from treesight.models.outcomes import DownloadResult, ImageryOutcome, MetadataResult, PostProcessResult
+
         s = PipelineSummary(
             instance_id="inst-1",
             feature_count=2,
             aoi_count=2,
+            metadata_count=2,
             imagery_ready=2,
             imagery_failed=0,
             downloads_completed=2,
             downloads_succeeded=2,
             downloads_failed=0,
+            post_process_completed=2,
             post_process_failed=0,
+            metadata_results=[MetadataResult(metadata_path=f"meta-{index}.json") for index in range(2)],
+            imagery_outcomes=[ImageryOutcome(state="ready") for _ in range(2)],
+            download_results=[DownloadResult(blob_path=f"raw/{index}.tif") for index in range(2)],
+            post_process_results=[
+                PostProcessResult(source_blob_path=f"raw/{index}.tif", clipped_blob_path=f"clip/{index}.tif")
+                for index in range(2)
+            ],
         )
         s.compute_status()
         assert s.status == "completed"

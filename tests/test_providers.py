@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from tests.stub_provider import StubPlanetaryComputerProvider
@@ -104,6 +106,37 @@ class TestPlanetaryComputerProvider:
 
 
 class TestProviderRegistry:
+    @pytest.mark.parametrize("name", ["planetary_computer", "geo_routing"])
+    def test_synthetic_composite_never_uses_live_provider(self, monkeypatch, sample_aoi, name):
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "1")
+        live_search = MagicMock(side_effect=AssertionError("live composite search in synthetic mode"))
+        monkeypatch.setattr(PlanetaryComputerProvider, "composite_search", live_search)
+        from treesight.pipeline.acquisition import acquire_composite
+
+        results = acquire_composite(sample_aoi, get_provider(name), ImageryFilters(), temporal_count=2)
+
+        assert len(results) == 3
+        live_search.assert_not_called()
+
+    @pytest.mark.parametrize("name", ["planetary_computer", "geo_routing"])
+    def test_provider_cache_is_partitioned_by_execution_mode(self, monkeypatch, name):
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "0")
+        real = get_provider(name)
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "1")
+        synthetic = get_provider(name)
+
+        assert synthetic is not real
+        assert get_provider(name) is synthetic
+        if name == "planetary_computer":
+            assert type(synthetic) is StubPlanetaryComputerProvider
+            assert type(real) is PlanetaryComputerProvider
+        else:
+            assert type(synthetic._make_pc([])) is StubPlanetaryComputerProvider
+            assert type(real._make_pc([])) is PlanetaryComputerProvider
+
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "0")
+        assert get_provider(name) is real
+
     def test_get_planetary_computer(self):
         p = get_provider("planetary_computer")
         assert p.name == "planetary_computer"

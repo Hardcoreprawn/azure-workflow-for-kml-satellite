@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "caseId": "rep-001-single-upload",
+      "inputPath": "../sample.kml",
+      "container": "kml-input",
+      "expectedStatus": "Succeeded"
+    },
+    {
+      "caseId": "rep-002-repeat-upload",
+      "inputPath": "../sample.kml",
+      "container": "kml-input",
+      "expectedStatus": "Succeeded"
+    },
+    {
+      "caseId": "rep-003-alt-container",
+      "inputPath": "../sample.kml",
+      "container": "rep-alt-kml-input",
+      "expectedStatus": "Succeeded"
+    }
+  ]
+}
