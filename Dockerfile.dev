@@ -79,7 +79,8 @@ RUN set -eux; \
 
 # Project environment lives OUTSIDE the workspace so a devcontainer / CI
 # bind-mount of the repo does not clobber the baked environment.
-ENV UV_PYTHON=3.12 \
+ENV HOME=/home/vscode \
+    UV_PYTHON=3.12 \
     UV_PYTHON_PREFERENCE=only-system \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
     VIRTUAL_ENV=/opt/venv \
