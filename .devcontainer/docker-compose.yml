@@ -2,7 +2,13 @@ name: ${COMPOSE_PROJECT_NAME:-canopex-dev}
 
 services:
   devcontainer:
-    image: ghcr.io/hardcoreprawn/treesight-dev:latest
+    build:
+      context: ${DEV_WORKSPACE:-.}
+      dockerfile: Dockerfile.dev
+    image: treesight-dev:local
+    # Keep the service process aligned with devcontainer.json's remoteUser so
+    # bind-mounted workspace files are never created as root.
+    user: vscode
     init: true
     command: ["sleep", "infinity"]
     volumes:

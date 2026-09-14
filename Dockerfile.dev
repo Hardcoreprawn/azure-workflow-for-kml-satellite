@@ -67,8 +67,16 @@ LABEL org.canopex.build-inputs-sha256="${BUILD_INPUTS_SHA}"
 # test-int) run both locally and by CI (#1086).
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends nodejs git make; \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends nodejs git make sudo; \
+    rm -rf /var/lib/apt/lists/*; \
+    if ! id vscode >/dev/null 2>&1; then \
+        groupadd --gid 1000 vscode; \
+        useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash vscode; \
+    fi; \
+    echo 'vscode ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/vscode; \
+    chmod 0440 /etc/sudoers.d/vscode; \
+    mkdir -p /workspace /opt/venv; \
+    chown -R vscode:vscode /workspace /opt/venv /home/vscode
 
 # Project environment lives OUTSIDE the workspace so a devcontainer / CI
 # bind-mount of the repo does not clobber the baked environment.
@@ -89,6 +97,9 @@ RUN uv sync --frozen --all-extras --no-install-project
 # Install the pre-built treesight_rs wheel from the builder stage.
 COPY --from=rust-build /wheels/ /tmp/wheels/
 RUN uv pip install --python /opt/venv /tmp/wheels/*.whl && rm -rf /tmp/wheels
+
+USER vscode
+WORKDIR /workspace
 
 CMD ["bash"]
 
