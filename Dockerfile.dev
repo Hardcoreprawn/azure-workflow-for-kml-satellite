@@ -32,7 +32,8 @@ COPY --from=uv /uv /usr/local/bin/uv
 # Pin the interpreter to the base runtime's CPython so the wheel is ABI-tagged
 # for the same Python the final image (and production) runs, and uv never
 # downloads a managed CPython.
-ENV UV_PYTHON=3.12 \
+ENV HOME=/home/vscode \
+    UV_PYTHON=3.12 \
     UV_PYTHON_PREFERENCE=only-system \
     RUSTUP_HOME=/opt/rustup \
     CARGO_HOME=/opt/cargo \
@@ -67,14 +68,12 @@ LABEL org.canopex.build-inputs-sha256="${BUILD_INPUTS_SHA}"
 # test-int) run both locally and by CI (#1086).
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends nodejs git make sudo; \
+    apt-get install -y --no-install-recommends nodejs git make; \
     rm -rf /var/lib/apt/lists/*; \
     if ! id vscode >/dev/null 2>&1; then \
         groupadd --gid 1000 vscode; \
         useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash vscode; \
     fi; \
-    echo 'vscode ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/vscode; \
-    chmod 0440 /etc/sudoers.d/vscode; \
     mkdir -p /workspace /opt/venv; \
     chown -R vscode:vscode /workspace /opt/venv /home/vscode
 
