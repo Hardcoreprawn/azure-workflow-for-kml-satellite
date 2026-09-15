@@ -92,6 +92,8 @@ def docker_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "    print('azurite\\ninit-storage\\ncosmos\\nfunc\\norch\\nevent-grid-relay\\nweb\\nollama\\ndevcontainer')\n"
         "if 'ps' in args:\n"
         "    print(f\"init-storage exited {os.environ.get('DOCKER_INIT_STORAGE_EXIT', '17')}\")\n"
+        "if 'build' in args and 'event-grid-relay' in args:\n"
+        "    sys.exit(int(os.environ.get('DOCKER_RELAY_BUILD_EXIT', '0')))\n"
         "if 'up' in args:\n"
         "    sys.exit(int(os.environ.get('DOCKER_UP_EXIT', '0')))\n"
     )
@@ -141,6 +143,19 @@ def test_start_removes_failed_storage_before_reconnect(docker_environment: Path)
     start = next(call for call in calls if "up" in call)
     assert remove[-1] == "init-storage"
     assert calls.index(remove) < calls.index(start)
+
+
+def test_failed_host_relay_preflight_build_keeps_running_stack(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOCKER_RELAY_BUILD_EXIT", "23")
+    result = run_stack("up")
+    assert result.returncode == 23
+    calls = docker_calls(docker_environment)
+    assert any("build" in call and "event-grid-relay" in call for call in calls)
+    assert not any("up" in call for call in calls)
+    assert not any("logs" in call for call in calls)
+    assert not any("down" in call for call in calls)
 
 
 def test_start_preserves_successful_storage_initialization(

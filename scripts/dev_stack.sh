@@ -57,6 +57,9 @@ cleanup_failed_start() {
 
 case "$action" in
     up|rebuild|storage)
+        if [[ "$action" == "up" && "${CANOPEX_DEVCONTAINER:-}" != "1" ]]; then
+            "${compose[@]}" build event-grid-relay
+        fi
         trap cleanup_failed_start EXIT
         trap 'exit 130' INT
         trap 'exit 143' TERM
@@ -64,9 +67,6 @@ case "$action" in
         if [[ "$action" == "rebuild" ]]; then
             "${compose[@]}" build "${services[@]}"
             options+=(--force-recreate)
-        fi
-        if [[ "$action" == "up" && "${CANOPEX_DEVCONTAINER:-}" != "1" ]]; then
-            "${compose[@]}" build event-grid-relay
         fi
         if [[ "$action" == "storage" ]]; then
             services=(azurite init-storage)
