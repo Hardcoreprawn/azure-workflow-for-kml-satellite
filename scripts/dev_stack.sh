@@ -65,7 +65,13 @@ case "$action" in
         elif [[ "$action" == "rebuild" ]]; then
             build_services=("${services[@]}")
             if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" ]]; then
-                build_services=(azurite cosmos func orch web ollama)
+                filtered_services=()
+                for service in "${build_services[@]}"; do
+                    if [[ "$service" != "event-grid-relay" ]]; then
+                        filtered_services+=("$service")
+                    fi
+                done
+                build_services=("${filtered_services[@]}")
             fi
             "${compose[@]}" build "${build_services[@]}"
         fi
