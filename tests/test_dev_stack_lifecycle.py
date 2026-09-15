@@ -216,6 +216,18 @@ def test_rebuild_is_explicit(docker_environment: Path) -> None:
     assert "--force-recreate" in calls[start]
 
 
+def test_devcontainer_rebuild_skips_host_only_relay_build(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CANOPEX_DEVCONTAINER", "1")
+    monkeypatch.setenv("DEV_WORKSPACE", "/host/workspace with spaces")
+    result = run_stack("rebuild")
+    assert result.returncode == 0, result.stderr
+    calls = docker_calls(docker_environment)
+    build = next(call for call in calls if "build" in call)
+    assert "event-grid-relay" not in build
+
+
 def test_reset_requires_explicit_data_confirmation(docker_environment: Path) -> None:
     result = run_stack("clean")
     assert result.returncode != 0

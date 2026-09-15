@@ -65,7 +65,17 @@ case "$action" in
         trap 'exit 143' TERM
         options=()
         if [[ "$action" == "rebuild" ]]; then
-            "${compose[@]}" build "${services[@]}"
+            build_services=("${services[@]}")
+            if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" ]]; then
+                filtered_services=()
+                for service in "${build_services[@]}"; do
+                    if [[ "$service" != "event-grid-relay" ]]; then
+                        filtered_services+=("$service")
+                    fi
+                done
+                build_services=("${filtered_services[@]}")
+            fi
+            "${compose[@]}" build "${build_services[@]}"
             options+=(--force-recreate)
         fi
         if [[ "$action" == "storage" ]]; then
