@@ -237,6 +237,8 @@ services:
     build:
       context: ${DEV_WORKSPACE:-.}
       dockerfile: Dockerfile.dev
+      args:
+        UV_VERSION: ${UV_VERSION:-0.11.28}
     image: treesight-dev:local
     depends_on:
       azurite:

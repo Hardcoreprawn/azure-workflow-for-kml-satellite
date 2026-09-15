@@ -26,6 +26,20 @@ def test_editor_owns_compose_shutdown() -> None:
     assert "mounts" not in config
 
 
+def test_dev_image_runtime_contract_is_uid_remap_safe() -> None:
+    dockerfile = (ROOT / "Dockerfile.dev").read_text()
+    assert "ENV HOME=/home/vscode" in dockerfile
+    assert "chown -R vscode:vscode /workspace /opt/venv /home/vscode" in dockerfile
+    assert "chmod -R a+rwX /opt/venv" in dockerfile
+    assert "USER vscode\nWORKDIR /workspace" in dockerfile
+
+
+def test_host_relay_build_forwards_shared_uv_version() -> None:
+    config = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    relay = config["services"]["event-grid-relay"]
+    assert relay["build"]["args"]["UV_VERSION"] == "${UV_VERSION:-0.11.28}"
+
+
 @pytest.mark.parametrize("service", ["func", "orch"])
 def test_functions_wait_for_storage_initialization(service: str) -> None:
     config = yaml.safe_load((ROOT / "docker-compose.yml").read_text())

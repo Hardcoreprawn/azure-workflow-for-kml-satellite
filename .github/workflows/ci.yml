@@ -85,6 +85,9 @@ jobs:
       packages: read
     container:
       image: ${{ needs.resolve-image.outputs.image }}
+      # The checkout mount belongs to the runner UID, not the image's vscode
+      # UID; root keeps stale-image sync and coverage artifacts writable.
+      options: --user root
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -111,6 +114,9 @@ jobs:
       packages: read
     container:
       image: ${{ needs.resolve-image.outputs.image }}
+      # The checkout mount belongs to the runner UID, not the image's vscode
+      # UID; root keeps stale-image sync and coverage artifacts writable.
+      options: --user root
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

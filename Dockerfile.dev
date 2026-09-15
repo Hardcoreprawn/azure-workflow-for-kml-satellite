@@ -97,7 +97,8 @@ RUN uv sync --frozen --all-extras --no-install-project
 COPY --from=rust-build /wheels/ /tmp/wheels/
 RUN uv pip install --python /opt/venv /tmp/wheels/*.whl; \
     rm -rf /tmp/wheels; \
-    chown -R vscode:vscode /workspace /opt/venv /home/vscode
+    chown -R vscode:vscode /workspace /opt/venv /home/vscode; \
+    chmod -R a+rwX /opt/venv
 
 USER vscode
 WORKDIR /workspace
