@@ -200,8 +200,9 @@
       review = manifest.parcel_reviews[parcelKey] || null;
     }
 
-    var det            = aoiData && aoiData.determination;
-    var hasScreening = !!(det && typeof det.screening_outcome === 'string');
+    var det              = aoiData && aoiData.determination;
+    var hasScreening     = !!(det && typeof det.screening_outcome === 'string');
+    var isSignalDetected = !!(det && det.screening_outcome === 'signal_detected');
 
     overrideEl.hidden = !(hasScreening || override || review);
 
@@ -249,7 +250,7 @@
     } else {
       if (badgeEl)     badgeEl.hidden     = true;
       if (overrideBtn) {
-        overrideBtn.hidden      = !isNonCompliant;
+        overrideBtn.hidden      = !isSignalDetected;
         overrideBtn.textContent = 'Override determination';
       }
       if (revertBtn)   revertBtn.hidden   = true;
