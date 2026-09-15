@@ -364,7 +364,11 @@ def test_image_config_env_defines_shared_uv_version():
     """All project images must receive one pinned uv version from image-config.env."""
     source = (REPO_ROOT / ".github" / "image-config.env").read_text()
     assert re.search(r'^UV_VERSION="?\d+\.\d+\.\d+"?$', source, re.MULTILINE)
-    assert 'UV_VERSION="0.12.15"' in source
+    match = re.search(r'^UV_VERSION="?(\d+\.\d+\.\d+)"?$', source, re.MULTILINE)
+    assert match and match.group(1) == "0.12.15"
+    expected_arg = f"ARG UV_VERSION={match.group(1)}"
+    for filename in ("Dockerfile", "Dockerfile.orchestrator", "Dockerfile.dev"):
+        assert expected_arg in (REPO_ROOT / filename).read_text()
 
 
 def test_compose_image_builds_use_shared_uv_fallback():
