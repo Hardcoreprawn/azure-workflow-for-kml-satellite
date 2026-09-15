@@ -62,8 +62,11 @@ def test_ci_local_preserves_caller_ownership() -> None:
 def test_ci_gate_uses_explicit_caller_identity() -> None:
     compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
     assert compose["services"]["ci-gate"]["user"] == "${CI_GATE_USER:-1000:1000}"
+    assert compose["services"]["ci-gate"]["environment"]["HOME"] == "/tmp"
     workflow = (ROOT / ".github/workflows/ci.yml").read_text()
     assert 'export CI_GATE_USER="$(id -u):$(id -g)"' in workflow
+    assert "run --rm --user root ci-gate" in workflow
+    assert "run --rm ci-gate make test-int" in workflow
 
 
 @pytest.mark.parametrize("service", ["func", "orch"])

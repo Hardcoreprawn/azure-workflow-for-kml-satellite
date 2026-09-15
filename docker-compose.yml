@@ -91,6 +91,7 @@ services:
       - ${CI_GATE_WORKSPACE:-.}:/workspace
     working_dir: /workspace
     environment:
+      HOME: /tmp
       UV_NO_SYNC: "1"
       AZURITE_BLOB_HOST: azurite
       AzureWebJobsStorage: "UseDevelopmentStorage=true"  # pragma: allowlist secret
