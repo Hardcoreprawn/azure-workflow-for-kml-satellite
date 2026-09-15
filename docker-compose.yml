@@ -234,9 +234,9 @@ services:
   # matching synthetic event (#1273; see scripts/dev_event_grid_relay.py
   # for why this is the documented mechanism, not a workaround).
   event-grid-relay:
-    # Use the locally built dev image so the fixed devcontainer/runtime image is
-    # what actually gets exercised during local stack startup instead of the stale
-    # published GHCR tag.
+    build:
+      context: ${DEV_WORKSPACE:-.}
+      dockerfile: Dockerfile.dev
     image: treesight-dev:local
     depends_on:
       azurite:

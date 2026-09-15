@@ -86,17 +86,30 @@ def docker_calls(log: Path) -> list[list[str]]:
     return [json.loads(line) for line in log.read_text().splitlines()]
 
 
-def test_start_waits_and_reuses_images(docker_environment: Path) -> None:
+def test_host_start_builds_relay_and_waits_for_services(docker_environment: Path) -> None:
     result = run_stack("up")
     assert result.returncode == 0, result.stderr
     calls = docker_calls(docker_environment)
+    build = next(call for call in calls if "build" in call)
     start = next(call for call in calls if "up" in call)
+    assert build.index("event-grid-relay") > 0
+    assert calls.index(build) < calls.index(start)
     assert "--wait" in start
     assert "--wait-timeout" in start
     assert "--build" not in start
     assert "devcontainer" not in start
-    assert not any("down" in call or "build" in call for call in calls)
+    assert not any("down" in call for call in calls)
     assert "lifecycle-test" in start
+
+
+def test_start_removes_failed_storage_before_reconnect(docker_environment: Path) -> None:
+    result = run_stack("up")
+    assert result.returncode == 0, result.stderr
+    calls = docker_calls(docker_environment)
+    remove = next(call for call in calls if "rm" in call)
+    start = next(call for call in calls if "up" in call)
+    assert remove[-1] == "init-storage"
+    assert calls.index(remove) < calls.index(start)
 
 
 def test_failed_start_cleans_up_and_keeps_failure(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:

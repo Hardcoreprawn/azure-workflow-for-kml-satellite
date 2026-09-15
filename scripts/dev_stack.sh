@@ -65,6 +65,9 @@ case "$action" in
             "${compose[@]}" build "${services[@]}"
             options+=(--force-recreate)
         fi
+        if [[ "$action" == "up" && "${CANOPEX_DEVCONTAINER:-}" != "1" ]]; then
+            "${compose[@]}" build event-grid-relay
+        fi
         if [[ "$action" == "storage" ]]; then
             services=(azurite init-storage)
             "${compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" azurite

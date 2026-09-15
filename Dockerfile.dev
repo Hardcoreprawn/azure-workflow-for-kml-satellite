@@ -74,8 +74,7 @@ RUN set -eux; \
         groupadd --gid 1000 vscode; \
         useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash vscode; \
     fi; \
-    mkdir -p /workspace /opt/venv; \
-    chown -R vscode:vscode /workspace /opt/venv /home/vscode
+    mkdir -p /workspace /opt/venv
 
 # Project environment lives OUTSIDE the workspace so a devcontainer / CI
 # bind-mount of the repo does not clobber the baked environment.
@@ -96,7 +95,9 @@ RUN uv sync --frozen --all-extras --no-install-project
 
 # Install the pre-built treesight_rs wheel from the builder stage.
 COPY --from=rust-build /wheels/ /tmp/wheels/
-RUN uv pip install --python /opt/venv /tmp/wheels/*.whl && rm -rf /tmp/wheels
+RUN uv pip install --python /opt/venv /tmp/wheels/*.whl; \
+    rm -rf /tmp/wheels; \
+    chown -R vscode:vscode /workspace /opt/venv /home/vscode
 
 USER vscode
 WORKDIR /workspace
@@ -113,6 +114,7 @@ CMD ["bash"]
 # Debian (bookworm), not Ubuntu, so this uses the Debian apt repo, not the
 # Ubuntu one scripts/setup_func_tools.sh assumes.
 FROM dev AS pipeline-e2e
+USER root
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends gnupg curl; \
@@ -125,6 +127,7 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends azure-functions-core-tools-4; \
     apt-get purge -y --auto-remove gnupg curl; \
     rm -rf /var/lib/apt/lists/*
+USER vscode
 
 # ── Stage 4: default target (keeps `dev` as the implicit final stage) ───────
 FROM dev AS final

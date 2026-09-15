@@ -2,12 +2,6 @@
 # Remove obsolete entries only with fresh scanner evidence and control review.
 # All entries must have an exp: date. Review any entry older than 30 days.
 #
-# Local-only Azurite development uses the public well-known storage account key
-# from the emulator docs. The value is intentionally committed in docker-compose
-# and local.settings.json for deterministic local startup; it is not a production
-# credential and is tracked in issue #1213.
-azure-storage-account-key # exp:2026-12-12 public Azurite emulator key for local dev only; issue #1213
-#
 # AZU-0012 / AZU-0013 are tied to strict network ACL posture for Storage/Key Vault.
 # Both dev and prd templates lack deny-by-default ACLs. Owner accepted the current
 # pre-customer cost posture on 2026-09-12; review before customer onboarding or
