@@ -196,8 +196,22 @@
       });
 
       let result = await res.json();
-      let cls = (result.compliant || result.deforestation_free) ? 'compliant' : 'non-compliant';
-      let label = cls === 'compliant' ? '✓ No deforestation detected since Dec 2020' : '⚠ Potential deforestation detected';
+      let outcome = result && result.screening_outcome;
+      let cls = 'screening-insufficient';
+      let label = 'Insufficient evidence for screening';
+      if (outcome === 'no_signal_detected') {
+        cls = 'screening-no-signal';
+        label = 'No deforestation signal detected';
+      } else if (outcome === 'signal_detected') {
+        cls = 'screening-signal';
+        label = 'Deforestation signal detected';
+      } else if (outcome === 'error') {
+        cls = 'screening-error';
+        label = 'Screening unavailable';
+      }
+      if (typeof result.confidence === 'string' && result.confidence.trim()) {
+        label += ' (' + result.confidence.trim() + ' confidence)';
+      }
       content.textContent = '';
       let resultDiv = document.createElement('div');
       resultDiv.className = 'app-evidence-eudr-result ' + cls;

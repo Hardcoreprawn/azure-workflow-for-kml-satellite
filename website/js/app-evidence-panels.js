@@ -43,6 +43,14 @@
     _getInstanceId = deps.getInstanceId || _getInstanceId;
   }
 
+  function screeningOutcomeLabel(determination) {
+    var outcome = determination && determination.screening_outcome;
+    if (outcome === 'no_signal_detected') return 'No deforestation signal detected';
+    if (outcome === 'signal_detected') return 'Deforestation signal detected';
+    if (outcome === 'error') return 'Screening unavailable';
+    return 'Insufficient evidence for screening';
+  }
+
   /* ---- module-level state ---- */
 
   var currentNoteParcelKey     = null;
@@ -192,10 +200,11 @@
       review = manifest.parcel_reviews[parcelKey] || null;
     }
 
-    var det            = aoiData && aoiData.determination;
-    var isNonCompliant = det && !det.deforestation_free;
+    var det              = aoiData && aoiData.determination;
+    var hasScreening     = !!(det && typeof det.screening_outcome === 'string');
+    var isSignalDetected = !!(det && det.screening_outcome === 'signal_detected');
 
-    overrideEl.hidden = !(isNonCompliant || override || review);
+    overrideEl.hidden = !(hasScreening || override || review);
 
     if (review && review.override) {
       // New review-layer override: amber "Reviewed" badge.
@@ -241,7 +250,7 @@
     } else {
       if (badgeEl)     badgeEl.hidden     = true;
       if (overrideBtn) {
-        overrideBtn.hidden      = !isNonCompliant;
+        overrideBtn.hidden      = !isSignalDetected;
         overrideBtn.textContent = 'Override determination';
       }
       if (revertBtn)   revertBtn.hidden   = true;
@@ -283,9 +292,8 @@
     if (confirmBtn) confirmBtn.disabled    = existingLen < minRequired;
     if (errorEl)     { errorEl.hidden = true; errorEl.textContent = ''; }
     if (originalEl) {
-      var det    = aoiData && aoiData.determination;
-      var reason = det && det.reason ? det.reason : 'Risk detected';
-      originalEl.textContent = 'Algorithmic determination: ' + reason;
+      var det = aoiData && aoiData.determination;
+      originalEl.textContent = 'Algorithmic screening: ' + screeningOutcomeLabel(det);
     }
 
     backdrop.hidden = false;
