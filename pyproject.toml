@@ -128,5 +128,5 @@ include = ["treesight", "blueprints"]
 dev = [
     "lxml-stubs>=0.5.1",
     "pre-commit>=4.5.1",
-    "pyright>=1.1.411",
+    "pyright>=1.1.414",
 ]
