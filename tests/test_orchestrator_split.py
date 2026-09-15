@@ -364,6 +364,13 @@ def test_image_config_env_defines_shared_uv_version():
     """All project images must receive one pinned uv version from image-config.env."""
     source = (REPO_ROOT / ".github" / "image-config.env").read_text()
     assert re.search(r'^UV_VERSION="?\d+\.\d+\.\d+"?$', source, re.MULTILINE)
+    assert 'UV_VERSION="0.12.15"' in source
+
+
+def test_compose_image_builds_use_shared_uv_fallback():
+    """Direct Compose builds must match the shared UV pin when env is unset."""
+    source = (REPO_ROOT / "docker-compose.yml").read_text()
+    assert source.count("UV_VERSION: ${UV_VERSION:-0.12.15}") >= 2
 
 
 def test_project_dockerfiles_consume_shared_uv_version():

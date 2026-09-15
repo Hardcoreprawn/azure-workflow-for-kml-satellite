@@ -105,7 +105,7 @@ services:
       # `make dev-all` works out of the box for a new dev machine too.
       args:
         BASE_IMAGE: ghcr.io/hardcoreprawn/treesight-base:latest
-        UV_VERSION: ${UV_VERSION:-0.11.28}
+        UV_VERSION: ${UV_VERSION:-0.12.15}
     ports:
       - "7071:80"
     depends_on:
@@ -182,7 +182,7 @@ services:
       dockerfile: Dockerfile.orchestrator
       args:
         BASE_IMAGE: ghcr.io/hardcoreprawn/treesight-base:latest
-        UV_VERSION: ${UV_VERSION:-0.11.28}
+        UV_VERSION: ${UV_VERSION:-0.12.15}
     ports:
       - "7072:80"
     depends_on:
