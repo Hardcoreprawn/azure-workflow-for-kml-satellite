@@ -79,6 +79,16 @@ test('renders signal and insufficient-evidence outcomes distinctly', () => {
   }
 });
 
+test('treats missing and unknown outcomes as insufficient evidence', () => {
+  for (const determination of [{ flags: [] }, { screening_outcome: 'unexpected', flags: [] }]) {
+    const renderer = loadRenderer();
+    renderer.render({ determination });
+    const element = renderer.elements.get('app-evidence-aoi-determination');
+    assert.match(element.textContent, /Insufficient evidence for screening/);
+    assert.equal(element.className, 'app-evidence-aoi-determination screening-insufficient');
+  }
+});
+
 test('keeps a human operator conclusion separate from machine screening', () => {
   const renderer = loadRenderer();
   renderer.render({

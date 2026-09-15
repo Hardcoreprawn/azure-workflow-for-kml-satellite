@@ -193,7 +193,8 @@
 .app-evidence-aoi-determination{padding:10px 12px;border-radius:10px;font-size:.8rem;line-height:1.5;margin-top:6px}
 .app-evidence-aoi-determination.screening-no-signal{background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.24)}
 .app-evidence-aoi-determination.screening-signal{background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.24)}
-.app-evidence-aoi-determination.screening-insufficient,.app-evidence-aoi-determination.screening-error{background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.24)}
+.app-evidence-aoi-determination.screening-insufficient{background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.24)}
+.app-evidence-aoi-determination.screening-error{background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.18)}
 /* Flag detail cards */
 .app-evidence-flags{display:flex;flex-direction:column;gap:8px;margin-top:8px}
 
@@ -240,8 +241,10 @@
 .app-evidence-obs .obs-recommendation{color:var(--c-text);font-style:italic}
 .app-evidence-summary{padding:12px 14px;border-radius:12px;background:var(--app-role-tint);border:1px solid var(--app-role-border);font-size:.84rem;line-height:1.6;margin-bottom:8px}
 .app-evidence-eudr-result{padding:14px 16px;border-radius:12px;font-size:.84rem;line-height:1.6}
-.app-evidence-eudr-result.compliant{background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.24);color:var(--c-text)}
-.app-evidence-eudr-result.non-compliant{background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.24);color:var(--c-text)}
+.app-evidence-eudr-result.screening-no-signal{background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.24);color:var(--c-text)}
+.app-evidence-eudr-result.screening-signal{background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.24);color:var(--c-text)}
+.app-evidence-eudr-result.screening-insufficient{background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.24);color:var(--c-text)}
+.app-evidence-eudr-result.screening-error{background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.18);color:var(--c-text)}
 
 .app-mode-card,.app-preflight-card{padding:16px;border-radius:16px;border:1px solid rgba(230,237,243,.08);background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)), rgba(13,17,23,.42)}
 .app-mode-card p{margin-top:6px;font-size:.84rem;line-height:1.6;color:var(--c-muted)}

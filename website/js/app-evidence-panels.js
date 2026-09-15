@@ -201,9 +201,9 @@
     }
 
     var det            = aoiData && aoiData.determination;
-    var isNonCompliant = det && det.screening_outcome === 'signal_detected';
+    var hasScreening = !!(det && typeof det.screening_outcome === 'string');
 
-    overrideEl.hidden = !(isNonCompliant || override || review);
+    overrideEl.hidden = !(hasScreening || override || review);
 
     if (review && review.override) {
       // New review-layer override: amber "Reviewed" badge.

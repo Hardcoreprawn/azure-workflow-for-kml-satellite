@@ -144,7 +144,7 @@ code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:
         <li><strong style="color:var(--c-text)">Parsing</strong> — parcels are extracted and geometry is validated</li>
         <li><strong style="color:var(--c-text)">Acquisition</strong> — the system searches for post-December 2020 satellite imagery across Sentinel-2 and Landsat</li>
         <li><strong style="color:var(--c-text)">Fulfilment</strong> — scenes are downloaded and clipped to your parcel boundaries</li>
-        <li><strong style="color:var(--c-text)">Enrichment</strong> — evidence layers are built: weather, fire/flood, WorldCover land classification, IO LULC, ALOS radar, per-parcel change detection and deforestation determination</li>
+        <li><strong style="color:var(--c-text)">Enrichment</strong> — evidence layers are built: weather, fire/flood, WorldCover land classification, IO LULC, ALOS radar, per-parcel change detection and screening outcome</li>
         <li><strong style="color:var(--c-text)">Complete</strong> — your evidence pack is ready for review</li>
       </ol>
       <p>A typical assessment with 3–5 parcels takes about 5 minutes. You can leave the page and come back — your run will continue in the background and appear in History when complete.</p>
@@ -180,13 +180,13 @@ code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:
       <h3><span class="step-number">6</span> Run the EUDR assessment and export</h3>
       <p>Below the evidence display, two action buttons appear:</p>
       <ul>
-        <li><strong style="color:var(--c-text)">Assess EUDR</strong> — runs the deforestation-risk assessment against EU Deforestation Regulation thresholds. You'll see a clear result: <span style="color:var(--c-green)">✓ No deforestation detected since Dec 2020</span> or <span style="color:var(--c-orange)">⚠ Potential deforestation detected</span>, with a summary explanation.</li>
+        <li><strong style="color:var(--c-text)">Assess EUDR</strong> — runs satellite screening against EU Deforestation Regulation evidence thresholds. You'll see a screening outcome, confidence where available, and a summary explanation for human review.</li>
         <li><strong style="color:var(--c-text)">Analyze with AI</strong> — generates a plain-English interpretation of the satellite evidence, explaining what changed, likely causes, and what it means for compliance.</li>
       </ul>
 
       <p>Finally, use the <strong style="color:var(--c-text)">export bar</strong> at the bottom to download your evidence:</p>
       <ul>
-        <li><strong style="color:var(--c-text)">PDF</strong> — audit-grade report with per-parcel determinations, NDVI data, and scene provenance. This is the document to attach to your EUDR due diligence records.</li>
+        <li><strong style="color:var(--c-text)">PDF</strong> — audit-grade report with per-parcel screening outcomes, NDVI data, and scene provenance. Use it as supporting evidence in your EUDR due diligence records.</li>
         <li><strong style="color:var(--c-text)">GeoJSON</strong> — machine-readable geospatial data with all metrics, suitable for integration with GIS tools or compliance databases.</li>
         <li><strong style="color:var(--c-text)">CSV</strong> — tabular export of parcel metrics for spreadsheet analysis.</li>
       </ul>
