@@ -68,7 +68,7 @@ LABEL org.canopex.build-inputs-sha256="${BUILD_INPUTS_SHA}"
 # test-int) run both locally and by CI (#1086).
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends nodejs git make; \
+    apt-get install -y --no-install-recommends nodejs git make shellcheck; \
     rm -rf /var/lib/apt/lists/*; \
     if ! id vscode >/dev/null 2>&1; then \
         groupadd --gid 1000 vscode; \

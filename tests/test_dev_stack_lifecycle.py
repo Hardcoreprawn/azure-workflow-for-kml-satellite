@@ -64,7 +64,8 @@ def test_ci_gate_uses_explicit_caller_identity() -> None:
     assert compose["services"]["ci-gate"]["user"] == "${CI_GATE_USER:-1000:1000}"
     assert compose["services"]["ci-gate"]["environment"]["HOME"] == "/tmp"
     workflow = (ROOT / ".github/workflows/ci.yml").read_text()
-    assert 'export CI_GATE_USER="$(id -u):$(id -g)"' in workflow
+    assert 'CI_GATE_USER="$(id -u):$(id -g)"' in workflow
+    assert "export CI_GATE_USER" in workflow
     assert "run --rm --user root ci-gate" in workflow
     assert "run --rm ci-gate make test-int" in workflow
 
