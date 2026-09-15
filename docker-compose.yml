@@ -239,7 +239,7 @@ services:
       dockerfile: Dockerfile.dev
       args:
         UV_VERSION: ${UV_VERSION:-0.11.28}
-    image: treesight-dev:local
+    image: treesight-dev:${COMPOSE_PROJECT_NAME:-canopex-dev}
     depends_on:
       azurite:
         condition: service_healthy
