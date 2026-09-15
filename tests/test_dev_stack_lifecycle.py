@@ -26,6 +26,50 @@ def test_editor_owns_compose_shutdown() -> None:
     assert "mounts" not in config
 
 
+def test_dev_image_runtime_contract_is_uid_remap_safe() -> None:
+    dockerfile = (ROOT / "Dockerfile.dev").read_text()
+    assert "ENV HOME=/home/vscode" in dockerfile
+    assert "RUN set -eux; \\\n    uv pip install --python /opt/venv /tmp/wheels/*.whl;" in dockerfile
+    assert "chown -R vscode:vscode /workspace /opt/venv /home/vscode" in dockerfile
+    assert "chmod -R a+rwX /opt/venv" in dockerfile
+    assert "CI runs with UV_NO_SYNC" in dockerfile
+    assert "USER vscode\nWORKDIR /workspace" in dockerfile
+
+
+def test_host_relay_build_forwards_shared_uv_version() -> None:
+    config = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    relay = config["services"]["event-grid-relay"]
+    assert relay["build"]["args"]["UV_VERSION"] == "${UV_VERSION:-0.11.28}"
+
+
+def test_dev_images_are_scoped_to_the_compose_project() -> None:
+    host_config = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    editor_config = yaml.safe_load((ROOT / ".devcontainer/docker-compose.yml").read_text())
+    expected = "treesight-dev:${COMPOSE_PROJECT_NAME:-canopex-dev}"
+    assert host_config["services"]["event-grid-relay"]["image"] == expected
+    assert editor_config["services"]["devcontainer"]["image"] == expected
+    assert host_config["services"]["ci-gate"]["image"] == (
+        "${CI_GATE_IMAGE:-treesight-dev:${COMPOSE_PROJECT_NAME:-canopex-dev}}"
+    )
+
+
+def test_ci_local_preserves_caller_ownership() -> None:
+    source = (ROOT / "scripts/ci_local.sh").read_text()
+    assert "-e HOME=/tmp" in source
+    assert '--user "$(id -u):$(id -g)"' in source
+
+
+def test_ci_gate_uses_explicit_caller_identity() -> None:
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    assert compose["services"]["ci-gate"]["user"] == "${CI_GATE_USER:-1000:1000}"
+    assert compose["services"]["ci-gate"]["environment"]["HOME"] == "/tmp"
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+    assert 'CI_GATE_USER="$(id -u):$(id -g)"' in workflow
+    assert "export CI_GATE_USER" in workflow
+    assert "run --rm --user root ci-gate" in workflow
+    assert "run --rm ci-gate make test-int" in workflow
+
+
 @pytest.mark.parametrize("service", ["func", "orch"])
 def test_functions_wait_for_storage_initialization(service: str) -> None:
     config = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
@@ -61,6 +105,14 @@ def docker_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "    sys.exit(int(os.environ.get('DOCKER_INFO_EXIT', '0')))\n"
         "if args[-2:] == ['config', '--services']:\n"
         "    print('azurite\\ninit-storage\\ncosmos\\nfunc\\norch\\nevent-grid-relay\\nweb\\nollama\\ndevcontainer')\n"
+        "if 'ps' in args:\n"
+        "    print(f\"init-storage exited {os.environ.get('DOCKER_INIT_STORAGE_EXIT', '17')}\")\n"
+        "if 'build' in args and 'event-grid-relay' in args:\n"
+        "    sys.exit(int(os.environ.get('DOCKER_RELAY_BUILD_EXIT', os.environ.get('DOCKER_BUILD_EXIT', '0'))))\n"
+        "if 'build' in args:\n"
+        "    sys.exit(int(os.environ.get('DOCKER_BUILD_EXIT', '0')))\n"
+        "if 'run' in args:\n"
+        "    sys.exit(int(os.environ.get('DOCKER_RUN_EXIT', '0')))\n"
         "if 'up' in args:\n"
         "    sys.exit(int(os.environ.get('DOCKER_UP_EXIT', '0')))\n"
     )
@@ -86,17 +138,64 @@ def docker_calls(log: Path) -> list[list[str]]:
     return [json.loads(line) for line in log.read_text().splitlines()]
 
 
-def test_start_waits_and_reuses_images(docker_environment: Path) -> None:
+def test_host_start_builds_relay_and_waits_for_services(docker_environment: Path) -> None:
     result = run_stack("up")
     assert result.returncode == 0, result.stderr
     calls = docker_calls(docker_environment)
+    build = next(call for call in calls if "build" in call)
     start = next(call for call in calls if "up" in call)
+    assert build.index("event-grid-relay") > 0
+    assert calls.index(build) < calls.index(start)
     assert "--wait" in start
     assert "--wait-timeout" in start
     assert "--build" not in start
     assert "devcontainer" not in start
-    assert not any("down" in call or "build" in call for call in calls)
+    assert not any("down" in call for call in calls)
     assert "lifecycle-test" in start
+
+
+def test_failed_host_relay_preflight_preserves_existing_stack(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOCKER_BUILD_EXIT", "17")
+    result = run_stack("up")
+    assert result.returncode == 17
+    calls = docker_calls(docker_environment)
+    assert any("build" in call and "event-grid-relay" in call for call in calls)
+    assert not any("down" in call or "stop" in call for call in calls)
+
+
+def test_start_removes_failed_storage_before_reconnect(docker_environment: Path) -> None:
+    result = run_stack("up")
+    assert result.returncode == 0, result.stderr
+    calls = docker_calls(docker_environment)
+    remove = next(call for call in calls if "rm" in call)
+    start = next(call for call in calls if "up" in call)
+    assert remove[-1] == "init-storage"
+    assert calls.index(remove) < calls.index(start)
+
+
+def test_failed_host_relay_preflight_build_keeps_running_stack(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOCKER_RELAY_BUILD_EXIT", "23")
+    result = run_stack("up")
+    assert result.returncode == 23
+    calls = docker_calls(docker_environment)
+    assert any("build" in call and "event-grid-relay" in call for call in calls)
+    assert not any("up" in call for call in calls)
+    assert not any("logs" in call for call in calls)
+    assert not any("down" in call for call in calls)
+
+
+def test_start_preserves_successful_storage_initialization(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOCKER_INIT_STORAGE_EXIT", "0")
+    result = run_stack("up")
+    assert result.returncode == 0, result.stderr
+    calls = docker_calls(docker_environment)
+    assert not any("rm" in call for call in calls)
 
 
 def test_failed_start_cleans_up_and_keeps_failure(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -147,6 +246,24 @@ def test_rebuild_is_explicit(docker_environment: Path) -> None:
     assert "--force-recreate" in calls[start]
 
 
+def test_failed_rebuild_preserves_existing_stack(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DOCKER_BUILD_EXIT", "19")
+    result = run_stack("rebuild")
+    assert result.returncode == 19
+    calls = docker_calls(docker_environment)
+    assert any("build" in call for call in calls)
+    assert not any("down" in call or "stop" in call for call in calls)
+
+
+def test_devcontainer_rebuild_skips_host_only_relay(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CANOPEX_DEVCONTAINER", "1")
+    monkeypatch.setenv("DEV_WORKSPACE", "/host/workspace")
+    result = run_stack("rebuild")
+    assert result.returncode == 0, result.stderr
+    build = next(call for call in docker_calls(docker_environment) if "build" in call)
+    assert "event-grid-relay" not in build
+
+
 def test_reset_requires_explicit_data_confirmation(docker_environment: Path) -> None:
     result = run_stack("clean")
     assert result.returncode != 0
@@ -162,5 +279,17 @@ def test_storage_failure_never_tears_down_the_project(
     assert result.returncode == 17
     calls = docker_calls(docker_environment)
     assert not any("down" in call for call in calls)
+    stop = next(call for call in calls if "stop" in call)
+    assert stop[-2:] == ["azurite", "init-storage"]
+
+
+def test_storage_initialization_failure_preserves_project_data(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOCKER_RUN_EXIT", "23")
+    result = run_stack("storage")
+    assert result.returncode == 23
+    calls = docker_calls(docker_environment)
+    assert not any("down" in call or "--volumes" in call for call in calls)
     stop = next(call for call in calls if "stop" in call)
     assert stop[-2:] == ["azurite", "init-storage"]

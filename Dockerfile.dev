@@ -32,7 +32,8 @@ COPY --from=uv /uv /usr/local/bin/uv
 # Pin the interpreter to the base runtime's CPython so the wheel is ABI-tagged
 # for the same Python the final image (and production) runs, and uv never
 # downloads a managed CPython.
-ENV UV_PYTHON=3.12 \
+ENV HOME=/home/vscode \
+    UV_PYTHON=3.12 \
     UV_PYTHON_PREFERENCE=only-system \
     RUSTUP_HOME=/opt/rustup \
     CARGO_HOME=/opt/cargo \
@@ -67,12 +68,18 @@ LABEL org.canopex.build-inputs-sha256="${BUILD_INPUTS_SHA}"
 # test-int) run both locally and by CI (#1086).
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends nodejs git make; \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends nodejs git make shellcheck; \
+    rm -rf /var/lib/apt/lists/*; \
+    if ! id vscode >/dev/null 2>&1; then \
+        groupadd --gid 1000 vscode; \
+        useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash vscode; \
+    fi; \
+    mkdir -p /workspace /opt/venv
 
 # Project environment lives OUTSIDE the workspace so a devcontainer / CI
 # bind-mount of the repo does not clobber the baked environment.
-ENV UV_PYTHON=3.12 \
+ENV HOME=/home/vscode \
+    UV_PYTHON=3.12 \
     UV_PYTHON_PREFERENCE=only-system \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
     VIRTUAL_ENV=/opt/venv \
@@ -87,8 +94,18 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --all-extras --no-install-project
 
 # Install the pre-built treesight_rs wheel from the builder stage.
+# Dev Containers may remap vscode to the host UID after build, so the baked
+# venv remains writable for that user. CI runs with UV_NO_SYNC and does not
+# mutate this shared toolchain during normal gates.
 COPY --from=rust-build /wheels/ /tmp/wheels/
-RUN uv pip install --python /opt/venv /tmp/wheels/*.whl && rm -rf /tmp/wheels
+RUN set -eux; \
+    uv pip install --python /opt/venv /tmp/wheels/*.whl; \
+    rm -rf /tmp/wheels; \
+    chown -R vscode:vscode /workspace /opt/venv /home/vscode; \
+    chmod -R a+rwX /opt/venv
+
+USER vscode
+WORKDIR /workspace
 
 CMD ["bash"]
 
@@ -102,6 +119,7 @@ CMD ["bash"]
 # Debian (bookworm), not Ubuntu, so this uses the Debian apt repo, not the
 # Ubuntu one scripts/setup_func_tools.sh assumes.
 FROM dev AS pipeline-e2e
+USER root
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends gnupg curl; \
@@ -114,6 +132,7 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends azure-functions-core-tools-4; \
     apt-get purge -y --auto-remove gnupg curl; \
     rm -rf /var/lib/apt/lists/*
+USER vscode
 
 # ── Stage 4: default target (keeps `dev` as the implicit final stage) ───────
 FROM dev AS final

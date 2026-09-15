@@ -74,9 +74,10 @@ services:
   # azurite service above, reusing its --skipApiVersionCheck/--loose config and
   # healthcheck-gated ordering. Guarded by the `ci` profile so it never starts
   # with a normal `docker compose up`. The image tag is overridable so the same
-  # service can target treesight-dev:local (freshly built) or a pulled digest.
+  # service can target a project-scoped local image (freshly built) or a pulled digest.
   ci-gate:
-    image: ${CI_GATE_IMAGE:-treesight-dev:local}
+    image: ${CI_GATE_IMAGE:-treesight-dev:${COMPOSE_PROJECT_NAME:-canopex-dev}}
+    user: ${CI_GATE_USER:-1000:1000}
     profiles: ["ci"]
     depends_on:
       azurite:
@@ -90,6 +91,7 @@ services:
       - ${CI_GATE_WORKSPACE:-.}:/workspace
     working_dir: /workspace
     environment:
+      HOME: /tmp
       UV_NO_SYNC: "1"
       AZURITE_BLOB_HOST: azurite
       AzureWebJobsStorage: "UseDevelopmentStorage=true"  # pragma: allowlist secret
@@ -234,7 +236,12 @@ services:
   # matching synthetic event (#1273; see scripts/dev_event_grid_relay.py
   # for why this is the documented mechanism, not a workaround).
   event-grid-relay:
-    image: ghcr.io/hardcoreprawn/treesight-dev:latest
+    build:
+      context: ${DEV_WORKSPACE:-.}
+      dockerfile: Dockerfile.dev
+      args:
+        UV_VERSION: ${UV_VERSION:-0.11.28}
+    image: treesight-dev:${COMPOSE_PROJECT_NAME:-canopex-dev}
     depends_on:
       azurite:
         condition: service_healthy

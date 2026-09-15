@@ -85,6 +85,9 @@ jobs:
       packages: read
     container:
       image: ${{ needs.resolve-image.outputs.image }}
+      # The checkout mount belongs to the runner UID, not the image's vscode
+      # UID; root keeps stale-image sync and coverage artifacts writable.
+      options: --user root
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -111,6 +114,9 @@ jobs:
       packages: read
     container:
       image: ${{ needs.resolve-image.outputs.image }}
+      # The checkout mount belongs to the runner UID, not the image's vscode
+      # UID; root keeps stale-image sync and coverage artifacts writable.
+      options: --user root
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -185,15 +191,16 @@ jobs:
           CI_GATE_IMAGE: ${{ needs.resolve-image.outputs.image }}
           STALE: ${{ needs.resolve-image.outputs.stale }}
         run: |
+          CI_GATE_USER="$(id -u):$(id -g)"
+          export CI_GATE_USER
           if [ "${STALE}" = "true" ]; then
             # Image deps lag uv.lock (dependency PR before rebuild) — sync the
-            # delta inside the gate first, mirroring the lint/test jobs.
+            # delta as root in a disposable gate, mirroring the lint/test jobs.
             # --inexact preserves treesight_rs (not in uv.lock).
-            docker compose --profile ci run --rm ci-gate \
-              sh -c "uv sync --all-extras --inexact && make test-int"
-          else
-            docker compose --profile ci run --rm ci-gate make test-int
+            docker compose --profile ci run --rm --user root ci-gate \
+              uv sync --all-extras --inexact
           fi
+          docker compose --profile ci run --rm ci-gate make test-int
       - name: Tear down compose
         if: always()
         run: docker compose --profile ci down -v --remove-orphans

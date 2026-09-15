@@ -172,6 +172,7 @@ ACTIONLINT_BIN := $(ACTIONLINT_DIR)/actionlint
 ACTIONLINT_SHELLCHECK_OPTS ?= -e SC2129 -e SC2016
 
 lint-actions: ## Lint GitHub Actions workflows with pinned actionlint (canonical — CI runs this)
+	@command -v shellcheck >/dev/null 2>&1 || { echo "ERROR: shellcheck is required by lint-actions; use the dev image or install it locally." >&2; exit 1; }
 	@if [ ! -x "$(ACTIONLINT_BIN)" ]; then \
 		echo "Installing actionlint $(ACTIONLINT_VERSION)…"; \
 		mkdir -p "$(ACTIONLINT_DIR)"; \

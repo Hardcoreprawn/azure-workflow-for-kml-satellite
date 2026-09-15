@@ -57,12 +57,28 @@ cleanup_failed_start() {
 
 case "$action" in
     up|rebuild|storage)
+        options=()
+        # Build host-only contexts before installing the startup cleanup trap:
+        # a failed preflight must not tear down an already healthy project.
+        if [[ "$action" == "up" && "${CANOPEX_DEVCONTAINER:-}" != "1" ]]; then
+            "${compose[@]}" build event-grid-relay
+        elif [[ "$action" == "rebuild" ]]; then
+            build_services=("${services[@]}")
+            if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" ]]; then
+                filtered_services=()
+                for service in "${build_services[@]}"; do
+                    if [[ "$service" != "event-grid-relay" ]]; then
+                        filtered_services+=("$service")
+                    fi
+                done
+                build_services=("${filtered_services[@]}")
+            fi
+            "${compose[@]}" build "${build_services[@]}"
+        fi
         trap cleanup_failed_start EXIT
         trap 'exit 130' INT
         trap 'exit 143' TERM
-        options=()
         if [[ "$action" == "rebuild" ]]; then
-            "${compose[@]}" build "${services[@]}"
             options+=(--force-recreate)
         fi
         if [[ "$action" == "storage" ]]; then
@@ -70,6 +86,10 @@ case "$action" in
             "${compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" azurite
             "${compose[@]}" run --rm --no-deps init-storage
         else
+            init_status="$("${compose[@]}" ps --all --format '{{.Service}} {{.State}} {{.ExitCode}}' init-storage 2>/dev/null || true)"
+            if [[ "$init_status" =~ ^init-storage[[:space:]]+(exited|dead)[[:space:]]+[1-9][0-9]*$ ]]; then
+                "${compose[@]}" rm --force init-storage >/dev/null 2>&1 || true
+            fi
             "${compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" "${options[@]}" "${services[@]}"
         fi
         trap - EXIT INT TERM

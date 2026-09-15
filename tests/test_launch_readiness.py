@@ -2008,6 +2008,9 @@ class TestCIFeedbackHygiene:
             "Makefile lint-actions must carry the shellcheck suppressions "
             "(single source shared by CI and local pre-commit)"
         )
+        assert "command -v shellcheck" in makefile, (
+            "Makefile lint-actions must require the same ShellCheck path locally and in CI"
+        )
 
         # Local pre-commit must route through the same make target, not pin its
         # own separate actionlint version.

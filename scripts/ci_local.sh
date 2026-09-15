@@ -38,6 +38,7 @@ fi
 DEV_IMAGE="${DEV_IMAGE:-treesight-dev:local}"
 COMPOSE_PROJECT="canopex-ci-local"
 COMPOSE=(docker compose -p "${COMPOSE_PROJECT}" -f docker-compose.yml)
+export CI_GATE_USER="${CI_GATE_USER:-$(id -u):$(id -g)}"
 TARGET="${1:-all}"
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
@@ -60,12 +61,15 @@ if [[ "${NO_BUILD:-0}" != "1" ]]; then
 fi
 
 # lint/test mount the checkout at /workspace and rely on deps baked into
-# /opt/venv (outside the mount). UV_NO_SYNC=1 mirrors the CI env so `uv run`
-# never re-resolves against the network.
+# /opt/venv (outside the mount). Run as the caller so coverage and cache files
+# remain usable by the non-root devcontainer workflow. UV_NO_SYNC=1 mirrors the
+# CI env so `uv run` never re-resolves against the network.
 run_gate() {
   docker run --rm \
     -e UV_NO_SYNC=1 \
+    -e HOME=/tmp \
     -v "${PWD}:/workspace" -w /workspace \
+    --user "$(id -u):$(id -g)" \
     "$@"
 }
 
