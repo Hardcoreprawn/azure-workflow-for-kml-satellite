@@ -22,7 +22,7 @@
 #                   it's a separate, explicitly-targeted stage rather than
 #                   bloating every other job/devcontainer.
 # ─────────────────────────────────────────────────────────────
-ARG UV_VERSION=0.11.28
+ARG UV_VERSION=0.12.15
 ARG BASE_IMAGE=ghcr.io/hardcoreprawn/treesight-base:latest
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 

@@ -13,7 +13,7 @@
 # Base image: ghcr.io/<owner>/treesight-base:latest
 # Built by CI alongside the compute image on every push to main.
 # ─────────────────────────────────────────────────────────────
-ARG UV_VERSION=0.11.28
+ARG UV_VERSION=0.12.15
 ARG BASE_IMAGE=treesight-base:latest
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
