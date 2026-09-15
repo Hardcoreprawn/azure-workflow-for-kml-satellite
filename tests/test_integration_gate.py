@@ -90,6 +90,16 @@ def test_pipeline_e2e_target_owns_disposable_compose_lifecycle() -> None:
     assert "attached=1" in target
 
 
+def test_docker_storage_initializer_pins_blob_sdk_to_lockfile() -> None:
+    source = (ROOT / "scripts/init_storage_docker.py").read_text()
+    lockfile = (ROOT / "uv.lock").read_text()
+    match = re.search(r'AZURE_STORAGE_BLOB_VERSION = "([^"]+)"', source)
+    assert match is not None
+    version = match.group(1)
+    assert f'name = "azure-storage-blob"\nversion = "{version}"' in lockfile
+    assert "azure-storage-blob=={AZURE_STORAGE_BLOB_VERSION}" in source
+
+
 @pytest.mark.parametrize("module_name", ["init_storage", "init_storage_docker"])
 @pytest.mark.parametrize("origins", [None, "http://localhost:9000,http://127.0.0.1:9000"])
 def test_local_storage_cors_uses_explicit_origins(monkeypatch, module_name, origins) -> None:

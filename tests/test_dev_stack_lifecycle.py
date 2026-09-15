@@ -32,6 +32,7 @@ def test_dev_image_runtime_contract_is_uid_remap_safe() -> None:
     assert "RUN set -eux; \\\n    uv pip install --python /opt/venv /tmp/wheels/*.whl;" in dockerfile
     assert "chown -R vscode:vscode /workspace /opt/venv /home/vscode" in dockerfile
     assert "chmod -R a+rwX /opt/venv" in dockerfile
+    assert "CI runs with UV_NO_SYNC" in dockerfile
     assert "USER vscode\nWORKDIR /workspace" in dockerfile
 
 
@@ -47,12 +48,22 @@ def test_dev_images_are_scoped_to_the_compose_project() -> None:
     expected = "treesight-dev:${COMPOSE_PROJECT_NAME:-canopex-dev}"
     assert host_config["services"]["event-grid-relay"]["image"] == expected
     assert editor_config["services"]["devcontainer"]["image"] == expected
+    assert host_config["services"]["ci-gate"]["image"] == (
+        "${CI_GATE_IMAGE:-treesight-dev:${COMPOSE_PROJECT_NAME:-canopex-dev}}"
+    )
 
 
 def test_ci_local_preserves_caller_ownership() -> None:
     source = (ROOT / "scripts/ci_local.sh").read_text()
     assert "-e HOME=/tmp" in source
     assert '--user "$(id -u):$(id -g)"' in source
+
+
+def test_ci_gate_uses_explicit_caller_identity() -> None:
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    assert compose["services"]["ci-gate"]["user"] == "${CI_GATE_USER:-1000:1000}"
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+    assert 'export CI_GATE_USER="$(id -u):$(id -g)"' in workflow
 
 
 @pytest.mark.parametrize("service", ["func", "orch"])
@@ -96,6 +107,8 @@ def docker_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "    sys.exit(int(os.environ.get('DOCKER_RELAY_BUILD_EXIT', os.environ.get('DOCKER_BUILD_EXIT', '0'))))\n"
         "if 'build' in args:\n"
         "    sys.exit(int(os.environ.get('DOCKER_BUILD_EXIT', '0')))\n"
+        "if 'run' in args:\n"
+        "    sys.exit(int(os.environ.get('DOCKER_RUN_EXIT', '0')))\n"
         "if 'up' in args:\n"
         "    sys.exit(int(os.environ.get('DOCKER_UP_EXIT', '0')))\n"
     )
@@ -229,6 +242,15 @@ def test_rebuild_is_explicit(docker_environment: Path) -> None:
     assert "--force-recreate" in calls[start]
 
 
+def test_failed_rebuild_preserves_existing_stack(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DOCKER_BUILD_EXIT", "19")
+    result = run_stack("rebuild")
+    assert result.returncode == 19
+    calls = docker_calls(docker_environment)
+    assert any("build" in call for call in calls)
+    assert not any("down" in call or "stop" in call for call in calls)
+
+
 def test_devcontainer_rebuild_skips_host_only_relay(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CANOPEX_DEVCONTAINER", "1")
     monkeypatch.setenv("DEV_WORKSPACE", "/host/workspace")
@@ -253,5 +275,17 @@ def test_storage_failure_never_tears_down_the_project(
     assert result.returncode == 17
     calls = docker_calls(docker_environment)
     assert not any("down" in call for call in calls)
+    stop = next(call for call in calls if "stop" in call)
+    assert stop[-2:] == ["azurite", "init-storage"]
+
+
+def test_storage_initialization_failure_preserves_project_data(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOCKER_RUN_EXIT", "23")
+    result = run_stack("storage")
+    assert result.returncode == 23
+    calls = docker_calls(docker_environment)
+    assert not any("down" in call or "--volumes" in call for call in calls)
     stop = next(call for call in calls if "stop" in call)
     assert stop[-2:] == ["azurite", "init-storage"]

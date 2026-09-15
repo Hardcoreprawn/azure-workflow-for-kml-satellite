@@ -191,6 +191,7 @@ jobs:
           CI_GATE_IMAGE: ${{ needs.resolve-image.outputs.image }}
           STALE: ${{ needs.resolve-image.outputs.stale }}
         run: |
+          export CI_GATE_USER="$(id -u):$(id -g)"
           if [ "${STALE}" = "true" ]; then
             # Image deps lag uv.lock (dependency PR before rebuild) — sync the
             # delta inside the gate first, mirroring the lint/test jobs.

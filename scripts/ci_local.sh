@@ -38,6 +38,7 @@ fi
 DEV_IMAGE="${DEV_IMAGE:-treesight-dev:local}"
 COMPOSE_PROJECT="canopex-ci-local"
 COMPOSE=(docker compose -p "${COMPOSE_PROJECT}" -f docker-compose.yml)
+export CI_GATE_USER="${CI_GATE_USER:-$(id -u):$(id -g)}"
 TARGET="${1:-all}"
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }

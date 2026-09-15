@@ -74,9 +74,10 @@ services:
   # azurite service above, reusing its --skipApiVersionCheck/--loose config and
   # healthcheck-gated ordering. Guarded by the `ci` profile so it never starts
   # with a normal `docker compose up`. The image tag is overridable so the same
-  # service can target treesight-dev:local (freshly built) or a pulled digest.
+  # service can target a project-scoped local image (freshly built) or a pulled digest.
   ci-gate:
-    image: ${CI_GATE_IMAGE:-treesight-dev:local}
+    image: ${CI_GATE_IMAGE:-treesight-dev:${COMPOSE_PROJECT_NAME:-canopex-dev}}
+    user: ${CI_GATE_USER:-1000:1000}
     profiles: ["ci"]
     depends_on:
       azurite:

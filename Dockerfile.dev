@@ -94,6 +94,9 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --all-extras --no-install-project
 
 # Install the pre-built treesight_rs wheel from the builder stage.
+# Dev Containers may remap vscode to the host UID after build, so the baked
+# venv remains writable for that user. CI runs with UV_NO_SYNC and does not
+# mutate this shared toolchain during normal gates.
 COPY --from=rust-build /wheels/ /tmp/wheels/
 RUN set -eux; \
     uv pip install --python /opt/venv /tmp/wheels/*.whl; \

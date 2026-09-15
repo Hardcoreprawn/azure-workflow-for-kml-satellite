@@ -21,6 +21,7 @@ import time
 HOST = os.environ.get("AZURITE_BLOB_HOST", "127.0.0.1")
 PORT = int(os.environ.get("AZURITE_BLOB_PORT", "10000"))
 CONTAINERS = ["kml-input", "kml-output", "pipeline-payloads"]
+AZURE_STORAGE_BLOB_VERSION = "12.28.0"  # Keep in sync with uv.lock.
 
 CONN_STR = (
     f"DefaultEndpointsProtocol=http;"
@@ -39,7 +40,14 @@ def _ensure_sdk() -> None:
         import subprocess
 
         subprocess.check_call(
-            ["uv", "pip", "install", "--system", "-q", "azure-storage-blob"],
+            [
+                "uv",
+                "pip",
+                "install",
+                "--system",
+                "-q",
+                f"azure-storage-blob=={AZURE_STORAGE_BLOB_VERSION}",
+            ],
         )
 
 

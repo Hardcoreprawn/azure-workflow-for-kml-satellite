@@ -95,6 +95,11 @@ Current temporary exceptions, accepted by the owner on 2026-09-12 until
 - `AVD-AZU-0057` (Logging coverage: modern blob write/delete diagnostics exist,
   but read and other storage-service coverage equivalence is unproven)
 
+The local dev image makes its baked `/opt/venv` writable because Dev Containers
+may remap `vscode` to the host UID after image build. This is intentionally
+limited to the development image; CI gates disable dependency sync and do not
+mutate the baked toolchain. Production images do not consume this image.
+
 Private networking and additional paid Defender coverage are deferred. Obsolete
 purge-protection, infrastructure-encryption, and Defender scanner exceptions
 were removed after revalidation, not renewed. Production freeze is unchanged.
