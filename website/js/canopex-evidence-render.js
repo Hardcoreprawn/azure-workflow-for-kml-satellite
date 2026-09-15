@@ -354,6 +354,32 @@
       'collection=sentinel-2-l2a&expression=(B08-B04)/(B08%2BB04)&rescale=-0.2,0.8&colormap_name=rdylgn';
   }
 
+  function renderScreeningDetermination(detEl, determination) {
+    var outcome = determination && determination.screening_outcome;
+    var confidence = determination && typeof determination.confidence === 'string'
+      ? determination.confidence
+      : 'unknown';
+    var label = 'Insufficient evidence for screening';
+    var className = 'screening-insufficient';
+    if (outcome === 'no_signal_detected') {
+      label = 'No deforestation signal detected';
+      className = 'screening-no-signal';
+    } else if (outcome === 'signal_detected') {
+      label = 'Deforestation signal detected';
+      className = 'screening-signal';
+    } else if (outcome === 'error') {
+      label = 'Screening unavailable';
+      className = 'screening-error';
+    }
+
+    var text = label + ' (' + confidence + ' confidence)';
+    if (determination && typeof determination.operator_conclusion === 'string' && determination.operator_conclusion.trim()) {
+      text += ' — Operator conclusion: ' + determination.operator_conclusion.trim();
+    }
+    detEl.className = 'app-evidence-aoi-determination ' + className;
+    detEl.textContent = text;
+  }
+
   /* ---- Per-AOI detail rendering ---- */
   function renderAoiDetail(aoiData) {
     var nameEl = document.getElementById('app-evidence-aoi-detail-name');
@@ -406,11 +432,7 @@
       var det = aoiData.determination;
       if (det) {
         detEl.hidden = false;
-        detEl.className = 'app-evidence-aoi-determination ' +
-          (det.deforestation_free ? 'compliant' : 'non-compliant');
-        detEl.textContent = det.deforestation_free
-          ? '\u2705 Deforestation-free (' + (det.confidence || 'medium') + ' confidence)'
-          : '\u26A0\uFE0F Risk detected — ' + (det.reason || 'see full report');
+        renderScreeningDetermination(detEl, det);
         renderFlagCards(det.flags || []);
       } else {
         detEl.hidden = true;

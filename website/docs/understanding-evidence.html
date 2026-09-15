@@ -197,17 +197,22 @@ code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:
 <section class="guide-section">
   <div class="container">
     <div class="section-label">Key Outcome</div>
-    <h2>Deforestation-Free Determination</h2>
-    <p>After analysing all evidence layers, Canopex produces an algorithmic determination for each parcel. This is the headline result you'll use in your EUDR due diligence records.</p>
+    <h2>Satellite Screening Outcome</h2>
+    <p>After analysing the available evidence layers, Canopex produces a machine screening outcome for each parcel. It supports human due diligence but is not a legal compliance conclusion.</p>
 
     <div class="info-card" style="border-color:var(--c-green)">
-      <h4 style="color:var(--c-green)">✓ Deforestation-free</h4>
-      <p>No significant vegetation loss detected after 31 December 2020. No change-detection flags were raised. This parcel can be included in your due diligence statement as assessed compliant.</p>
+      <h4 style="color:var(--c-green)">✓ No deforestation signal detected</h4>
+      <p>No significant vegetation loss signal was detected in the available satellite evidence. A human reviewer must still consider the evidence and record the final conclusion.</p>
     </div>
 
     <div class="info-card" style="border-color:var(--c-orange)">
-      <h4 style="color:var(--c-orange)">⚠ Potential deforestation detected</h4>
+      <h4 style="color:var(--c-orange)">⚠ Deforestation signal detected</h4>
       <p>One or more flags were raised. This does not necessarily mean deforestation occurred — it means the satellite evidence warrants closer investigation. See the flags list for specific concerns.</p>
+    </div>
+
+    <div class="info-card">
+      <h4>Insufficient or unavailable evidence</h4>
+      <p>Some parcels may not have enough usable comparisons, or screening may be unavailable because processing failed. These outcomes must remain distinct from a detected signal and require human review.</p>
     </div>
 
     <h3>Confidence levels</h3>
