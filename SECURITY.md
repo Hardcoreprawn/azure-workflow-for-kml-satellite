@@ -83,6 +83,9 @@ To keep findings actionable while staying cost-conscious before customer onboard
 
 - Trivy image/filesystem scans are configured with `ignore-unfixed: true`.
   This suppresses vulnerabilities that currently have no upstream fix version.
+- The Trivy binary is pinned in both `Makefile` and the composite scan action;
+  Dependabot cannot update the Makefile pin. Version bumps are made together
+  in a reviewed PR after the existing seven-day dependency cooldown window.
 - Temporary low-cost infra exceptions are tracked in `.trivyignore` with
   explicit rationale. These are not blanket suppressions and must be revisited
   before customer onboarding or expiry, whichever comes first.
@@ -101,7 +104,7 @@ were removed after revalidation, not renewed. Production freeze is unchanged.
 
 The 2026-09-12 local base rebuild consumed Functions extension bundle 4.38.1
 with MessagePack 2.5.301, which patches CVE-2026-48109 and CVE-2026-48506.
-Container smoke checks and a Trivy 0.73.0 image scan without ignore-file
+Container smoke checks and a Trivy 0.74.0 image scan without ignore-file
 exceptions passed (fixable HIGH/CRITICAL scope), so both CVE exceptions were
 removed. This is candidate evidence, not proof that older published or deployed
 images are patched; publishing and promotion require their own release gates.
