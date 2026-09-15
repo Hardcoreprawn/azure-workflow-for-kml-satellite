@@ -49,6 +49,12 @@ def test_dev_images_are_scoped_to_the_compose_project() -> None:
     assert editor_config["services"]["devcontainer"]["image"] == expected
 
 
+def test_ci_local_preserves_caller_ownership() -> None:
+    source = (ROOT / "scripts/ci_local.sh").read_text()
+    assert "-e HOME=/tmp" in source
+    assert '--user "$(id -u):$(id -g)"' in source
+
+
 @pytest.mark.parametrize("service", ["func", "orch"])
 def test_functions_wait_for_storage_initialization(service: str) -> None:
     config = yaml.safe_load((ROOT / "docker-compose.yml").read_text())

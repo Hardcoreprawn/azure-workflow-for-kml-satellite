@@ -60,13 +60,15 @@ if [[ "${NO_BUILD:-0}" != "1" ]]; then
 fi
 
 # lint/test mount the checkout at /workspace and rely on deps baked into
-# /opt/venv (outside the mount). UV_NO_SYNC=1 mirrors the CI env so `uv run`
-# never re-resolves against the network.
+# /opt/venv (outside the mount). Run as the caller so coverage and cache files
+# remain usable by the non-root devcontainer workflow. UV_NO_SYNC=1 mirrors the
+# CI env so `uv run` never re-resolves against the network.
 run_gate() {
   docker run --rm \
     -e UV_NO_SYNC=1 \
+    -e HOME=/tmp \
     -v "${PWD}:/workspace" -w /workspace \
-      --user root \
+    --user "$(id -u):$(id -g)" \
     "$@"
 }
 
