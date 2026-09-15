@@ -97,8 +97,10 @@ Current temporary exceptions, accepted by the owner on 2026-09-12 until
 
 The local dev image makes its baked `/opt/venv` writable because Dev Containers
 may remap `vscode` to the host UID after image build. This is intentionally
-limited to the development image; CI gates disable dependency sync and do not
-mutate the baked toolchain. Production images do not consume this image.
+limited to the development image. Normal CI gates set `UV_NO_SYNC=1` and do not
+mutate the baked toolchain; the exceptional stale-image path explicitly runs
+`uv sync --inexact` to repair dependency drift before testing. Production images
+do not consume this image.
 
 Private networking and additional paid Defender coverage are deferred. Obsolete
 purge-protection, infrastructure-encryption, and Defender scanner exceptions
