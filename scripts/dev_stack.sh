@@ -57,16 +57,23 @@ cleanup_failed_start() {
 
 case "$action" in
     up|rebuild|storage)
+        options=()
+        # Build host-only contexts before installing the startup cleanup trap:
+        # a failed preflight must not tear down an already healthy project.
+        if [[ "$action" == "up" && "${CANOPEX_DEVCONTAINER:-}" != "1" ]]; then
+            "${compose[@]}" build event-grid-relay
+        elif [[ "$action" == "rebuild" ]]; then
+            build_services=("${services[@]}")
+            if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" ]]; then
+                build_services=(azurite cosmos func orch web ollama)
+            fi
+            "${compose[@]}" build "${build_services[@]}"
+        fi
         trap cleanup_failed_start EXIT
         trap 'exit 130' INT
         trap 'exit 143' TERM
-        options=()
         if [[ "$action" == "rebuild" ]]; then
-            "${compose[@]}" build "${services[@]}"
             options+=(--force-recreate)
-        fi
-        if [[ "$action" == "up" && "${CANOPEX_DEVCONTAINER:-}" != "1" ]]; then
-            "${compose[@]}" build event-grid-relay
         fi
         if [[ "$action" == "storage" ]]; then
             services=(azurite init-storage)

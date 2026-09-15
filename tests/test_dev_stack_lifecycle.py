@@ -92,6 +92,8 @@ def docker_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "    print('azurite\\ninit-storage\\ncosmos\\nfunc\\norch\\nevent-grid-relay\\nweb\\nollama\\ndevcontainer')\n"
         "if 'ps' in args:\n"
         "    print(f\"init-storage exited {os.environ.get('DOCKER_INIT_STORAGE_EXIT', '17')}\")\n"
+        "if 'build' in args:\n"
+        "    sys.exit(int(os.environ.get('DOCKER_BUILD_EXIT', '0')))\n"
         "if 'up' in args:\n"
         "    sys.exit(int(os.environ.get('DOCKER_UP_EXIT', '0')))\n"
     )
@@ -131,6 +133,17 @@ def test_host_start_builds_relay_and_waits_for_services(docker_environment: Path
     assert "devcontainer" not in start
     assert not any("down" in call for call in calls)
     assert "lifecycle-test" in start
+
+
+def test_failed_host_relay_preflight_preserves_existing_stack(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOCKER_BUILD_EXIT", "17")
+    result = run_stack("up")
+    assert result.returncode == 17
+    calls = docker_calls(docker_environment)
+    assert any("build" in call and "event-grid-relay" in call for call in calls)
+    assert not any("down" in call or "stop" in call for call in calls)
 
 
 def test_start_removes_failed_storage_before_reconnect(docker_environment: Path) -> None:
@@ -199,6 +212,15 @@ def test_rebuild_is_explicit(docker_environment: Path) -> None:
     start = next(index for index, call in enumerate(calls) if "up" in call)
     assert build < start
     assert "--force-recreate" in calls[start]
+
+
+def test_devcontainer_rebuild_skips_host_only_relay(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CANOPEX_DEVCONTAINER", "1")
+    monkeypatch.setenv("DEV_WORKSPACE", "/host/workspace")
+    result = run_stack("rebuild")
+    assert result.returncode == 0, result.stderr
+    build = next(call for call in docker_calls(docker_environment) if "build" in call)
+    assert "event-grid-relay" not in build
 
 
 def test_reset_requires_explicit_data_confirmation(docker_environment: Path) -> None:
