@@ -66,6 +66,7 @@ run_gate() {
   docker run --rm \
     -e UV_NO_SYNC=1 \
     -v "${PWD}:/workspace" -w /workspace \
+      --user root \
     "$@"
 }
 

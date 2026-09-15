@@ -73,9 +73,10 @@ case "$action" in
             "${compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" azurite
             "${compose[@]}" run --rm --no-deps init-storage
         else
-            # A failed one-shot init-storage container otherwise remains in
-            # Compose and blocks every later devcontainer reconnect.
-            "${compose[@]}" rm --force init-storage >/dev/null 2>&1 || true
+            init_status="$("${compose[@]}" ps --all --format '{{.Service}} {{.State}} {{.ExitCode}}' init-storage 2>/dev/null || true)"
+            if [[ "$init_status" =~ ^init-storage[[:space:]]+(exited|dead)[[:space:]]+[1-9][0-9]*$ ]]; then
+                "${compose[@]}" rm --force init-storage >/dev/null 2>&1 || true
+            fi
             "${compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" "${options[@]}" "${services[@]}"
         fi
         trap - EXIT INT TERM
