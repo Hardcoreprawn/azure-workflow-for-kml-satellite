@@ -4,6 +4,7 @@ NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
 
+import hashlib
 import logging
 import uuid
 from pathlib import PurePosixPath
@@ -12,6 +13,7 @@ import azure.durable_functions as df
 import azure.functions as func
 from azure.core.exceptions import ResourceNotFoundError
 
+from treesight.constants import DEFAULT_INPUT_CONTAINER
 from treesight.models.blob_event import BlobEvent
 from treesight.security.billing import get_effective_subscription, plan_capabilities
 
@@ -19,6 +21,7 @@ from . import bp
 from ._blob_url import _extract_blob_name, _extract_container, _validate_blob_event
 
 logger = logging.getLogger(__name__)
+ORCHESTRATION_MARKER_MAX_AGE_SECONDS = 300.0
 
 
 def _is_api_managed_blob(blob_name: str) -> bool:
@@ -165,6 +168,65 @@ def _enrich_tier_from_billing(orchestrator_input: dict, user_id: str) -> None:
             orchestrator_input.setdefault("max_history_years", max_hist)
 
 
+async def _start_or_reuse_orchestration(
+    client: df.DurableOrchestrationClient,
+    instance_id: str,
+    orchestrator_input: dict,
+) -> bool:
+    """Start once for an instance ID, treating duplicate delivery as a no-op."""
+    from treesight.storage.client import BlobStorageClient
+
+    marker_path = _orchestration_marker_path(instance_id)
+    marker = BlobStorageClient()
+    claimed = marker.create_json_if_absent(
+        DEFAULT_INPUT_CONTAINER,
+        marker_path,
+        {"instance_id": instance_id, "orchestrator": "treesight_orchestrator"},
+    )
+    if claimed is False:
+        existing = await client.get_status(instance_id)
+        if existing is not None:
+            logger.info("Reused existing orchestration instance=%s", instance_id)
+            return False
+        if not marker.delete_blob_if_older_than(
+            DEFAULT_INPUT_CONTAINER, marker_path, ORCHESTRATION_MARKER_MAX_AGE_SECONDS
+        ):
+            raise RuntimeError(f"Orchestration admission marker is pending for instance={instance_id}")
+        if (
+            marker.create_json_if_absent(
+                DEFAULT_INPUT_CONTAINER,
+                marker_path,
+                {"instance_id": instance_id, "orchestrator": "treesight_orchestrator"},
+            )
+            is False
+        ):
+            raise RuntimeError(f"Orchestration admission marker was claimed concurrently for instance={instance_id}")
+        logger.info("Reclaimed expired orchestration marker instance=%s", instance_id)
+    try:
+        await client.start_new(
+            "treesight_orchestrator",
+            instance_id=instance_id,
+            client_input=orchestrator_input,
+        )
+    except Exception as start_error:
+        try:
+            existing = await client.get_status(instance_id)
+        except Exception as status_error:
+            raise start_error from status_error
+        if existing is None:
+            marker.delete_blob(DEFAULT_INPUT_CONTAINER, marker_path)
+            raise start_error
+        logger.info("Concurrent delivery reused orchestration instance=%s", instance_id)
+        return False
+    return True
+
+
+def _orchestration_marker_path(instance_id: str) -> str:
+    """Return a stable safe blob path for an orchestration admission marker."""
+    digest = hashlib.sha256(instance_id.encode("utf-8")).hexdigest()
+    return f".orchestration-starts/{digest}.json"
+
+
 @bp.event_grid_trigger(arg_name="event")
 @bp.durable_client_input(client_name="client")
 async def blob_trigger(
@@ -212,9 +274,6 @@ async def _process_blob_trigger(
         _enrich_from_ticket(orchestrator_input, ticket)
 
     instance_id = _derive_instance_id(blob_name, blob_event.correlation_id)
-    await client.start_new(
-        "treesight_orchestrator",
-        instance_id=instance_id,
-        client_input=orchestrator_input,
-    )
-    logger.info("Started orchestration instance=%s blob=%s", instance_id, blob_name)
+    started = await _start_or_reuse_orchestration(client, instance_id, orchestrator_input)
+    if started:
+        logger.info("Started orchestration instance=%s blob=%s", instance_id, blob_name)

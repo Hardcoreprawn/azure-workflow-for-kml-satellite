@@ -43,6 +43,9 @@ class _FakeDurableClient:
         self.calls.append({"name": name, "instance_id": instance_id, "client_input": client_input})
         return instance_id
 
+    async def get_status(self, _instance_id: str, **_kwargs):
+        return None
+
 
 class _FakeRuntimeStatus:
     def __init__(self, value: str) -> None:
@@ -78,6 +81,19 @@ class _HistoryDurableClient(_FakeDurableClient):
 
     async def get_status(self, instance_id: str, show_history: bool = False, **_kwargs):
         return self._statuses.get(instance_id)
+
+
+class _RacingDurableClient(_HistoryDurableClient):
+    async def start_new(self, name: str, instance_id: str, client_input: dict[str, object]) -> str:
+        raise RuntimeError("instance already exists")
+
+
+class _UncertainDurableClient(_FakeDurableClient):
+    async def get_status(self, _instance_id: str, **_kwargs):
+        raise OSError("status unavailable")
+
+    async def start_new(self, name: str, instance_id: str, client_input: dict[str, object]) -> str:
+        raise RuntimeError("start unavailable")
 
 
 class TestAnalysisSubmissionRoutes:
@@ -976,6 +992,78 @@ class TestBlobTriggerIngress:
         # Uses submission_id (UUID) from blob path, not event.id
         assert client.calls[0]["instance_id"] == sub_id
         assert client.calls[0]["client_input"]["blob_name"] == f"analysis/{sub_id}.kml"
+
+    def test_duplicate_completed_analysis_does_not_start_new_generation(self):
+        """A redelivered API event must preserve the existing Durable instance."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        sub_id = "550e8400-e29b-41d4-a716-446655440000"
+        status = _FakeDurableStatus(
+            sub_id,
+            runtime_status="Completed",
+            created_time=datetime(2026, 4, 5, 15, 11, tzinfo=UTC),
+            last_updated_time=datetime(2026, 4, 5, 15, 12, tzinfo=UTC),
+        )
+        client = _HistoryDurableClient({sub_id: status})
+        event = self._make_blob_event(f"analysis/{sub_id}.kml", "evt-duplicate")
+
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.return_value = {"user_id": "user-abc"}
+            mock_storage_cls.return_value.create_json_if_absent.return_value = False
+            asyncio.run(_process_blob_trigger(event, client))
+
+        assert client.calls == []
+
+    def test_concurrent_duplicate_reuses_instance_after_atomic_start_conflict(self):
+        """A start race must resolve to the instance that won Durable admission."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        sub_id = "550e8400-e29b-41d4-a716-446655440000"
+        status = _FakeDurableStatus(
+            sub_id,
+            runtime_status="Running",
+            created_time=datetime(2026, 4, 5, 15, 11, tzinfo=UTC),
+            last_updated_time=datetime(2026, 4, 5, 15, 12, tzinfo=UTC),
+        )
+        client = _RacingDurableClient({sub_id: status})
+        event = self._make_blob_event(f"analysis/{sub_id}.kml", "evt-race")
+
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.return_value = {"user_id": "user-abc"}
+            asyncio.run(_process_blob_trigger(event, client))
+
+        assert client.calls == []
+
+    def test_atomic_marker_winner_is_required_before_start(self):
+        """A duplicate with no Durable status still loses to the marker winner."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        sub_id = "550e8400-e29b-41d4-a716-446655440000"
+        client = _HistoryDurableClient({})
+        event = self._make_blob_event(f"analysis/{sub_id}.kml", "evt-marker-duplicate")
+
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.return_value = {"user_id": "user-abc"}
+            mock_storage_cls.return_value.create_json_if_absent.return_value = False
+            mock_storage_cls.return_value.delete_blob_if_older_than.return_value = False
+            with pytest.raises(RuntimeError, match="admission marker is pending"):
+                asyncio.run(_process_blob_trigger(event, client))
+
+        assert client.calls == []
+
+    def test_start_failure_preserves_original_error_when_status_is_unavailable(self):
+        """A transport failure must not be rewritten as duplicate delivery."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        sub_id = "550e8400-e29b-41d4-a716-446655440000"
+        client = _UncertainDurableClient()
+        event = self._make_blob_event(f"analysis/{sub_id}.kml", "evt-uncertain")
+
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.return_value = {"user_id": "user-abc"}
+            mock_storage_cls.return_value.create_json_if_absent.return_value = True
+            with pytest.raises(RuntimeError, match="start unavailable"):
+                asyncio.run(_process_blob_trigger(event, client))
 
     def test_blob_trigger_enriches_from_ticket(self):
         """Blob trigger reads ticket blob for user metadata."""

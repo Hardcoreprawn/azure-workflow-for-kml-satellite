@@ -110,6 +110,7 @@ portfolio-level risk visibility.
 |----|---------|
 | #1462 | Representative serial/parallel local E2E harness, synthetic weather/provider isolation, and stricter result/artifact validation (closes #1453, #1488, #1491). Fresh isolated matrices passed 3/3 in both modes; broader recovery, capacity, and scientific validation remain separate. |
 | #1505 | Reviewed pre-customer infrastructure exceptions through 2026-12-12 and removed obsolete IaC and patched MessagePack CVE waivers (closes #1500). Full CI and fresh local base-image scan/smoke passed; image publication and deployment are not implied. |
+| #1507 | Bounded worker-loss handling with actionable failed child status, original-cause preservation, correlated Durable/worker evidence, and no blanket AOI replay (closes #1498). Real isolated control and worker-kill evidence passed the selected terminal-failure policy; immutable replay recovery remains #1506. |
 | #1458 | Disposable pipeline gate with durable result proof, explicit Azurite isolation, restricted local CORS, and retryable relay delivery (closes #1457). Clean entrypoint restored; bootstrap invalidates stale proof and cleanup reports failures. |
 | #1451 | Backlog priority normalization (closes #939): priority-only API writes preserve unrelated labels, reject blank input, and verify concurrent update outcomes before dispatch. |
 | #1449 | Canonical v2 AOI enrichment manifests, direct/split SAFE_MODE parity, and nested EUDR export evidence (closes #1448 and #1450). Merge review added unavailable-weather regressions for both multi-AOI paths. |
