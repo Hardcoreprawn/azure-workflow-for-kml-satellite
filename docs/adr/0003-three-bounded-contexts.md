@@ -2,9 +2,24 @@
 
 ## Status
 
-Accepted (2026-07-03)
+Amended (2026-09-16); originally accepted 2026-07-03.
 
-## Context
+## Owner Amendment
+
+Engine/app/harness remain useful planning responsibilities within this monorepo.
+The owner explicitly accepts an Azure-integrated engine; a cloud-independent
+library and extraction-enforcing import boundary are no longer requirements.
+The original purity claims below are historical rationale, not current rules or
+an accurate import audit. Pure computational transforms remain desirable where
+practical, without moving all storage coupling merely to satisfy the old diagram.
+
+The [architecture overview](../ARCHITECTURE_OVERVIEW.md) owns the current runtime
+map and approved admission/worker target. Test layers distinguish pure algorithms,
+storage-integrated processing and operational tooling; no layer label proves
+Azure independence. Earlier extraction criteria are prompts for a new decision,
+not automatic approval to split the repository.
+
+## Original Context (Historical)
 
 The repository has grown to hold three distinct concerns that we regularly
 conflate when planning, testing, and building:
@@ -26,7 +41,7 @@ drawing explicit lines**, not by a rewrite. The conflation lives mainly at the
 next to product features next to autopilot tooling, and whole sessions of pure
 *harness* work get mistaken for product progress.
 
-## Decision
+## Original Decision (Amended Above)
 
 Treat the repo as **three bounded contexts** with an explicit dependency
 direction, made visible without a premature repo split.
@@ -88,7 +103,7 @@ offline). Split into separate repositories only when **any** of these fire:
 Until then, the boundaries are enforced by **labels + the dependency rule +
 the test layers**, not by separate repos.
 
-## Consequences
+## Original Consequences (Historical)
 
 **Positive**
 

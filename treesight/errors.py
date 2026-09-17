@@ -1,4 +1,4 @@
-"""Exception hierarchy (§9 of SYSTEM_SPEC)."""
+"""Exception hierarchy for pipeline and API error handling."""
 
 from __future__ import annotations
 

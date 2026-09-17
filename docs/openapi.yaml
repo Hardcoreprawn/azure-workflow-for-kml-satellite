@@ -7,6 +7,10 @@ info:
     get automated NDVI change detection, weather correlation and AI-generated
     insights for conservation, agriculture and ESG compliance use cases.
 
+    This is the maintained HTTP schema source, but operation inventory and
+    method/auth/payload coverage remain incomplete; see repository issue #1530.
+    It does not certify all registered routes or live deployment behavior.
+
     ## Authentication
 
     Most endpoints require CIAM bearer-token authentication.
@@ -24,10 +28,11 @@ info:
     | Contact form  | 5 / 60 s   | `/api/contact-form`            |
     | Pipeline poll | 30 / 60 s  | `/api/orchestrator/{id}`       |
 
-    ## Pipeline Quota (Free Tier)
+    ## Pipeline Accounting
 
-    Each user may execute up to **5 pipeline runs**. Exceeding this returns
-    `403 Forbidden` with a quota-exhausted message.
+    Submission uses organisation-pooled reservation/accounting. Entitlements
+    depend on subscription and submission mode, not a universal per-user
+    five-run allowance. Quota rejection returns 403.
   contact:
     name: Canopex
     url: https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite
@@ -48,8 +53,8 @@ servers:
       developmentHost:
         default: func-kmlsat-dev-orch.example.uksouth.azurecontainerapps.io
         description: Development API ingress hostname (replace with actual value from `tofu output -raw function_app_orch_default_hostname`)
-  - url: http://localhost:7071/api
-    description: Local development
+  - url: http://localhost:7072/api
+    description: Local development (API-facing orchestrator host)
 
 tags:
   - name: health
@@ -194,7 +199,7 @@ paths:
               required: [kml_content]
       responses:
         "202":
-          description: Pipeline started
+          description: Accepted into blob storage for asynchronous Event Grid admission; Durable execution may not have started
           content:
             application/json:
               schema:
@@ -242,6 +247,10 @@ paths:
       description: |
         Returns the current status of a Durable Functions orchestration,
         including progress updates and final output when complete.
+        Currently anonymous for a caller with an instance ID. Authentication
+        and run-access authorization are required before leaving local development
+        but are not yet enforced here. Filenames, artifact paths and failure
+        details may be returned. An initial 404 can precede Event Grid admission.
       tags: [pipeline]
       security: []
       parameters:
@@ -254,16 +263,26 @@ paths:
               schema:
                 type: object
                 properties:
-                  runtimeStatus:
+                  instanceId:
                     type: string
-                    enum: [Running, Completed, Failed, Terminated, Pending]
-                  custom_status:
-                    type: object
-                    description: Progress information (step, percentage, message)
+                  name:
+                    type: string
+                  runtimeStatus:
+                    type: [string, "null"]
+                    description: Durable runtime state or application-derived Stalled; not evidence completeness
+                  createdTime:
+                    type: string
+                  lastUpdatedTime:
+                    type: string
+                  customStatus:
+                    type: [object, "null"]
+                    description: Progress, failure or recovered telemetry information
                   output:
-                    description: Final pipeline output (present when Completed)
-                    $ref: "#/components/schemas/PipelineSummary"
-                required: [runtimeStatus]
+                    description: Shaped output when available; null otherwise
+                    oneOf:
+                      - $ref: "#/components/schemas/PipelineSummary"
+                      - type: "null"
+                required: [instanceId, name, runtimeStatus, createdTime, lastUpdatedTime, customStatus, output]
         "404":
           description: Instance not found
           content:
@@ -1481,22 +1500,42 @@ components:
 
     PipelineSummary:
       type: object
-      description: Aggregated pipeline output when orchestration completes
+      description: HTTP diagnostics output, not the internal model; malformed output may contain only status and message
       properties:
         status:
           type: string
-          enum: [success, partial, failed]
-        features_parsed:
+          description: Pipeline status such as completed or partial_imagery; unknown for unparseable output
+        message:
+          type: string
+        blobName:
+          type: string
+        featureCount:
           type: integer
-        aois_prepared:
+        aoiCount:
           type: integer
-        scenes_found:
+        metadataCount:
           type: integer
-        downloads_completed:
+        imageryReady:
           type: integer
-        enrichment_manifest:
+        imageryFailed:
+          type: integer
+        downloadsCompleted:
+          type: integer
+        downloadsFailed:
+          type: integer
+        postProcessCompleted:
+          type: integer
+        postProcessFailed:
+          type: integer
+        artifacts:
+          type: object
+        enrichmentManifest:
           type: string
           description: Blob path to the enrichment manifest JSON
+        enrichmentDuration:
+          type: number
+          description: Enrichment duration in seconds
+      required: [status, message]
 
     CatalogueEntryResponse:
       type: object
@@ -1611,13 +1650,13 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     QuotaExhausted:
-      description: Free tier quota exhausted (5 pipeline runs)
+      description: Subscription or organisation quota exhausted
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
           example:
-            error: "Free quota exhausted (5 pipeline runs). Please upgrade to continue."
+            error: "Quota exhausted."
     TooManyRequests:
       description: Rate limit exceeded
       content:

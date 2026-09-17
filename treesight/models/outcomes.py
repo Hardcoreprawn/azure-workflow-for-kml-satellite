@@ -1,4 +1,4 @@
-"""Pipeline outcome models (§3.1–§3.4).
+"""Pipeline outcome models for the analysis and diagnostics contracts.
 
 Result types for each pipeline phase and the final summary.
 """
@@ -85,7 +85,7 @@ class AcquisitionResult(BaseModel):
 
 
 class DownloadResult(BaseModel):
-    """Result of downloading a single imagery asset (§9.2).
+    """Result of downloading a single imagery asset.
 
     All 11 fields are present on success. On failure, ``state`` is ``"failed"``
     and ``error`` contains a human-readable message.
@@ -107,7 +107,7 @@ class DownloadResult(BaseModel):
 
 
 class PostProcessResult(BaseModel):
-    """Result of post-processing a downloaded GeoTIFF (§9.3)."""
+    """Result of post-processing a downloaded GeoTIFF."""
 
     order_id: str = ""
     source_blob_path: str = ""
@@ -178,7 +178,7 @@ class PipelineSummaryCounts(BaseModel):
 
 
 class PipelineSummary(PipelineSummaryCounts):
-    """Final pipeline output aggregating all three phases (§3.4)."""
+    """Final pipeline output aggregating all three phases."""
 
     metadata_results: list[MetadataResult] = Field(default_factory=list)
     imagery_outcomes: list[ImageryOutcome] = Field(default_factory=list)
@@ -187,7 +187,7 @@ class PipelineSummary(PipelineSummaryCounts):
     per_aoi_summaries: list[AoiSummary] = Field(default_factory=list)
 
     def compute_status(self, *, batch_succeeded: int = 0) -> None:
-        """Compute ``status`` and ``message`` from phase results (§3.4)."""
+        """Compute ``status`` and ``message`` from phase results."""
         all_good = (
             self.aoi_count > 0
             and self.imagery_ready >= self.aoi_count
@@ -244,7 +244,7 @@ class PipelineSummary(PipelineSummaryCounts):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def artifacts(self) -> dict[str, list[str]]:
-        """Aggregate artifact paths for the diagnostics endpoint (§4.3)."""
+        """Aggregate artifact paths for the diagnostics endpoint."""
         metadata_paths = [r.metadata_path for r in self.metadata_results if r.metadata_path]
         raw_paths = [r.blob_path for r in self.download_results if r.blob_path]
         clipped_paths = [r.clipped_blob_path for r in self.post_process_results if r.clipped_blob_path]
