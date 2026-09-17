@@ -2057,7 +2057,7 @@ class TestCIFeedbackHygiene:
         assert dev_limit is not None
         assert e2e_limit is not None
         assert int(dev_limit.group(1)) == 3200
-        assert int(e2e_limit.group(1)) >= int(dev_limit.group(1)) + 1400
+        assert int(e2e_limit.group(1)) == 4600
 
     def test_trivy_sarif_uploads_require_existing_scan_outputs(self):
         workflow = DEV_IMAGE_YML.read_text()
