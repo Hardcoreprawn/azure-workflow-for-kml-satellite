@@ -124,13 +124,15 @@ and for host commands to use another project. Separate projects still publish
 the same host ports: stop the previous stack before starting another checkout.
 Never kill unrelated port owners to make startup succeed.
 
-- Open the checkout with **Dev Containers: Reopen in Container**. Compose starts
-   the editor and app services in dependency order; `postStartCommand` checks
-   the stack and waits for health. All services participate in automatic shutdown.
-   Startup logs remain available in the Dev Containers output panel. A failed
-   hook leaves the editor available for diagnosis and stops the app services.
+   - Open the checkout with **Dev Containers: Reopen in Container**. Compose starts
+      the editor and app services in dependency order; `postStartCommand` runs
+      `bash scripts/dev_stack.sh up` and waits for health. Existing stopped
+      containers are removed only by explicit shutdown/cleanup commands; opening
+      the devcontainer does not run a separate `prepare` hook on this branch.
+      Startup logs remain available in the Dev Containers output panel. A failed
+      startup leaves the stack available for diagnosis and reports the failure.
 - The editor runs as `vscode`, with the host UID/GID and `HOME=/home/vscode`.
-   The prebuilt Python environment is writable by that user. Creation synchronizes
+   The prebuilt Python environment is intended to be writable by that user. Creation synchronizes
    locked dependencies once, retaining the baked Rust extension; warm starts do
    not reinstall dependencies. Do not run Git,
    dependency installation, or tests as root against the workspace.
@@ -138,7 +140,10 @@ Never kill unrelated port owners to make startup succeed.
    container's `/workspace` path. Sibling bind mounts use that value. The editor
    reaches siblings through Compose DNS (`azurite`, `func`, `orch`, `web`). The
    DooD feature alone owns the socket mount; no second socket mount is needed.
-- `make dev-all` is idempotent: reuse existing images and wait for readiness.
+   - `make dev-all` reuses running services and existing images, and waits for
+      readiness. Cleanup commands remove stopped app containers without removing
+      data volumes; `up` itself does not perform that cleanup. Storage-only startup
+      refreshes only stopped storage containers.
    On first use, Compose builds missing application images. Use `make dev-rebuild`
    after dependency or root-level application configuration changes. Routine
    `treesight/`, `blueprints/`, and website edits use bind mounts.
@@ -153,8 +158,9 @@ Never kill unrelated port owners to make startup succeed.
 - `make dev-down` inside the editor removes app containers but keeps the
    editor and network alive. On the host it removes the whole project and network.
    Both preserve data volumes. Closing the VS Code devcontainer window uses
-   `shutdownAction: stopCompose`; stopped containers remain reusable. No service
-   has an automatic restart policy, so restarting Docker does not resurrect a
+   `shutdownAction: stopCompose`; the next open removes stopped containers before
+   recreating them from existing images. No service has an automatic restart
+   policy, so restarting Docker does not resurrect a
    lone relay. A VS Code/host crash can bypass close handling: run the host
    `make dev-down` after recovery. `DEV_STOP_TIMEOUT` defaults to 20 seconds.
 - Data deletion is host-only and explicit: `DEV_RESET_DATA=1 make clean` removes
@@ -180,12 +186,12 @@ label after host shutdown. GPU execution requires its own hardware validation.
 
 ### Reset Mode (pipeline reset in progress)
 
-During the pipeline reset there is **no cloud deployment**. Validation is
-local-only and the deploy workflow is gated by a release-safety `preflight`
-job in `.github/workflows/deploy.yml`:
+The checked-in deploy workflow has a release-safety `preflight` gate. This
+describes configuration, not verified live repository-variable or cloud state:
 
 - **Production is frozen.** Any `prd` target fails immediately at `preflight`.
-  Lift by removing the prd guard step when ready to ship to production again.
+   Removing this guard requires owner approval and current release evidence,
+   including authenticated/authorized diagnostics and the acceptance gate in #708.
 - **Auto dev deploys are paused.** While the repo variable `DEPLOY_PAUSED=true`,
   a merge to `main` (CI success → `workflow_run`) will not deploy into the
   torn-down dev environment. Set `DEPLOY_PAUSED=false` to resume, or deploy
@@ -197,8 +203,15 @@ Local validation loop (no Azure):
 2. `make test` for the suite; `make smoke` for host health.
 3. Exercise the pipeline end-to-end against Azurite with `make test-upload`.
 
-When the reset lands and you are ready to deploy again: set `DEPLOY_PAUSED=false`,
-remove the prd freeze guard, then follow the standard deploy steps below.
+Manual dev deployment remains possible; do not interpret the production freeze
+as disabling every cloud deployment. Confirm `DEPLOY_PAUSED` and target state
+before deploying. Guard removal is a reviewed change, not a routine reset command.
+
+The 2026-09-16 audit found a stale, non-writable image-owned Python environment
+(#1521). A workspace-owned environment synchronized with
+`UV_PROJECT_ENVIRONMENT=/workspace/.venv uv sync --locked --all-extras --inexact`
+provides a separate validation path; use the same environment override for tests.
+It does not repair the devcontainer or preserve an image-only Rust extension.
 
 ### Standard deploy
 
@@ -208,13 +221,13 @@ remove the prd freeze guard, then follow the standard deploy steps below.
 4. For a one-off production domain transfer, use `workflow_dispatch` with `allow_domain_transfer=true` and execute DNS validation + rollback checks before proceeding.
 5. Confirm Terraform-managed browser origins include the SWA default hostname and the production custom domain so both `/api/*` and direct blob SAS uploads pass CORS preflight.
 6. Preview SWA hosts are not wildcard-allowed for blob uploads; if a preview environment needs browser uploads, add its exact origin through infra before rollout.
-7. Verify Function host readiness using /api/health.
+7. Verify both `/api/health` and `/api/readiness` on both hosts.
    Deploy workflow note: compute and orchestrator readiness probes run in parallel and both must pass.
-   Rollback note: a single canonical rollback step restores whichever app images were updated (compute, orchestrator, or both) and then health-checks both hosts.
+   Rollback is conditional on captured previous images and updated hosts, followed by health checks. It does not restore infrastructure, app settings or the website, and is not full transaction verification.
 8. Verify Event Grid subscription reconciliation succeeds.
-9. Require post-readiness async smoke gate to pass (upload token → blob upload → orchestrator completion with a valid diagnostics payload shape).
+9. Require the applicable workflow smoke steps to pass and inspect their actual evidence limits below. The nonproduction async smoke creates a demo ticket/source blob and polls Durable management status; it is not an authenticated browser upload journey.
 10. `/api/analysis/submit` must reject unauthenticated callers before any upload or orchestration work begins.
-11. For direct `analysis/` uploads created by `/api/analysis/submit`, rely on the HTTP submission path as the authoritative orchestration start; BlobCreated automation should only start storage-native uploads outside that prefix.
+11. `/api/analysis/submit` persists the ticket/source and returns `202`; Event Grid admits the run asynchronously. Verify that admission and idempotency, not merely HTTP acceptance, succeeded.
 12. Treat Function App managed identity as a deploy contract (both apps must remain `SystemAssigned` with non-empty `principalId`); deploy fails fast if identity drifts.
 13. Treat CLI-owned Function App body wiring as intentional (`image`, app settings, platform CORS, scale): `tofu` does not reconcile these fields because they are set and then contract-verified in deploy CI.
 
@@ -244,6 +257,11 @@ Anonymous operator endpoints:
 - `GET /api/readiness`
 - `GET /api/orchestrator/{instance_id}`
 
+Diagnostics currently expose run state by instance ID without bearer or ownership
+validation. The owner requires authentication and run-access authorization before
+leaving local development. This is an implementation gap, not approved public
+access policy. Health/readiness may remain operational probes.
+
 Protected endpoints (function/admin/ARM auth required):
 
 - `POST /admin/host/status`
@@ -260,38 +278,37 @@ Responder verification path (remote):
 
 Do not request or expose host/admin keys in incident channels unless absolutely required for break-glass operations.
 
-## Deploy Smoke Checks (Issue #164)
+## Deploy Smoke Checks
 
-The deploy workflow now emits a Post-Deploy Smoke Evidence section after rollout.
+### Emergency Feature Disablement
 
-What it validates:
+Set the feature's `kill_switch` for an unconditional disable. An explicit user
+override is evaluated before `off`, `blocked` or rollout percentage, so those
+statuses alone do not disable an enabled override. Missing/unreadable flag state
+fails closed; anonymous users require `allow_anonymous` and cannot use user
+overrides. See [the evaluator](../treesight/security/rollout.py) and
+[its tests](../tests/test_rollout.py) for the complete evaluation contract.
 
-1. Anonymous contract still works (`/api/health`, `/api/readiness`, `/api/orchestrator/{instance_id}`).
-2. Protected contract still holds (`/admin/*` and durable runtime endpoints deny unauthenticated calls, allow authenticated calls).
-3. Durable orchestration diagnostics reach `Completed` for the selected smoke instance.
-4. Metadata artifact paths reported by diagnostics exist in blob storage.
+### Workflow Evidence
 
-How to interpret failures:
+[deploy.yml](../.github/workflows/deploy.yml) checks host health/readiness and
+calls `/api/internal-smoke` on the allowed API-facing hostname. The latter is a
+static response check, not a pipeline transaction. The nonproduction
+[pipeline smoke](../scripts/pipeline_smoke.py) writes a demo ticket/KML and polls
+the keyed Durable management endpoint for `Completed`, printing output counts.
+It does not validate artifact existence or a signed-in user journey.
 
-1. `Anonymous ... expected 200` failure:
-API surface regression, routing regression, or host startup degradation.
-2. `unexpectedly accessible without auth` failure:
-security boundary regression; treat as high priority and halt rollout.
-3. `auth path failed (expected 200)` failure:
-host key/bootstrap regression or protected runtime endpoint outage.
-4. `Could not resolve smoke orchestration instance id` failure:
-trigger path regression (Event Grid ingestion/runtime discovery) or durable query mismatch.
-5. `did not reach Completed` or terminal failure status:
-pipeline correctness regression in ingestion/acquisition/fulfillment stages.
-6. `Expected smoke artifact missing` failure:
-orchestrator diagnostics and storage outputs diverged or artifact write failed.
+[e2e_smoke_gate.py](../scripts/e2e_smoke_gate.py) is a separate tool, not invoked
+by the inspected deploy workflow. Its capabilities must not be credited to CI
+merely because the script exists. The complete authenticated production journey
+and artifact gate remains tracked by
+[#708](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/708).
 
-Responder action order for smoke failures:
-
-1. Capture failing evidence block from the workflow summary.
-2. Query `/api/orchestrator/{instance_id}` and inspect `output.artifacts`.
-3. Cross-check App Insights using `instance_id` and stage-level exceptions.
-4. Validate blob existence and RBAC/storage connectivity for the output container.
+For a failure, preserve the workflow evidence, identify the run, correlate stage
+exceptions, and verify referenced blobs and storage access. A health response or
+Durable `Completed` alone does not prove complete imagery, valid evidence, tenant
+isolation or successful billing. Production promotion requires the applicable
+authenticated transaction/artifact proof and owner decision.
 
 ## Smoke Tests
 

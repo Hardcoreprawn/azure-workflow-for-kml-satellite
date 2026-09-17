@@ -1,4 +1,4 @@
-"""Configuration loading and validation (§8 of SYSTEM_SPEC)."""
+"""Configuration loading and validation for the runtime settings contract."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def _env_bool(key: str, default: bool = False) -> bool:
 
 
 def config_get_int(d: dict[str, Any], key: str, default: int) -> int:
-    """Defensive integer coercion (§8.7)."""
+    """Defensive integer coercion for runtime configuration."""
     val = d.get(key)
     if val is None:
         return default
@@ -171,7 +171,7 @@ SAFE_MODE = _env_bool("SAFE_MODE", False)
 
 
 def validate_config() -> None:
-    """Fail-fast startup validation (§8.6)."""
+    """Fail-fast startup validation for required runtime settings."""
     errors: list[str] = []
     if IMAGERY_RESOLUTION_TARGET_M <= 0:
         errors.append(f"IMAGERY_RESOLUTION_TARGET_M must be > 0, got {IMAGERY_RESOLUTION_TARGET_M}")

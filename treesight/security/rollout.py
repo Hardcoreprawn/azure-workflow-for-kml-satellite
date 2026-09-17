@@ -1,6 +1,7 @@
 """Generalised feature flag evaluator for production rollout control.
 
-Spec: docs/PRODUCTION_ROLLOUT_SPEC.md §6 Feature Evaluation Rules.
+Rollout evaluation rules are documented in the emergency feature-disablement
+section of docs/OPERATIONS_RUNBOOK.md.
 
 Evaluation order (strict, fail-closed):
   1. kill_switch is true → disabled
@@ -35,7 +36,7 @@ logger = logging.getLogger("treesight.security.rollout")
 _FLAGS_CONTAINER = "feature_flags"
 _OVERRIDES_CONTAINER = "feature_flag_overrides"
 
-# Status values defined in spec §5.3
+# Status values defined by the rollout evaluator contract.
 _STATUS_OFF = "off"
 _STATUS_PREVIEW_ONLY = "preview_only"
 _STATUS_PERCENTAGE_ROLLOUT = "percentage_rollout"
@@ -67,7 +68,7 @@ def _read_override(user_id: str) -> dict[str, Any] | None:
 
 
 # ---------------------------------------------------------------------------
-# Bucketing (spec §6.3)
+# Deterministic percentage-rollout bucketing.
 # ---------------------------------------------------------------------------
 
 

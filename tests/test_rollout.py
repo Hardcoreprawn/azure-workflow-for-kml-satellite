@@ -1,6 +1,6 @@
 """Tests for the generalised feature flag evaluator (treesight.security.rollout).
 
-Spec reference: docs/PRODUCTION_ROLLOUT_SPEC.md §6 Feature Evaluation Rules.
+Rollout guidance: docs/OPERATIONS_RUNBOOK.md emergency feature disablement.
 
 Evaluation order (strict):
   1. kill_switch → disabled
@@ -25,7 +25,7 @@ import pytest
 
 
 def _bucket(feature_name: str, user_id: str) -> int:
-    """Reproduce the spec §6.3 bucketing formula."""
+    """Reproduce the documented deterministic bucketing formula."""
     h = hashlib.sha256(f"{feature_name}:{user_id}".encode()).hexdigest()
     return int(h, 16) % 100
 
@@ -130,7 +130,7 @@ class TestMissingDoc:
         from treesight.security.rollout import is_feature_enabled
 
         flag = _make_flag(status="on")
-        # Override read blows up; per spec §6, any storage read failure
+        # Override read blows up; any storage read failure
         # must fail closed — the exception propagates and is_feature_enabled
         # catches it, logs feature_eval_failed, and returns False.
         with (

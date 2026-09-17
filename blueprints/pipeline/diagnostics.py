@@ -32,7 +32,7 @@ async def orchestrator_status(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
-    """GET /api/orchestrator/{instance_id} — direct JSON diagnostics (§4.3)."""
+    """GET /api/orchestrator/{instance_id} — direct JSON diagnostics."""
     return await _build_orchestrator_status_response(req, client)
 
 

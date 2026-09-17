@@ -338,7 +338,7 @@ def _durable_status_payload(status: Any, *, telemetry_hint: dict[str, Any] | Non
 
 
 def _reshape_output(output: dict[str, Any] | str) -> dict[str, Any]:
-    """Reshape PipelineSummary to the diagnostics contract (§4.3).
+    """Reshape PipelineSummary to the diagnostics contract.
 
     The Durable Functions SDK sometimes returns output as a JSON string
     instead of a parsed dict — handle both cases.

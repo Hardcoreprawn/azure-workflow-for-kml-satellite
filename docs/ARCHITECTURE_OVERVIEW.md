@@ -1,272 +1,135 @@
 # Architecture Overview
 
-Issue: #18
+Canonical technical responsibility map, reviewed 2026-09-16. Describes checked-in
+behavior and explicitly approved targets; it does not certify a live deployment.
 
-## Deployed Components
+## Document Authority
 
-The production pipeline is deployed as Azure Functions on Container Apps with event-driven orchestration.
-
-### Architecture Contract (Developer TL;DR)
-
-Use this as the default mental model when building features:
-
-1. Browser clients talk to one API ingress only: orchestrator hostname from `/api-config.json`.
-2. Orchestrator app owns HTTP routes and Durable orchestrator entrypoints.
-3. Compute app owns heavy activity execution (GDAL/raster processing) and is not a browser target.
-4. Event Grid webhook target must resolve to orchestrator `blob_trigger`.
-5. Route registration and auth behavior must stay symmetric across entrypoints via shared modules.
-
-Activity retries and child-orchestration failures are separate boundaries.
-Downloads use Durable activity retries (three attempts, five-second first
-interval); a failed AOI orchestrator invocation is not retried as a whole. The
-parent's progressive fan-in persists actionable failed status and preserves the
-cause chain instead of replaying acquisition. Worker replacement alone does not
-prove recovery. See the worker-exit section in `docs/OPERATIONS_RUNBOOK.md` and
-the local evidence in `docs/LOCAL_RELIABILITY_AUDIT.md`.
-
-### Naming Convention
-
-All resources are named using `{prefix}-{project_code}-{environment}` where:
-
-- `project_code` is set in `infra/tofu/environments/{env}.tfvars` (default: `kmlsat`)
-- `environment` is set per deployment (`dev`, `prd`)
-- Prefixes follow Azure naming standards defined in `infra/tofu/locals.tf`
-
-| Resource | Naming Pattern |
+| Concern | Authority |
 | --- | --- |
-| Resource Group | `rg-{code}-{env}` |
-| Function App (compute) | `func-{code}-{env}` |
-| Function App (orchestrator) | `func-{code}-{env}-orch` |
-| Static Web App | `stapp-{code}-{env}-site` |
-| Event Grid Topic | `evgt-{code}-{env}` |
-| Event Grid Sub | `evgs-kml-upload` |
-| Key Vault | `kv-{code}-{env}` |
-| Cosmos DB | `cosmos-{code}-{env}` |
-| App Insights | `appi-{code}-{env}` |
-| Log Analytics | `log-{code}-{env}` |
-| Container Apps Env | `cae-{code}-{env}` |
-| Communication Svc | `acs-{code}-{env}` |
-| Email Service | `ecs-{code}-{env}` |
+| Service boundaries and architectural decisions | This document and [ADRs](adr) |
+| Entities, identity, ownership and persistence | [Data model](DATA_MODEL.md) |
+| HTTP shapes, methods and authentication | [OpenAPI](openapi.yaml), explained by [API reference](API_INTERFACE_REFERENCE.md) |
+| Activity and blob contracts | [API reference](API_INTERFACE_REFERENCE.md) |
+| AOI metadata and enrichment formats | [Schemas](schemas), [enrichment contract](ENRICHMENT_AOI_MODEL.md) |
+| Setup, verification, deployment and recovery | [Operations runbook](OPERATIONS_RUNBOOK.md) |
+| Direction and planned delivery | [Roadmap](ROADMAP.md) and linked issues |
 
-Additional fixed names:
+The [PID](PID.md) records product requirements, not shipped behavior. Persona
+research and archived reviews are context, not runtime contracts. Superseded
+system/topology/rollout documents redirect here rather than duplicate definitions.
+Change the owning contract and its regression tests together. Architecture changes
+require an explicit decision; neither a code change nor an old proposal approves itself.
 
-- Input container: `kml-input`
-- Output container: `kml-output`
-- Durable task hub: `DurableFunctionsHub` (set in `host.json`)
+## Approved Target
 
-### Dev Environment Endpoints
+Owner decisions, 2026-09-16:
 
-Specific hostnames are not stored in this document; retrieve them from the
-Azure portal or via `tofu output` after provisioning.  Pattern:
+- Retain the Azure-integrated engine. A cloud-independent pipeline or repository
+  split is not a goal; pure geospatial transforms remain useful within it.
+- A lightweight API/admission service accepts requests and buffers work durably.
+  Independent workers execute processing. Workers retain operational probes, not
+  the full user API. The current shared HTTP registration requires migration (#1526).
+- Prefer scale-to-zero where wake-up latency is acceptable. If admission must stay
+  warm, keep it low-cost; expensive workers should sleep when idle. Cost should
+  follow usage. Containers and VM/Batch capacity are workload-dependent options.
+- Require authenticated, authorized run diagnostics before leaving local
+  development. This requirement is not yet implemented (#1527).
 
-| Endpoint | Pattern |
-| --- | --- |
-| **Site (SWA)** | Azure-assigned SWA default hostname |
-| **Function App (orchestrator/public API)** | `https://func-kmlsat-dev-orch.<cae-suffix>.uksouth.azurecontainerapps.io` |
-| **Function App (compute/internal worker)** | `https://func-kmlsat-dev.<cae-suffix>.uksouth.azurecontainerapps.io` |
-| **Cosmos DB** | `https://cosmos-kmlsat-dev.documents.azure.com:443/` |
+No latency SLO, warm-instance budget, WASM hosting choice or KEDA configuration was
+approved by this audit. Select these from measured admission/wake-up behavior,
+queue safety, idle cost and representative workloads, not diagram assumptions.
+The bounded measurement brief is #1528; it does not authorize cloud spend or
+select a hosting implementation.
 
-The SWA hostname is Azure-assigned (no custom domain currently configured).
-Both Function Apps run on Azure Container Apps in `uksouth`; SWA is in `westeurope`.
-Retrieve the exact orchestrator hostname with `tofu output -raw function_app_orch_default_hostname` after provisioning.
+## Current Runtime
 
-### API Routing — BYOF (Bring Your Own Function App)
-
-> **Architecture:** All `/api/*` calls go cross-origin from SWA to the
-> orchestrator Function App. SWA serves only static files. Auth is CIAM-owned.
-
-The orchestrator Function App is the **sole public API surface**. Browser API
-calls go cross-origin to the orchestrator hostname discovered from
-`/api-config.json` (injected at deploy time). SWA no longer hosts managed
-functions, and compute is not a browser ingress.
-
-```text
-Browser ─── MSAL.js ──→ CIAM (Entra External ID, canopex.ciamlogin.com)
-        │                └── issues CIAM JWT
-        │
-        └── /api/* (Authorization: Bearer <token>) ──→ Orchestrator FA (public ingress)
-              │
-           ├── sync: billing, catalogue, contact, health, export
-              ├── async start/status: upload + durable orchestration API
-              ├── reads/writes: Blob + Cosmos via managed identity
-              └── activity fan-out ──→ Compute FA (internal worker)
-
-SWA: static files only (no auth role in request trust chain)
+```mermaid
+flowchart TD
+    Browser[Browser and MSAL] --> API[API-facing Function App: orchestrator role]
+    Browser -->|SAS upload| Blob[Blob Storage]
+    API -->|ticket and direct submission| Blob
+    Blob --> EventGrid[Event Grid]
+    EventGrid -->|blob_trigger| API
+    API -->|Durable start/query| Hub[Durable task hub]
+    Hub --> Compute[Compute: orchestration and activity execution]
+    Compute --> Blob
+    API --> Cosmos[Cosmos DB for NoSQL]
+    Compute --> Cosmos
+    Compute --> Providers[Imagery and enrichment providers]
+    Compute -. oversized AOI routing; execution proof pending .-> Batch[Azure Batch]
 ```
 
-This means:
+The name `orchestrator` refers to the API-facing app, not where Durable
+orchestration functions currently execute. With `PIPELINE_ROLE=orchestrator`,
+[pipeline registration](../blueprints/pipeline/__init__.py) omits activities and
+both orchestration listeners. `PIPELINE_ROLE=full` loads them on compute.
+[Shared registration](../function_registration.py) currently registers HTTP
+blueprints on both roles and the monitoring scheduler on compute only.
 
-- `/api/*` routes are served by orchestrator host only
-- SWA is a static host only — no auth forwarding, no `/.auth/*` in the trust chain
-- Auth: frontend acquires a CIAM JWT via MSAL.js and sends `Authorization: Bearer <token>` on every API call
-- Backend `require_auth` verifies the CIAM JWT (OIDC/JWKS) and derives stable user identity from `tid:oid` claims
-- CORS is configured on orchestrator host to allow requests from the SWA hostname
-- Both Function Apps use managed identity for Blob, Cosmos, Key Vault access
+Browsers use the API-facing hostname from `/api-config.json`, obtained operationally
+with `tofu output -raw function_app_orch_default_hostname`. SWA serves static files;
+CIAM/MSAL supplies bearer tokens verified by protected backend routes. Current
+diagnostics are anonymous by instance ID. Registration, intended browser ingress
+and actual network access are different facts: compute isolation must be verified.
 
-No unauthenticated endpoints are exposed to browsers except health and
-contact-form (rate-limited). The Stripe billing webhook uses its own
-signature verification.
+Cosmos stores application records; Blob Storage holds uploaded source, claims,
+manifests and raster artifacts. Durable owns execution history and work queues.
+Cosmos is not a substitute queue and should not duplicate Durable execution state
+as a second coordinator. See the data model for authoritative records, partition
+keys, fallbacks and single-document transaction limits. Serverless request-based
+billing does not eliminate storage charges or prove total idle cost is zero.
 
-#### Auth Migration State
+## Pipeline and Verification
 
-**Target (Option B — CIAM bearer flow):**
+Submission `202` means ticket/source persistence, not Durable admission. Event Grid
+starts API-managed runs using submission identity and an admission marker. Metadata
+is written during ingestion. Single-AOI acquisition/fulfilment runs directly;
+multi-AOI work fans out into `aoi_pipeline` children before enrichment and fan-in.
 
-1. Frontend acquires CIAM JWT via MSAL.js (no SWA auth involved)
-2. Frontend sends `Authorization: Bearer <token>` on every cross-origin API call
-3. Orchestrator `require_auth` verifies the JWT server-side (OIDC metadata + JWKS)
-4. Stable user identity derived from `tid:oid` claims (never email/upn)
+| Responsibility | Owning implementation | Focused tests |
+| --- | --- | --- |
+| Submission and admission | [submission](../blueprints/pipeline/submission.py), [blob trigger](../blueprints/pipeline/blob_trigger.py) | [submission endpoints](../tests/test_analysis_submission_endpoints.py) |
+| Parse, geometry, metadata and claims | [ingestion phase](../blueprints/pipeline/_phase_ingestion.py) | [ingestion tests](../tests/test_ingestion.py) |
+| Acquisition and Durable waiting | [acquisition phase](../blueprints/pipeline/_phase_acquisition.py) | [acquisition tests](../tests/test_acquisition.py), [phase tests](../tests/test_orchestrator_phases_extra_coverage.py) |
+| Download/post-processing and Batch routing | [fulfilment phase](../blueprints/pipeline/_phase_fulfilment.py) | [fulfilment tests](../tests/test_fulfilment.py) |
+| Per-AOI evidence and manifest | [enrichment phase](../blueprints/pipeline/_phase_enrichment.py) | [enrichment tests](../tests/test_enrichment_runner.py), [schema tests](../tests/test_records.py) |
+| Result identity and honest completion | [orchestrator](../blueprints/pipeline/orchestrator.py), [aggregation](../blueprints/pipeline/_aggregation.py) | [success guards](../tests/test_pipeline_success_guards.py) |
+| Host roles | [registration](../function_registration.py) | [split tests](../tests/test_orchestrator_split.py) |
+| Documentation contracts | [API reference](API_INTERFACE_REFERENCE.md) | [drift tests](../tests/test_docs_route_drift.py) |
 
-**Migration status:**
+Acquisition calls single-shot `check_order_status` activities and waits using
+Durable timers. Activity retry is not whole-AOI replay. Failed child aggregation
+preserves cause/status; parent failure does not imply siblings stopped. Output
+`completed` and Durable `Completed` are different contracts; neither certifies
+scientific validity, complete enrichment or legal compliance.
 
-- Backend bearer validation: ✅ complete (#709 closed).
-- Frontend MSAL migration: ✅ complete (#710 delivered).
+The Batch path is not accepted capacity: the advertised module command exits
+successfully without executing fulfilment (#1522). Registration and a task exit
+status do not prove a working CLI, provisioned pool or real artifacts. Verification must
+exercise the worker command and artifact identities. Local synthetic pipeline
+tests, live-provider science checks, browser workflows and scale experiments
+answer different questions; the runbook owns the command/evidence matrix.
 
-> **Do not add new code that depends on `X-MS-CLIENT-PRINCIPAL` forwarding or
-> `/.auth/*` being in the auth trust chain.** Those are transitional and will
-> be removed when #710 ships.
+## Repository Ownership and Retention
 
-#### CIAM Bearer Auth (#709 — complete)
+| Surface | Purpose and disposition |
+| --- | --- |
+| `treesight/`, `blueprints/`, root entrypoints | Application and Azure-integrated processing; keep, review module responsibilities locally |
+| `rust/`, `typings/` | Native kernels, dependency type boundaries; keep source/locks/stubs, ignore build output |
+| `website/` | Static product and shared JS; retained conservation surface is not current growth scope |
+| `tests/` | Behavior/configuration tests and fixtures; retain until consumer and redundancy checks justify removal |
+| `scripts/`, `.github/`, `infra/`, Dockerfiles | Build/verify/operate; standalone scripts require callers or documented operator use |
+| `docs/` | Owning contracts, requirements and decision history; avoid additional overlapping overviews |
 
-Backend bearer JWT validation is complete. Bearer-only is the only supported
-auth mode, and it requires these env vars:
+No source/fixture is approved for deletion solely because no Python import was
+found. Account for Function bindings, CLI calls, browser assets, native calls and
+workflow references. Existing local user changes and untracked logging configuration
+are not audit-generated rubbish.
 
-- `CIAM_AUTHORITY`
-- `CIAM_TENANT_ID`
-- `CIAM_API_AUDIENCE`
-- `CIAM_JWT_LEEWAY_SECONDS` (optional, default 60)
-
-#### Entry Point
-
-**Decision (2026-04-12):** The product entry point is the **Free Tier**
-(authenticated, real pipeline, 5 runs/month). The frontend `?mode=demo` URL
-param was removed as part of issue #532 (this PR). The backend `demo` billing
-tier still exists in pipeline guard logic (`tier in {"free", "demo"}`) and
-will be retired separately.
-
-| Concept | Auth | Processing | Purpose |
-|---------|------|-----------|---------|
-| **Free tier** | CIAM auth (authenticated) | Real — own KML/KMZ, 5 runs/month, 30-day retention | Product entry point. |
-| **Starter / Pro / Team / Enterprise** | CIAM auth (authenticated) | Real — full pipeline, higher limits, richer features | Paid plans: £19 / £49 / £149 / custom. |
-| **Showcase** (deferred) | None (anonymous) | None — pre-computed static blobs | Future. Marketing for anonymous visitors. Not until pipeline is proven e2e. |
-
-The frontend `?mode=demo` entry point has been removed (#532). It showed the
-dashboard UI without auth but couldn't run anything — a confused middle ground
-that added complexity without demonstrating real value. The backend `demo`
-billing tier remains in pipeline code and will be retired separately.
-
-Showcase (pre-computed static blobs for anonymous browsing) is a valid future
-concept but is deferred until after the pipeline is verified end-to-end in
-Azure (#531) and the free-tier entry point is polished (#532).
-
-### Auth — CIAM (Entra External ID) + MSAL Bearer Flow
-
-Authentication uses Entra External ID (CIAM) as the identity provider. The frontend
-acquires tokens via MSAL.js; the API validates them server-side. SWA is a static
-host only and plays no role in the auth trust chain.
-
-- **Provider:** Entra External ID (CIAM) — tenant `canopex.ciamlogin.com`
-- **Frontend:** MSAL.js acquires CIAM JWT; sends `Authorization: Bearer <token>` on API calls
-- **Backend:** `require_auth` decorator verifies JWT via OIDC/JWKS; identity = `tid:oid` from claims
-- **SWA role:** static file host only
-- **Route protection:** enforced by the FA `require_auth` / `require_auth_durable` decorators
-
-Both Function Apps use managed identity (DefaultAzureCredential) for data-plane operations.
-
-Legacy SWA principal forwarding is not part of the runtime auth trust chain.
-
-### Deploy Pipeline
-
-```text
-Push to main → CI workflow → (on success) → Deploy workflow
-                                              ├─ 1. Build & push container to GHCR
-                                              ├─ 2. OpenTofu plan + apply (infra/tofu/)
-                                              ├─ 3. Configure compute + orchestrator Function Apps
-                                              ├─ 4. Deploy Static Web App (SWA token)
-                                              ├─ 5. Reconcile Event Grid subscription to orchestrator webhook
-                                              └─ 6. Post-deploy smoke checks
-```
-
-Trigger: `workflow_run` on CI completion for `main`, or `workflow_dispatch`.
-Concurrency: serialized per ref (no cancellation of in-progress deploys).
-Config: `.github/workflows/deploy.yml`
-
-## Data Flow
-
-1. User authenticates via MSAL.js → CIAM issues JWT. (Transitionally: `/.auth/login/aad` via SWA until #710 ships.)
-2. Frontend calls `POST /api/upload/token` on orchestrator host — `require_auth` validates the bearer JWT (or `X-MS-CLIENT-PRINCIPAL` transitionally), mints a write-only SAS URL.
-3. Frontend uploads KML/KMZ directly to blob storage via the SAS URL.
-4. Event Grid emits a BlobCreated event.
-5. `blob_trigger` on orchestrator validates event payload and starts `treesight_orchestrator`.
-6. Orchestrator runs four-phase pipeline:
-   - Ingestion: parse_kml, load_offloaded_features, prepare_aoi, store_aoi_claims
-   - Acquisition: load_aoi_claim, acquire_imagery/acquire_composite, poll_order, download_imagery
-   - Fulfilment: post_process_imagery, submit_batch_fulfilment, poll_batch_fulfilment
-   - Enrichment: run_enrichment, write_metadata, finalize_run_failed (refund path)
-7. Metadata and imagery artifacts are written to output blob paths.
-8. Frontend polls `GET /api/upload/status/{id}` on orchestrator host for progress.
-
-## Imagery Output Framing Policy (2026-03-12)
-
-User-facing imagery outputs follow an AOI-first UX policy:
-
-- Primary deliverable: regular framed outputs that fully contain each AOI feature.
-- Default framing mode target: square frame with small configurable padding.
-- MultiPolygon handling target: split into per-feature/per-polygon outputs by default.
-- Optional artifact: composite overview image for context.
-- Ground truth remains AOI geometry in metadata/contracts.
-
-Backlog tracking:
-
-- #176 (enhancement): implement regular framed output strategy and multipolygon split defaults.
-- #177 (enhancement): add optional H3-derived analytical outputs without replacing AOI-first deliverables.
-- #172 (bug): restore clipping pipeline path so framed/clipped outputs are generated from blob-backed imagery.
-
-## Provider Adapter Boundary
-
-The orchestrator calls provider adapters only through the ImageryProvider contract in `treesight/providers/base.py`.
-
-Required adapter methods:
-
-- search(aoi, filters) -> list[SearchResult]
-- order(scene_id) -> OrderId
-- poll(order_id) -> OrderStatus
-- download(order_id) -> BlobReference
-
-This allows provider-specific logic to evolve without changing orchestration flow.
-
-## Configuration Reference (Environment)
-
-Core runtime settings:
-
-- DEFAULT_INPUT_CONTAINER or KML_INPUT_CONTAINER
-- DEFAULT_OUTPUT_CONTAINER or KML_OUTPUT_CONTAINER
-- IMAGERY_PROVIDER
-- IMAGERY_RESOLUTION_TARGET_M
-- IMAGERY_MAX_CLOUD_COVER_PCT
-- AOI_BUFFER_M
-- AOI_MAX_AREA_HA
-- KEYVAULT_URL
-- AzureWebJobsStorage
-- APPLICATIONINSIGHTS_CONNECTION_STRING
-
-Validation and defaults are implemented in `treesight/config.py`.
-
-## Observability Surface
-
-HTTP diagnostics:
-
-- GET /api/health
-- GET /api/readiness
-- GET /api/orchestrator/{instance_id}
-
-Structured logs include correlation and entity fields such as:
-
-- instance, correlation_id
-- blob, feature
-- order_id, provider
-
-## Deployment Model
-
-Infrastructure is managed with OpenTofu under infra/tofu.
-
-Deployment sequencing must ensure host readiness before Event Grid subscription enablement, to avoid webhook validation race conditions.
+Rebuildable caches: `.pytest_cache`, `.ruff_cache`, coverage and `rust/target`.
+Reinstallable tools/environments: `.venv`, `.tools`, OpenTofu provider cache.
+Preserve secrets, state, storage volumes and diagnostic evidence pending explicit
+review. `make clean` deletes project data/models; it is not cache cleanup. Do not
+use global Docker pruning. Historical docs remain evidence, not live policy;
+duplicate current-state descriptions should be replaced with owning references.

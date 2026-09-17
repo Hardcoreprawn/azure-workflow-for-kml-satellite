@@ -1,688 +1,105 @@
-# Canopex — Automated Satellite Analysis Platform
+# Canopex
 
-Azure-hosted pipeline that ingests KML/KMZ boundaries, acquires
-multi-provider satellite imagery, and delivers enriched analysis
-(NDVI, weather, fire, flood, EUDR compliance) with AI-generated narratives.
+Canopex processes KML/KMZ parcel boundaries into satellite imagery and supporting
+geospatial evidence. The current product focus is EUDR due-diligence support;
+satellite screening and AI narratives are not legal compliance certificates.
+See the [roadmap](docs/ROADMAP.md) for direction and delivery status.
 
-> **Status:** Stage 2 — Pipeline Verification & Revenue Enablement. See [ROADMAP.md](docs/ROADMAP.md) for delivery plan.
+## Canonical Documentation
 
-## Architecture
-
-```text
-KML Upload → Blob Storage → Event Grid → Durable Functions Orchestrator
-                                              │
-                 ┌────────────────────────────┤
-                 ▼                            ▼
-           Parse KML                    Fan-out per polygon
-           Extract Geometry                   │
-                                 ┌────────────┼────────────┐
-                                 ▼            ▼            ▼
-                            Prepare AOI  Acquire Imagery  Post-Process
-                                                          (Clip, Store)
-                                              │
-                                              ▼
-                                    Blob Storage (GeoTIFF + Metadata JSON)
-```
-
-**Compute:** Azure Functions on Azure Container Apps (custom Docker with GDAL)
-**Orchestration:** Azure Durable Functions — fan-out/fan-in, async polling with zero-cost timers
-**Providers:** Planetary Computer (Sentinel-2, Landsat C2 L2, NAIP, ESA WorldCover) via geo-routing provider with region-based collection selection
-**Billing:** Stripe Checkout with multi-currency (GBP/EUR/USD) and UK Consumer Contracts compliance
-**AI:** Azure AI Foundry (pay-per-token) with circuit breaker and result caching
-
-See [PID.md](docs/PID.md) for the full Project Initiation Document and [ARCHITECTURE_OVERVIEW.md](docs/ARCHITECTURE_OVERVIEW.md) for the deployed component guide.
-
-## Features
-
-- **KML/KMZ ingestion** — upload or paste boundaries, multi-polygon support
-- **Multi-provider imagery** — geo-routing selects optimal collection per region (NAIP 0.6m US, Sentinel-2 10m global, Landsat 30m historical)
-- **NDVI analysis** — vegetation index computation, change detection, canopy loss quantification
-- **Weather integration** — Open-Meteo historical weather synced to imagery timeline
-- **Event detection** — fire hotspots (FIRMS) and flood extent overlay
-- **EUDR compliance** — post-2020 date filtering, WorldCover land-cover sampling, WDPA protected area check, coordinate-to-KML converter, AI deforestation-free assessment
-- **AI narratives** — Azure AI Foundry generates plain-English analysis summaries
-- **Export** — PDF audit reports, GeoJSON FeatureCollections, CSV timeseries
-- **Billing** — Stripe-powered tiered subscriptions (Free Trial / EUDR Pro / Enterprise)
-- **Auth** — SWA built-in Azure AD with per-user quotas
-
-## Architecture Reference
-
-- **System architecture:** [PID.md §7](docs/PID.md)
-- **Deployed component/data-flow guide:** [docs/ARCHITECTURE_OVERVIEW.md](docs/ARCHITECTURE_OVERVIEW.md)
-- **Product roadmap & business strategy:** [docs/ROADMAP.md](docs/ROADMAP.md)
-- **OpenAPI specification:** [docs/openapi.yaml](docs/openapi.yaml)
-
-## Documentation Index
-
-- **Operations runbook:** [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md)
-- **API and interfaces:** [docs/API_INTERFACE_REFERENCE.md](docs/API_INTERFACE_REFERENCE.md)
-- **Metadata JSON schema:** [docs/schemas/aoi-metadata-v2.schema.json](docs/schemas/aoi-metadata-v2.schema.json)
-- **EUDR methodology:** [website/docs/eudr-methodology.html](website/docs/eudr-methodology.html)
-- **Infrastructure naming standard:** [docs/INFRA_NAMING_STANDARD.md](docs/INFRA_NAMING_STANDARD.md)
-
-## Operations Runbook
-
-### Health and readiness checks
-
-- `GET /api/health` — liveness probe (configuration loads successfully)
-- `GET /api/readiness` — readiness probe (configuration + storage dependency checks)
-
-Local checks:
-
-```bash
-curl -sS http://localhost:7071/api/health
-curl -sS http://localhost:7071/api/readiness
-```
-
-### Orchestration status inspection
-
-- `GET /api/orchestrator/{instance_id}` — returns direct JSON diagnostics with runtime state, summary counts, and discovered artifact blob paths
-
-Local check:
-
-```bash
-curl -sS http://localhost:7071/api/orchestrator/<instance-id>
-```
-
-### Endpoint Access Contract (Issue #163)
-
-Anonymous-by-design endpoints (safe for probes and operator diagnostics):
-
-- `GET /api/health`: liveness only (host/config loaded)
-- `GET /api/readiness`: dependency readiness summary (config + storage)
-- `GET /api/orchestrator/{instance_id}`: bounded orchestration diagnostics for a known instance id
-
-Protected management endpoints (never anonymous):
-
-- `POST /admin/host/status` and `GET /admin/functions` (host management API)
-- `POST /host/default/listKeys` via ARM management plane
-- Durable runtime admin APIs under `/runtime/webhooks/durabletask/*`
-
-Why this boundary exists:
-
-- Public probes must be callable by Container Apps/ops tooling without key distribution.
-- Runtime/admin endpoints expose host control and key material; they require function/admin or ARM auth.
-
-Deployment readiness contract:
-
-1. Deploy workflow uses protected host/admin endpoints only inside OIDC-authenticated pipeline steps.
-2. Event Grid webhook reconciliation uses runtime system key after host readiness is confirmed.
-3. Remote smoke checks for operators should use anonymous endpoints plus blob artifact verification.
-
-Do not expose anonymously:
-
-- Any endpoint that returns secrets/keys, host admin metadata, or mutable runtime control.
-- Generic Durable runtime management URLs for broad instance enumeration.
-
-### Log and alert triage
-
-1. Check Function App logs for `instance_id`, `order_id`, `blob`, and `feature` fields.
-2. Check Application Insights traces and exceptions for failed stage names (`parse_kml`, `acquire_imagery`, `poll_order`, `download_imagery`, `post_process_imagery`, `write_metadata`).
-3. Check Azure Monitor metric alerts:
-   - `alert-<baseName>-failed-requests`
-   - `alert-<baseName>-high-latency`
-4. For persistent failures, query orchestration status endpoint and correlate with App Insights traces.
-
-### Recovery actions
-
-- **Malformed input event:** validate blob container naming and `.kml` extension; re-upload corrected input.
-- **Provider transient failure:** allow orchestrator retries/backoff to complete before manual intervention.
-- **Provider permanent failure:** review provider response in logs, fix configuration/credentials, then re-trigger with a new upload.
-- **Storage connectivity failure:** verify Function App app settings (`AzureWebJobsStorage`, `APPLICATIONINSIGHTS_CONNECTION_STRING`, `KEY_VAULT_URI`) and managed identity RBAC.
-
-### Deployment sequencing (critical)
-
-For Azure Functions on Container Apps, infrastructure dependencies alone are not sufficient to guarantee Event Grid readiness. Python v2 functions are discovered by the Functions host at runtime, and the host must fully load before Event Grid subscription creation.
-
-**Container Apps vs Consumption Plan differences:**
-
-- **Function discovery:** `az functionapp function list` does not work reliably for Container Apps. Use HTTP endpoint checks (`/api/health`) instead.
-- **Python v2 discovery:** Function routes are indexed when the host starts; no `func build` step is required in the container image build.
-- **TLS termination:** Azure handles HTTPS at ingress; containers listen on port 80 internally.
-
-Required deployment order:
-
-1. Deploy infra + Function App container image with `enableEventGridSubscription=false`.
-2. Poll function host readiness (HTTP `/api/health` endpoint) as advisory telemetry.
-3. Re-apply infra with `enableEventGridSubscription=true` using retry-on-validation-failure.
-4. Verify `evgs-kml-upload` subscription exists on `evgt-<baseName>`.
-
-This sequencing is enforced in [.github/workflows/deploy.yml](.github/workflows/deploy.yml) to prevent race conditions where Event Grid fails with "validation request did not receive expected response."
-
-#### Defensive coding principles (Margaret Hamilton standard)
-
-The deployment retry loops implement production-grade defensive patterns designed for autonomous operation over years:
-
-**Wall-clock timeouts:** Each retry loop has both attempt count limits AND wall-clock timeouts. This prevents scenarios where slow-failing deployments (e.g., 2-3 minutes per Azure deployment) could run for 60+ minutes.
-
-- Function discovery: 30 attempts max OR 300s wall-clock (5 minutes), whichever comes first
-- Event Grid enablement: 15 attempts max OR 900s wall-clock (15 minutes), whichever comes first
-
-**Exponential backoff:** Event Grid retry uses exponential backoff (10s, 20s, 30s... capped at 60s) rather than fixed 15s intervals, reducing Azure API load and respecting transient error recovery patterns.
-
-**Fail-fast detection:** Non-transient errors (authorization/credential failures) trigger immediate loop exit rather than exhausting all retry attempts. Only endpoint validation errors (expected transient) continue retries.
-
-**Observability:** Each attempt logs:
-
-- Attempt number and elapsed time
-- Individual operation duration
-- Error details with pattern detection
-- Calculated backoff intervals
-
-**Graceful degradation:** Function discovery failures emit warnings (not errors) and allow the authoritative Event Grid retry loop to determine final success/failure.
-
-Implementation reference: [deploy.yml L100-L185](.github/workflows/deploy.yml#L100-L185)
-Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
-
-## API Reference
-
-### Public HTTP endpoints
-
-| Method | Path | Purpose | Success | Failure |
-| --- | --- | --- | --- | --- |
-| GET | `/api/health` | Liveness probe | 200 | 500 |
-| GET | `/api/readiness` | Dependency readiness probe | 200 | 503 |
-| GET | `/api/contract` | OpenAPI/contract metadata | 200 | — |
-| GET | `/api/orchestrator/{instance_id}` | Durable instance status + artifact diagnostics | 200 | 400 / 404 |
-| GET | `/api/billing/status` | Subscription status | 200 | 401 |
-| POST | `/api/billing/checkout` | Create Stripe Checkout session | 200 | 400 / 401 |
-| POST | `/api/billing/portal` | Create Stripe customer portal session | 200 | 400 |
-| POST | `/api/billing/webhook` | Handle Stripe webhook events | 200 | 400 |
-| POST | `/api/upload/token` | Generate upload SAS token | 200 | 401 |
-| GET | `/api/upload/status/{submission_id}` | Upload/pipeline status | 200 | 404 |
-| POST | `/api/analysis/submit` | Submit KML for pipeline processing | 200 | 400 / 401 |
-| GET | `/api/analysis/history` | User analysis history | 200 | 401 |
-| POST | `/api/timelapse-analysis` | Timelapse analysis | 200 | 400 / 401 |
-| POST | `/api/eudr-assessment` | EUDR compliance assessment | 200 | 400 / 401 |
-| POST | `/api/convert-coordinates` | Convert lat/lon to KML | 200 | 400 / 401 |
-| GET | `/api/catalogue` | User analysis catalogue | 200 | 401 |
-| GET | `/api/export/{id}/{format}` | Export artifacts (GeoJSON, CSV, PDF) | 200 | 401 / 404 |
-| GET\|POST | `/api/monitoring` | AOI monitoring (list / create) | 200 | 401 |
-| GET\|PATCH\|DELETE | `/api/monitoring/{monitor_id}` | Monitor CRUD | 200 | 401 / 404 |
-| GET\|POST\|PATCH | `/api/org` | Organisation CRUD | 200 | 401 |
-| POST | `/api/contact-form` | Contact form submission | 200 | 400 |
-| GET | `/api/ops/dashboard` | Ops dashboard (admin) | 200 | 403 |
-
-### Event-driven entrypoint
-
-- Event Grid trigger function: `blob_trigger` (blueprints/pipeline/blob_trigger.py)
-- Expected event source: blob-created events for input containers ending in `-input`
-- Expected payload contract: canonical blob event fields (`blob_url`, `container_name`, `blob_name`, `content_length`, `content_type`, `event_time`, `correlation_id`)
-
-### Durable orchestrations
-
-- `treesight_orchestrator` — four-phase sequential workflow (Ingestion → Acquisition → Fulfilment → Enrichment)
-
-### Durable activities
-
-- `parse_kml`
-- `load_offloaded_features`
-- `prepare_aoi`
-- `store_aoi_claims`
-- `load_aoi_claim`
-- `acquire_imagery`
-- `acquire_composite`
-- `poll_order`
-- `download_imagery`
-- `post_process_imagery`
-- `run_enrichment`
-- `submit_batch_fulfilment`
-- `poll_batch_fulfilment`
-- `finalize_run_failed` (refund path for failed reservations)
-- `write_metadata`
-
-## Project Structure
-
-```text
-├── .github/workflows/          CI, deploy, base-image-refresh, security
-├── blueprints/                  Azure Functions HTTP blueprints
-│   ├── analysis.py              EUDR assessment, frame/timelapse analysis
-│   ├── auth.py                  Session bootstrap
-│   ├── billing.py               Stripe Checkout, webhooks, customer portal
-│   ├── catalogue.py             User analysis catalogue
-│   ├── contact.py               Contact form endpoint
-│   ├── eudr.py                  Coordinate conversion endpoint
-│   ├── export.py                GeoJSON, CSV, PDF export
-│   ├── health.py                Liveness + readiness probes
-│   ├── monitoring.py            AOI monitoring CRUD
-│   ├── ops.py                   Ops dashboard, user admin
-│   ├── org.py                   Organisation management
-│   ├── upload.py                Upload token + status
-│   └── pipeline/                Orchestrator, activities, diagnostics, enrichment
-├── infra/tofu/                  OpenTofu IaC (Azure resources)
-├── treesight/                   Application package
-│   ├── ai/                      Azure AI Foundry client + circuit breaker
-│   ├── catalogue/               Catalogue service
-│   ├── models/                  Data models (AOI, features, imagery, monitors)
-│   ├── parsers/                 KML/KMZ parsing (Fiona + lxml fallback)
-│   ├── pipeline/                Orchestration, enrichment, EUDR, acquisition
-│   ├── providers/               Imagery providers (Planetary Computer, geo-routing)
-│   ├── security/                Auth (SWA header parsing), rate limiting, replay protection, valet tokens
-│   ├── storage/                 Blob storage + Cosmos DB helpers
-│   ├── config.py                App configuration (Key Vault, env vars)
-│   ├── constants.py             EUDR cutoff, API contract version, limits
-│   ├── email.py                 Email notifications
-│   ├── errors.py                Custom exception hierarchy
-│   ├── geo.py                   Geometry utilities (Shapely, pyproj)
-│   ├── log.py                   Structured JSON logging
-│   └── monitoring.py            Monitoring service
-├── tests/                       1315 tests (unit + integration)
-│   ├── fixtures/                KML test files (valid + edge cases)
-│   └── conftest.py              Shared fixtures and mocks
-├── website/                     Static Web App (HTML/CSS/JS)
-│   ├── app/                     General-purpose SPA (mothballed)
-│   ├── eudr/                    EUDR-specific SPA entry point
-│   ├── docs/                    Methodology + documentation pages
-│   └── js/                      Shared JS modules
-├── function_app.py              Azure Functions entry point (v2 model)
-├── host.json                    Functions host configuration
-├── Dockerfile                   Custom container (Python 3.12 + GDAL)
-└── pyproject.toml               Dependencies and tool configuration
-```
-
-## Tech Stack
-
-| Layer | Technology |
+| Question | Owning reference |
 | --- | --- |
-| Runtime | Python 3.12 |
-| Compute | Azure Functions on Azure Container Apps (custom Docker) |
-| Orchestration | Azure Durable Functions (Python v2 model) |
-| KML Parsing | Fiona (OGR) + lxml (fallback) |
-| Geometry | Shapely, pyproj |
-| Raster | Rasterio, GDAL, NumPy |
-| STAC | pystac-client, planetary-computer |
-| AI | Azure AI Foundry (pay-per-token, circuit breaker) |
-| Billing | Stripe (Checkout, webhooks, customer portal) |
-| Auth | SWA built-in Azure AD (pre-configured provider), session-based |
-| Export | fpdf2 (PDF), GeoJSON, CSV |
-| Linting | ruff |
-| Type Checking | pyright |
-| Testing | pytest (1315 tests) |
-| IaC | OpenTofu (Terraform-compatible) |
-| CI/CD | GitHub Actions |
-| Security | Semgrep, Trivy, pip-audit, CodeQL, detect-secrets |
+| Repository structure and processing | [Architecture overview](docs/ARCHITECTURE_OVERVIEW.md) |
+| API, activity and storage contracts | [API reference](docs/API_INTERFACE_REFERENCE.md), [OpenAPI](docs/openapi.yaml) |
+| Run, verify, deploy and recover | [Operations runbook](docs/OPERATIONS_RUNBOOK.md) |
+| Data ownership and evidence schemas | [Data model](docs/DATA_MODEL.md), [enrichment model](docs/ENRICHMENT_AOI_MODEL.md) |
+| Direction and audience | [Roadmap](docs/ROADMAP.md), [persona research](docs/PERSONA_DEEP_DIVE.md) |
+| Product requirements | [PID](docs/PID.md) |
+| Scientific interpretation | [EUDR methodology](website/docs/eudr-methodology.html) |
 
-## CI Lanes (Issue #150)
+The architecture, API reference and runbook describe checked-in behavior, not proof
+of live deployment. Requirements and design specifications are not a shipped-feature
+inventory. Dated material under [docs/archive](docs/archive) is historical context,
+not current operating guidance. Reconcile implementation/documentation discrepancies;
+do not silently treat either as an approved architecture change.
 
-The CI pipeline is intentionally split into two lanes with different cost/latency profiles:
+## Processing Overview
 
-- `Fast Lint Type Unit`: fast feedback lane (ruff, pyright, targeted unit tests) with no runner-level APT install.
-- `Native Geo Validation`: correctness lane for native geospatial/runtime surfaces (GDAL system deps, native import validation, broader test execution).
+```text
+Browser -> API-facing Function App -> Blob upload -> Event Grid
+                                  -> Durable start/query
+Durable task hub -> compute Function App
+                -> ingest -> acquire -> fulfil -> enrich -> evidence artifacts
+```
 
-Trade-off and policy:
+The API-facing app is named `orchestrator`, but compute currently executes both
+Durable orchestration functions and activities. Both currently register HTTP
+handlers. The intended target is a lightweight admission/API service with durable
+buffering and independently scaled workers, retaining health probes but not the
+full user API on compute. Azure coupling is intentional. Scale-to-zero is preferred
+where wake-up latency is acceptable; hosting choice, latency budget and Batch
+capacity require measured evidence. See the architecture overview for current/target
+differences and follow-up work.
 
-- Fast lane optimizes PR iteration time for typical application edits.
-- Native lane preserves safety for geospatial/runtime correctness and remains required in CI.
+Authentication uses MSAL.js and Entra External ID (CIAM) bearer JWTs. SWA serves
+static files, not trusted authentication headers. Diagnostics currently allow
+anonymous access by instance ID; authentication and run-access authorization are
+required before leaving local development. That change is not yet enforced.
 
-Reference: `.github/workflows/ci.yml`
+## Development
 
-## Geospatial Base Image Refresh (Issue #151)
-
-Base image automation runs in `.github/workflows/base-image-refresh.yml` on a weekly schedule and manual dispatch.
-
-Publication model:
-
-- Immutable run-scoped tag: `geo-base-<sha>-<run-id>-<attempt>`
-- Rolling stable refs: `geo-base-stable`, `geo-base-latest`
-
-Consumer update path:
-
-1. Default deploy behavior consumes `geo-base-stable`.
-2. For a controlled validation run, execute `Deploy Function App` via manual dispatch and provide optional overrides (`builder_base_image`, `runtime_base_image`).
-
-3. After validation, keep defaults on `geo-base-stable` or pin to a specific immutable tag/digest if stricter reproducibility is required.
-
-References:
-
-- `.github/workflows/base-image-refresh.yml`
-- `.github/workflows/deploy.yml`
-- `docs/adr/0001-geospatial-base-image-strategy.md`
-
-## Getting Started
-
-### Prerequisites
-
-- [uv](https://docs.astral.sh/uv/) (package manager — installs Python 3.12 automatically)
-- Docker + Docker Compose (the app stack — func host, website, Azurite — runs entirely in containers; see ADR 0005)
-- GDAL system libraries (`gdal-bin`, `libgdal-dev`) — Linux only, needed for lint/test outside a container; uv handles the rest
-
-### Local Development
+Use the repository's VS Code devcontainer with Docker and Compose available.
+Python 3.12 is the container/CI runtime; declarations live in
+[pyproject.toml](pyproject.toml) and [uv.lock](uv.lock).
 
 ```bash
-# Clone the repository
-git clone https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite.git
-cd azure-workflow-for-kml-satellite
-
-# Install Python 3.12 + all dependencies (creates .venv automatically)
-uv sync --all-extras
-
-# Install pre-commit hooks
-uv run pre-commit install
-
-# Fast edit loop: one node, class, or test file; quiet, fail-fast, no coverage
-make test-fast TESTS="tests/test_rate_limit.py::TestRateLimiter"
-
-# Handoff gate: canonical lint, format, type-check, and full unit suite
+make dev-all
+make test-fast TESTS="tests/test_docs_route_drift.py"
 make check
-
-# Or run everything via pre-commit
-uv run pre-commit run --all-files
 ```
 
-Targeted tests accelerate local editing only. Before review, run `make check`;
-required CI, integration, and pipeline gates remain the merge contract. Changes
-to deployed behavior also require the applicable post-deploy smoke evidence.
-`TESTS` accepts test paths and node IDs only; quote parameterized node IDs that
-contain spaces with nested quotes (for example, `TESTS='"path::test[value with spaces]"'`).
-Pytest options and argfiles are rejected; fixed safety flags cannot be overridden.
+The local website is `http://localhost:4280`; its development proxy targets the
+compute host at `http://localhost:7071`. Direct orchestrator checks use
+`http://localhost:7072`. For host/container differences, lifecycle hooks,
+credentials, rebuilds and shutdown, use the [runbook](docs/OPERATIONS_RUNBOOK.md).
+Starting the stack does not establish an authenticated browser session.
 
-Integration tests are split by dependency so a missing service cannot masquerade
-as a green gate:
+`make test-fast` accepts paths/node IDs only, not pytest flags. `make check` runs
+lint, format, types, unit tests, JavaScript tests and changed-lines coverage. It
+does not replace integration or pipeline acceptance:
 
-```bash
-make test-int         # required Azurite tier; fails if no test executes
-make test-int-live    # opt-in Azurite + local Functions host smoke tests
-make test-int-stripe  # opt-in external Stripe test-mode API tests
-```
-
-For the full local product surface (website + Functions host + Azurite, same
-containerised execution model as production), run the single docker-compose
-stack:
-
-```bash
-make dev-all
-```
-
-Then open `http://localhost:4280`. Code changes under `treesight/` and
-`blueprints/` hot-reload in the running `func` container (bind-mounted; no
-rebuild needed). Changing `function_app.py`, `function_registration.py`,
-dependencies (`pyproject.toml`/`uv.lock`), or Dockerfiles needs a rebuild:
-`make dev-rebuild`. Tail logs with `make dev-logs`.
-
-### Pre-commit Hooks
-
-The following hooks run automatically on every `git commit`:
-
-| Hook | What it does |
+| Command | Evidence |
 | --- | --- |
-| trailing-whitespace | Removes trailing whitespace |
-| end-of-file-fixer | Ensures files end with a newline |
-| check-yaml / json / toml | Validates config file syntax |
-| check-added-large-files | Blocks files > 1 MB |
-| detect-private-key | Prevents committing private keys |
-| no-commit-to-branch | Blocks direct commits to `main` |
-| ruff (lint) | Lints Python, auto-fixes where possible |
-| ruff (format) | Checks Python formatting |
-| pyright | Static type checking |
-| detect-secrets | Scans for leaked credentials |
-| markdownlint | Lints markdown files |
-
-To bypass hooks for exceptional cases: `git commit --no-verify`
-
-### Running the app stack
-
-```bash
-make dev-all
-```
-
-This starts Azurite, the containerised Functions host, and the website dev
-server together (see ADR 0005). There is no host-installed `func start` path
-for interactive dev — Docker is a hard prerequisite.
-
-### Authentication
-
-Canopex uses SWA built-in Azure AD (pre-configured provider) for authentication.
-No app registration, client secrets, or external tenant is required — SWA handles
-the full OAuth flow server-side.
-
-- Login: `/.auth/login/aad`
-- Logout: `/.auth/logout`
-- User info: `/.auth/me`
-- API auth: SWA injects `X-MS-CLIENT-PRINCIPAL` header automatically
-
-Local auth testing:
-
-- Use the SWA CLI, or `make dev-all` (the website dev server already proxies
-  `/api/*` to the containerised func host).
-- Auth is optional in local dev — unauthenticated requests pass through as anonymous.
-
-### Load Testing Baseline (#320)
-
-Use the baseline runner to execute four scenarios and produce JSON/Markdown artifacts
-for threshold analysis:
-
-```bash
-uv run python scripts/load_baseline.py --runs-per-scenario 3 --concurrency 2
-```
-
-If your local Event Grid webhook requires auth, provide the system key:
-
-```bash
-export EVENT_GRID_FUNCTION_KEY=<local-eventgrid-system-key>
-uv run python scripts/load_baseline.py --runs-per-scenario 3 --concurrency 2
-```
-
-Scenarios covered:
-
-- `baseline` (1 AOI)
-- `moderate_bulk` (50 AOIs)
-- `stress_bulk` (200 AOIs)
-- `massive_polygon` (single large polygon)
-
-Artifacts are written to `docs/baselines/` and include:
-
-- scenario-level success/failure rates and p50/p95 durations
-- per-run orchestration instance IDs and terminal states
-- heuristic signals for throttling (`429`), timeout, and memory pressure
-
-### Building the Docker Image
-
-```bash
-docker build -t kml-satellite:dev .
-```
-
-## Troubleshooting
-
-### Common Container Build Issues
-
-#### APT repository conflict error
-
-**Symptom:**
-
-```text
-E: Conflicting values set for option Signed-By regarding source  
-https://packages.microsoft.com/debian/12/prod/ bookworm:
-/usr/share/keyrings/microsoft-archive-keyring.gpg !=
-/usr/share/keyrings/microsoft-prod.gpg
-```
-
-**Cause:** The Azure Functions Python base image (`mcr.microsoft.com/azure-functions/python:4-python3.12`) already has Microsoft's APT repository configured with a signing key at `/usr/share/keyrings/microsoft-prod.gpg`. Attempting to add the same repository with a different keyring path creates a duplicate entry that APT rejects.
-
-**Solution:** Do not re-add Microsoft package repositories in this image:
-
-```dockerfile
-# ❌ Wrong: Adding duplicate repo with different signing key
-RUN curl https://packages.microsoft.com/keys/microsoft.asc | \
-    gpg --dearmor -o /usr/share/keyrings/microsoft-archive-keyring.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] ..." \
-    > /etc/apt/sources.list.d/microsoft-prod.list && \
-  apt-get update
-```
-
-**Test coverage:** [`tests/unit/test_dockerfile.py::TestAptRepositorySafety::test_no_manual_microsoft_repo_setup`](tests/unit/test_dockerfile.py)
-
-### Common Deployment Issues
-
-#### Functions not discovered (0 functions found)
-
-**Symptom:** Deployment succeeds, but Functions host logs show:
-
-```text
-Reading functions metadata (Custom)
-0 functions found (Custom)
-Generating 0 job function(s)
-Host started (no HTTP routes)
-```
-
-HTTP requests to function endpoints return 404.
-
-**Cause:** In Container Apps, discovery can fail while the host is still starting, dependencies are not loaded, or app configuration is invalid. Unlike older assumptions, Python v2 does not require a build-time `func build` step.
-
-**Solution:**
-
-1. Keep a clean multi-stage image with required runtime dependencies
-2. Copy application code (`function_app.py`, `host.json`, `treesight/`, `blueprints/`) into `/home/site/wwwroot`
-3. Verify startup via `/api/health` and container logs
-
-```dockerfile
-FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS builder
-WORKDIR /build
-COPY host.json function_app.py ./
-COPY treesight/ ./treesight/
-COPY blueprints/ ./blueprints/
-
-FROM mcr.microsoft.com/azure-functions/python:4-python3.12
-COPY --from=builder /build/host.json /home/site/wwwroot/
-COPY --from=builder /build/function_app.py /home/site/wwwroot/
-COPY --from=builder /build/treesight/ /home/site/wwwroot/treesight/
-COPY --from=builder /build/blueprints/ /home/site/wwwroot/blueprints/
-```
-
-**Verification:**
-
-```bash
-# Build locally and verify host startup
-docker build -t test:latest .
-docker run --rm -p 8080:80 test:latest
-# Then call: curl http://localhost:8080/api/health
-```
-
-**Test coverage:** [`tests/unit/test_dockerfile.py::TestFunctionMetadataGeneration`](tests/unit/test_dockerfile.py)
-
-#### Readiness check failures on Container Apps
-
-**Symptom:** Deployment workflow times out or fails with "Functions not discoverable after 30 attempts"
-
-**Cause:** Management plane APIs (`az functionapp function list`) don't work reliably for Container Apps. The Functions host may be running but not yet loaded all functions, or the API may return stale/empty results.
-
-**Solution:** Use data plane HTTP checks instead:
-
-```bash
-# ❌ Wrong: Management plane API (unreliable for Container Apps)
-az functionapp function list \
-  --name func-app-name \
-  --resource-group rg-name
-
-# ✅ Correct: Data plane HTTP endpoint
-fqdn=$(az functionapp show \
-  --name func-app-name \
-  --resource-group rg-name \
-  --query defaultHostName -o tsv)
-
-http_response=$(curl -sS -o /dev/null -w "%{http_code}" \
-  "https://${fqdn}/api/health")
-
-# Interpret response codes:
-# 200 = Functions loaded and ready
-# 404 = Host running but functions still loading
-# 503 = Host not ready yet
-```
-
-**Test coverage:** [`tests/unit/test_deploy_workflow.py::TestReadinessCheck::test_readiness_uses_function_list`](tests/unit/test_deploy_workflow.py)
-
-#### Event Grid validation failures
-
-**Symptom:**
-
-```text
-Webhook validation handshake failed for 'https://func-app.azurewebsites.net/...'
-Destination endpoint not found or did not respond within expected timeout.
-```
-
-**Cause:** For Azure Functions hosted on Azure Container Apps, using `endpointType: AzureFunction` with ARM resource ID (`.../functions/blob_trigger`) can fail because the function child resource is not reliably discoverable by Event Grid during subscription creation.
-
-**Solution:** Use webhook destination wiring to the Functions runtime endpoint and keep two-pass deployment:
-
-1. **First pass:** Deploy infrastructure + Function App with `enableEventGridSubscription=false`
-2. **Poll readiness:** Wait for `/api/health` to return 200 (functions loaded)
-3. **Second pass:** Deploy with `enableEventGridSubscription=true` (with retry/backoff), where Event Grid points to:
-  `https://<function-host>/runtime/webhooks/eventgrid?functionName=blob_trigger&code=<eventgrid-system-key>`
-
-This sequence is enforced in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
-
-**Test coverage:** [`tests/unit/test_deploy_workflow.py::TestReadinessCheck::test_event_grid_uses_two_pass_toggle`](tests/unit/test_deploy_workflow.py)
-
-### Container Apps Platform Differences
-
-These behaviors differ from Azure Functions Consumption Plan:
-
-| Aspect | Consumption Plan | Container Apps |
-| --- | --- | --- |
-| Function discovery API | `az functionapp function list` works | Unreliable; use HTTP `/api/health` |
-| Python v2 metadata | Runtime generation supported | Runtime generation supported (no `func build`) |
-| TLS termination | Port 443 internal | Port 80 internal, Azure ingress handles TLS |
-| Cold start | <1s (pre-warmed) | 5-15s (container startup) |
-| Scale-to-zero | Yes (Consumption) | Yes (Container Apps) |
-| Custom system deps | No (restricted runtime) | Yes (custom Docker) |
-
-**Documentation:** See "Container Apps vs Consumption Plan differences" in [Operations Runbook](#operations-runbook) section above.
-
-### Debugging Container Locally
-
-```bash
-# Pull deployed image
-docker pull ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:<commit-sha>
-
-# Run locally with storage emulator
-docker run --rm -d -p 8080:80 \
-  -e "AzureWebJobsStorage=UseDevelopmentStorage=true" \
-  ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:<commit-sha>
-
-# Check logs (wait 30s for host to start)
-docker logs <container-id>
-
-# Look for "Host started" and function indexing output
-
-# Test health endpoint
-curl http://localhost:8080/api/health
-```
-
-## API Contract Versioning
-
-The frontend and backend share a contract version string that enforces backend-first deployment discipline. The website deploy workflow **will not proceed** unless the live backend reports the expected version at `/api/api-contract`.
-
-Current contract version: `2026-03-15.1` (defined in `treesight/constants.py` as `API_CONTRACT_VERSION` and checked inline in `website/index.html`).
-
-### When to bump the version
-
-Bump the contract version whenever the frontend requires a new API capability that does not yet exist in the deployed backend. Examples:
-
-- A new HTTP route that the frontend will call
-- A changed response schema that the frontend depends on
-- A renamed or removed endpoint
-
-Do **not** bump for backend-only changes (new logic, bug fixes, performance improvements) that do not affect the frontend interface.
-
-### How to bump
-
-1. Decide on the new version string using the format `YYYY-MM-DD.N` (e.g. `2026-04-01.1`).
-2. In `treesight/constants.py`, update `API_CONTRACT_VERSION = "NEW_VERSION"`.
-3. Update the version check in `website/index.html` if the frontend validates the version string.
-4. Implement the new API capability in `function_app.py`.
-5. **Deploy the backend first** and confirm the deploy workflow passes (`/api/api-contract` returns the new version).
-6. Then deploy the frontend — the deploy workflow checks that the live backend version matches before proceeding.
-
-If you deploy the frontend before the backend is ready, the gate will fail with a version mismatch error. This is intentional.
+| `make test` | Non-integration Python suite; coverage currently measures only `treesight` |
+| `make test-js` | Executable JavaScript correctness tests |
+| `make test-int` | Required Azurite integration tier |
+| `make test-int-live` | Opt-in running-stack integration tier |
+| `make test-int-stripe` | Opt-in external Stripe test-mode tier |
+| `make test-pipeline-local` | Disposable synthetic pipeline gate |
+| `make verify-local` | Running-stack surface/integration verification |
+
+The [CI workflow](.github/workflows/ci.yml) is the executable CI definition.
+Do not infer CI coverage from local target names: JavaScript CI wiring and expanded
+Python coverage measurement remain tracked by #1525 and #1524. OpenAPI inventory
+and payload coverage remain incomplete (#1530). Run `uv sync --all-extras` in a
+writable project environment before interpreting full-gate dependency failures.
+
+## Repository Retention
+
+Keep runtime source, dependency locks, infrastructure, type stubs, test fixtures,
+verification tools and decision records with identifiable consumers. Generated
+coverage, caches, build output and local secrets are excluded by [.gitignore](.gitignore).
+Unreferenced source is a review candidate, not proof of dead code: Function bindings,
+CLI entrypoints and native extension calls may not appear as Python imports.
+The architecture overview records ownership and cleanup boundaries.
 
 ## Contributing
 
-1. Create a feature branch from `main` (`git checkout -b feature/issue-number-description`)
-2. Make changes following the engineering principles in [PID.md §7.4](PID.md)
-3. Run `uv run ruff format .` before opening or updating a PR
-4. Pre-commit hooks enforce lint, format, and type checks automatically, and PR CI uploads a formatting patch artifact if drift is detected
-5. Add/update tests — all new code requires unit tests
-6. Open a PR using the provided template; changes to `main` should go through PRs rather than direct pushes
+Work from a linked issue, add regression tests before runtime changes, run
+`make check`, and follow the [PR template](.github/pull_request_template.md).
+Required CI and owner review remain mandatory; local success does not certify a
+deployment. Do not bypass failing gates or discard unrelated working-tree changes.
 
 ## Licence
 
-MIT
+[MIT](LICENSE)
