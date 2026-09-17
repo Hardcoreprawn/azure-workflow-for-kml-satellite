@@ -22,8 +22,8 @@ fi
 
 action="${1:-status}"
 case "$action" in
-    up|rebuild|storage|down|clean|status|logs|config) ;;
-    *) echo "Usage: bash scripts/dev_stack.sh {up|rebuild|storage|down|clean|status|logs|config}" >&2; exit 2 ;;
+    prepare|up|rebuild|storage|down|clean|status|logs|config) ;;
+    *) echo "Usage: bash scripts/dev_stack.sh {prepare|up|rebuild|storage|down|clean|status|logs|config}" >&2; exit 2 ;;
 esac
 if [[ "$action" == "config" ]]; then
     exec "${compose[@]}" config --quiet
@@ -34,10 +34,13 @@ if ! docker info >/dev/null 2>&1; then
 fi
 service_names="$("${compose[@]}" config --services)"
 mapfile -t services < <(printf '%s\n' "$service_names" | sed '/^devcontainer$/d')
+if [[ "$action" == "prepare" ]]; then
+    exec "${compose[@]}" rm --force "${services[@]}"
+fi
 
 stop_stack() {
     if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" || "$action" == "storage" ]]; then
-        "${compose[@]}" stop --timeout "${DEV_STOP_TIMEOUT:-20}" "${services[@]}"
+        "${compose[@]}" stop --timeout "${DEV_STOP_TIMEOUT:-20}" "${services[@]}" || return "$?"
         "${compose[@]}" rm --force "${services[@]}"
     else
         "${compose[@]}" down --timeout "${DEV_STOP_TIMEOUT:-20}" --remove-orphans
@@ -78,11 +81,15 @@ case "$action" in
         trap cleanup_failed_start EXIT
         trap 'exit 130' INT
         trap 'exit 143' TERM
+        if [[ "$action" == "storage" ]]; then
+            services=(azurite init-storage)
+        fi
+        "${compose[@]}" rm --force "${services[@]}"
+        options=()
         if [[ "$action" == "rebuild" ]]; then
             options+=(--force-recreate)
         fi
         if [[ "$action" == "storage" ]]; then
-            services=(azurite init-storage)
             "${compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" azurite
             "${compose[@]}" run --rm --no-deps init-storage
         else

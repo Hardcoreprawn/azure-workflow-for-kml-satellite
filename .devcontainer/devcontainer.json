@@ -25,7 +25,8 @@
     "DEV_WORKSPACE": "${localWorkspaceFolder}",
     "UV_NO_SYNC": "1"
   },
-  "postCreateCommand": "uv sync --frozen --all-extras --no-install-project --inexact",
+  "initializeCommand": ["bash", "scripts/dev_stack.sh", "prepare"],
+  "postCreateCommand": "sudo chown -R vscode:vscode /opt/venv && uv sync --frozen --all-extras --no-install-project --inexact",
   "postStartCommand": "bash scripts/dev_stack.sh up",
   "forwardPorts": ["web:4280", "func:80", "orch:80"],
   "customizations": {

@@ -22,6 +22,7 @@ def test_editor_owns_compose_shutdown() -> None:
     assert config["remoteUser"] != "root"
     assert config["remoteEnv"]["HOME"] == "/home/vscode"
     assert config["remoteEnv"]["DEV_WORKSPACE"] == "${localWorkspaceFolder}"
+    assert config["initializeCommand"] == ["bash", "scripts/dev_stack.sh", "prepare"]
     assert config["postStartCommand"] == "bash scripts/dev_stack.sh up"
     assert "mounts" not in config
 
@@ -115,6 +116,8 @@ def docker_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "    sys.exit(int(os.environ.get('DOCKER_RUN_EXIT', '0')))\n"
         "if 'up' in args:\n"
         "    sys.exit(int(os.environ.get('DOCKER_UP_EXIT', '0')))\n"
+        "if 'stop' in args:\n"
+        "    sys.exit(int(os.environ.get('DOCKER_STOP_EXIT', '0')))\n"
     )
     docker.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
@@ -136,6 +139,40 @@ def run_stack(action: str) -> subprocess.CompletedProcess[str]:
 
 def docker_calls(log: Path) -> list[list[str]]:
     return [json.loads(line) for line in log.read_text().splitlines()]
+
+
+def test_prepare_removes_stopped_containers_without_stopping_running_services(docker_environment: Path) -> None:
+    for _attempt in range(2):
+        result = run_stack("prepare")
+        assert result.returncode == 0, result.stderr
+    calls = docker_calls(docker_environment)
+    removals = [call for call in calls if "rm" in call]
+    assert len(removals) == 2
+    for removal in removals:
+        assert "rm" in removal and "--force" in removal
+        assert "lifecycle-test" in removal
+        assert "devcontainer" not in removal
+    assert not any(
+        argument in call for call in calls for argument in ("stop", "down", "up", "--stop", "--volumes", "-v")
+    )
+
+
+@pytest.mark.parametrize("action", ["up", "rebuild", "storage"])
+def test_start_removes_stopped_runtime_containers_before_starting(docker_environment: Path, action: str) -> None:
+    result = run_stack(action)
+    assert result.returncode == 0, result.stderr
+    calls = docker_calls(docker_environment)
+    removal = next(index for index, call in enumerate(calls) if "rm" in call)
+    start = next(index for index, call in enumerate(calls) if "up" in call)
+    assert removal < start
+    assert "--force" in calls[removal]
+    assert "devcontainer" not in calls[removal]
+    assert "--stop" not in calls[removal]
+    assert "--volumes" not in calls[removal]
+    if action == "storage":
+        assert calls[removal][-2:] == ["azurite", "init-storage"]
+    else:
+        assert "func" in calls[removal] and "web" in calls[removal]
 
 
 def test_host_start_builds_relay_and_waits_for_services(docker_environment: Path) -> None:
@@ -169,9 +206,9 @@ def test_start_removes_failed_storage_before_reconnect(docker_environment: Path)
     result = run_stack("up")
     assert result.returncode == 0, result.stderr
     calls = docker_calls(docker_environment)
-    remove = next(call for call in calls if "rm" in call)
+    remove = next(call for call in calls if "rm" in call and "init-storage" in call)
     start = next(call for call in calls if "up" in call)
-    assert remove[-1] == "init-storage"
+    assert "init-storage" in remove
     assert calls.index(remove) < calls.index(start)
 
 
@@ -195,7 +232,7 @@ def test_start_preserves_successful_storage_initialization(
     result = run_stack("up")
     assert result.returncode == 0, result.stderr
     calls = docker_calls(docker_environment)
-    assert not any("rm" in call for call in calls)
+    assert not any("down" in call or "--volumes" in call for call in calls)
 
 
 def test_failed_start_cleans_up_and_keeps_failure(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -219,6 +256,19 @@ def test_editor_shutdown_keeps_editor_alive(docker_environment: Path, monkeypatc
     assert "devcontainer" not in stop
     assert not any("down" in call or "--volumes" in call for call in calls)
     assert any("rm" in call for call in calls)
+
+
+def test_failed_editor_cleanup_reports_stop_failure(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CANOPEX_DEVCONTAINER", "1")
+    monkeypatch.setenv("DEV_WORKSPACE", "/host/workspace")
+    monkeypatch.setenv("DOCKER_UP_EXIT", "17")
+    monkeypatch.setenv("DOCKER_STOP_EXIT", "19")
+    result = run_stack("up")
+    assert result.returncode == 17
+    assert "Cleanup failed" in result.stderr
+    calls = docker_calls(docker_environment)
+    stop = next(index for index, call in enumerate(calls) if "stop" in call)
+    assert not any("rm" in call for call in calls[stop + 1 :])
 
 
 def test_missing_daemon_fails_without_cleanup(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:
