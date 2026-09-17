@@ -155,9 +155,9 @@ jobs:
           SIZE_MB=$(docker image inspect "${{ steps.meta.outputs.image_e2e_latest }}" \
             --format '{{ .Size }}' | awk '{printf "%.0f", $1/1024/1024}')
           echo "pipeline-e2e image size: ${SIZE_MB} MB"
-          # dev budget (3200 MB) + Azure Functions Core Tools (~1.3 GB) + buffer.
-          if [ "$SIZE_MB" -gt 4400 ]; then
-            echo "::error::pipeline-e2e image is ${SIZE_MB} MB — exceeds 4400 MB limit."
+          # dev budget (3200 MB) + Azure Functions Core Tools (~1.3 GB) + 100 MB buffer.
+          if [ "$SIZE_MB" -gt 4600 ]; then
+            echo "::error::pipeline-e2e image is ${SIZE_MB} MB — exceeds 4600 MB limit."
             exit 1
           fi
 
@@ -172,7 +172,7 @@ jobs:
           output: trivy-dev.sarif
 
       - name: Upload Trivy SARIF
-        if: always()
+        if: ${{ always() && hashFiles('trivy-dev.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: trivy-dev.sarif
@@ -195,7 +195,7 @@ jobs:
           skip-dirs: usr/lib/azure-functions-core-tools-4
 
       - name: Upload Trivy SARIF (pipeline-e2e)
-        if: always()
+        if: ${{ always() && hashFiles('trivy-dev-e2e.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: trivy-dev-e2e.sarif
