@@ -57,6 +57,7 @@ CODEQL_YML = ROOT / ".github" / "workflows" / "codeql.yml"
 ACTIONLINT_YML = ROOT / ".github" / "workflows" / "actionlint.yml"
 DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
 BASE_IMAGE_YML = ROOT / ".github" / "workflows" / "base-image.yml"
+DEV_IMAGE_YML = ROOT / ".github" / "workflows" / "dev-image.yml"
 INFRACOST_YML = ROOT / ".github" / "workflows" / "infracost.yml"
 REQUIRE_LINKED_ISSUE_YML = ROOT / ".github" / "workflows" / "require-linked-issue.yml"
 PREVIEW_SITE_YML = ROOT / ".github" / "workflows" / "preview-site.yml"
@@ -2047,6 +2048,28 @@ class TestCIFeedbackHygiene:
             "docker-compose azurite must pass --skipApiVersionCheck so the SDK's "
             "API version is accepted (else all storage calls 400/403)"
         )
+
+    def test_dev_image_size_budgets_stay_in_sync(self):
+        workflow = DEV_IMAGE_YML.read_text()
+        dev_limit = re.search(r"Dev image is \$\{SIZE_MB\} MB .* exceeds (\d+) MB limit", workflow)
+        e2e_limit = re.search(r"pipeline-e2e image is \$\{SIZE_MB\} MB .* exceeds (\d+) MB limit", workflow)
+
+        assert dev_limit is not None
+        assert e2e_limit is not None
+        assert int(dev_limit.group(1)) == 3200
+        assert int(e2e_limit.group(1)) == 4600
+
+    def test_trivy_sarif_uploads_require_existing_scan_outputs(self):
+        workflow = yaml.safe_load(DEV_IMAGE_YML.read_text())
+        uploads = {
+            step.get("with", {}).get("sarif_file"): step
+            for step in workflow["jobs"]["build-test-push"]["steps"]
+            if str(step.get("name", "")).startswith("Upload Trivy SARIF")
+        }
+        for sarif_file in ("trivy-dev.sarif", "trivy-dev-e2e.sarif"):
+            upload = uploads.get(sarif_file)
+            assert upload is not None
+            assert f"hashFiles('{sarif_file}')" in upload.get("if", "")
 
     def test_compose_event_grid_relay_configured(self):
         """Azurite has no real Event Grid -- without this relay, a real
