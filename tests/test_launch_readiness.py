@@ -2060,15 +2060,16 @@ class TestCIFeedbackHygiene:
         assert int(e2e_limit.group(1)) == 4600
 
     def test_trivy_sarif_uploads_require_existing_scan_outputs(self):
-        workflow = DEV_IMAGE_YML.read_text()
+        workflow = yaml.safe_load(DEV_IMAGE_YML.read_text())
+        uploads = {
+            step.get("with", {}).get("sarif_file"): step
+            for step in workflow["jobs"]["build-test-push"]["steps"]
+            if str(step.get("name", "")).startswith("Upload Trivy SARIF")
+        }
         for sarif_file in ("trivy-dev.sarif", "trivy-dev-e2e.sarif"):
-            upload = re.search(
-                rf"- name: Upload Trivy SARIF.*?sarif_file: {re.escape(sarif_file)}",
-                workflow,
-                flags=re.DOTALL,
-            )
+            upload = uploads.get(sarif_file)
             assert upload is not None
-            assert f"hashFiles('{sarif_file}')" in upload.group(0)
+            assert f"hashFiles('{sarif_file}')" in upload.get("if", "")
 
     def test_compose_event_grid_relay_configured(self):
         """Azurite has no real Event Grid -- without this relay, a real
