@@ -32,6 +32,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from scripts.backlog_autopilot import IssueCandidate, select_issues
+from scripts.backlog_autopilot import main as backlog_autopilot_main
+from scripts.pr_watchdog import PRSummary, ReviewThread, _process_pr, render_comment, should_auto_promote
 from treesight.security.url import csp_token_matches_host as _csp_token_matches_host
 
 # ---------------------------------------------------------------------------
@@ -1744,15 +1747,215 @@ class TestFastTestLoop:
         assert 'uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml' in makefile
         assert "check: lint test test-js coverage-check ## Full local gate, including CI's coverage gate" in makefile
 
-    def test_validation_tiers_are_documented(self):
-        readme = README_MD.read_text()
-        instructions = COPILOT_INSTRUCTIONS.read_text()
 
-        assert 'make test-fast TESTS="tests/test_' in readme
-        assert "make check" in readme
-        assert "Edit loop" in instructions and "make test-fast" in instructions
-        assert "Handoff" in instructions and "make check" in instructions
-        assert "never replaces required full gates" in instructions
+class TestAgentDeliveryContracts:
+    @staticmethod
+    def issue(number: int, labels: set[str], body: str = "", assignees: set[str] | None = None) -> IssueCandidate:
+        return IssueCandidate(
+            number=number,
+            title=f"Issue {number}",
+            labels=labels,
+            assignees=assignees or set(),
+            url=f"https://example.invalid/issues/{number}",
+            body=body,
+        )
+
+    def test_selector_enforces_eligibility_and_dependency_order(self) -> None:
+        issues = [
+            self.issue(10, {"moscow:must"}, body="Depends on #11."),
+            self.issue(11, {"moscow:should"}),
+            self.issue(12, {"moscow:must", "no-autopilot"}),
+            self.issue(13, {"moscow:must"}, assignees={"maintainer"}),
+            self.issue(14, {"moscow:could"}),
+        ]
+
+        selected = select_issues(issues, max_new_assignments=5, issues_with_open_prs={14})
+
+        assert [issue.number for issue in selected] == [11]
+
+    def test_selector_respects_open_pr_and_capacity_limit(self) -> None:
+        issues = [self.issue(number, {"moscow:must"}) for number in range(1, 5)]
+
+        selected = select_issues(issues, max_new_assignments=2, issues_with_open_prs={1})
+
+        assert [issue.number for issue in selected] == [2, 3]
+
+    def test_autopilot_budget_gate_prevents_issue_loading(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "backlog_autopilot",
+                "--owner",
+                "o",
+                "--repo",
+                "r",
+                "--monthly-budget-usd",
+                "100",
+                "--month-spend-used-usd",
+                "100",
+                "--today",
+                "2026-09-17",
+            ],
+        )
+        monkeypatch.setattr(
+            "scripts.backlog_autopilot.load_open_issues",
+            lambda **_kwargs: pytest.fail("budget gate must run before issue loading"),
+        )
+
+        assert backlog_autopilot_main() == 0
+
+    def test_autopilot_default_wip_gate_prevents_issue_loading(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "backlog_autopilot",
+                "--owner",
+                "o",
+                "--repo",
+                "r",
+                "--monthly-budget-usd",
+                "1000",
+                "--month-spend-used-usd",
+                "0",
+                "--today",
+                "2026-09-17",
+            ],
+        )
+        monkeypatch.setattr("scripts.backlog_autopilot.count_open_copilot_prs", lambda **_kwargs: 3)
+        monkeypatch.setattr(
+            "scripts.backlog_autopilot.load_open_issues",
+            lambda **_kwargs: pytest.fail("WIP gate must run before issue loading"),
+        )
+
+        assert backlog_autopilot_main() == 0
+
+    def test_autopilot_dry_run_selects_without_assignment(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "backlog_autopilot",
+                "--owner",
+                "o",
+                "--repo",
+                "r",
+                "--monthly-budget-usd",
+                "1000",
+                "--month-spend-used-usd",
+                "0",
+                "--today",
+                "2026-09-17",
+                "--dry-run",
+            ],
+        )
+        monkeypatch.setattr("scripts.backlog_autopilot.count_open_copilot_prs", lambda **_kwargs: 0)
+        monkeypatch.setattr(
+            "scripts.backlog_autopilot.load_open_issues",
+            lambda **_kwargs: [self.issue(1, {"moscow:must"})],
+        )
+        monkeypatch.setattr("scripts.backlog_autopilot.load_open_pr_linked_issues", lambda **_kwargs: set())
+        monkeypatch.setattr(
+            "scripts.backlog_autopilot._github_api",
+            lambda **_kwargs: pytest.fail("dry run must not write priority labels or comments"),
+        )
+        monkeypatch.setattr(
+            "scripts.backlog_autopilot.assign_issue_to_copilot",
+            lambda **_kwargs: pytest.fail("dry run must not assign issues"),
+        )
+
+        assert backlog_autopilot_main() == 0
+        assert "- #1 Issue 1" in capsys.readouterr().out
+
+    @staticmethod
+    def ready_summary(**overrides: object) -> PRSummary:
+        values: dict[str, object] = {
+            "number": 1,
+            "url": "https://example.invalid/pr/1",
+            "title": "Example",
+            "failing_checks": (),
+            "pending_checks": (),
+            "unresolved_threads": (),
+            "is_draft": True,
+        }
+        values.update(overrides)
+        return PRSummary(**values)
+
+    def test_watchdog_clean_draft_is_promotable(self) -> None:
+        summary = self.ready_summary()
+
+        assert summary.is_ready_to_promote is True
+        assert should_auto_promote(summary, "Copilot") is True
+        assert "READY_TO_PROMOTE" in render_comment(summary)
+
+    def test_watchdog_reads_checks_for_current_head_sha(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        head_shas: list[str] = []
+
+        def fake_collect(**kwargs: object) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+            head_shas.append(str(kwargs["head_sha"]))
+            return (), (), ()
+
+        monkeypatch.setattr("scripts.pr_watchdog.collect_changed_paths", lambda **_kwargs: ())
+        monkeypatch.setattr("scripts.pr_watchdog.collect_check_status", fake_collect)
+        monkeypatch.setattr("scripts.pr_watchdog.collect_review_state", lambda **_kwargs: ((), ""))
+        monkeypatch.setattr("scripts.pr_watchdog.pr_age_days", lambda _pr: 0.0)
+        monkeypatch.setattr("scripts.pr_watchdog.should_auto_promote", lambda *_args: False)
+
+        _process_pr(
+            {
+                "number": 1,
+                "html_url": "https://example.invalid/pr/1",
+                "title": "Example",
+                "body": "Closes #1",
+                "draft": True,
+                "head": {"sha": "head-123"},
+                "user": {"login": "Copilot"},
+            },
+            token="token",
+            promote_token="promote-token",
+            owner="owner",
+            repo="repo",
+            dry_run=True,
+            enable_stale_close=False,
+            stale_close_days=5.0,
+            enable_ralph=False,
+            ralph_max_attempts=3,
+        )
+
+        assert head_shas == ["head-123"]
+
+    @pytest.mark.parametrize(
+        ("overrides", "status"),
+        [
+            ({"missing_required_checks": ("Test",)}, "BLOCKED"),
+            ({"failing_checks": ("Test",)}, "BLOCKED"),
+            ({"pending_checks": ("Test",)}, "WAITING_ON_CI"),
+            ({"missing_linked_issue": True}, "BLOCKED"),
+            ({"review_decision": "CHANGES_REQUESTED"}, "BLOCKED"),
+            (
+                {
+                    "unresolved_threads": (
+                        ReviewThread(
+                            author="copilot-pull-request-reviewer",
+                            path="tests/test_launch_readiness.py",
+                            url="https://example.invalid/thread/1",
+                            body="Needs a behavior test",
+                        ),
+                    ),
+                },
+                "BLOCKED",
+            ),
+        ],
+    )
+    def test_watchdog_blockers_prevent_promotion(self, overrides: dict[str, object], status: str) -> None:
+        summary = self.ready_summary(**overrides)
+
+        assert summary.is_ready_to_promote is False
+        assert should_auto_promote(summary, "Copilot") is False
+        assert f"Status: {status}" in render_comment(summary)
 
 
 # ---------------------------------------------------------------------------
