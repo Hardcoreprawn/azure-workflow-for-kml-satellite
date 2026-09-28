@@ -108,8 +108,11 @@ def docker_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "    print('azurite\\ninit-storage\\ncosmos\\nfunc\\norch\\nevent-grid-relay\\nweb\\nollama\\ndevcontainer')\n"
         "if args[-2:] == ['--images', 'devcontainer']:\n"
         "    print('lifecycle-test-devcontainer')\n"
+        "if args[-2:] == ['--images', 'event-grid-relay']:\n"
+        "    print('treesight-dev:lifecycle-test')\n"
         "if args[:2] == ['image', 'inspect']:\n"
-        "    sys.exit(int(os.environ.get('DOCKER_IMAGE_INSPECT_EXIT', '0')))\n"
+        "    missing = os.environ.get('DOCKER_MISSING_IMAGES', '').split(',')\n"
+        "    sys.exit(1 if args[2] in missing else 0)\n"
         "if 'ps' in args:\n"
         "    print(f\"init-storage exited {os.environ.get('DOCKER_INIT_STORAGE_EXIT', '17')}\")\n"
         "if 'build' in args and 'event-grid-relay' in args:\n"
@@ -164,7 +167,7 @@ def test_prepare_removes_stopped_containers_without_stopping_running_services(do
 def test_prepare_removes_stopped_devcontainer_when_its_image_is_missing(
     docker_environment: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("DOCKER_IMAGE_INSPECT_EXIT", "1")
+    monkeypatch.setenv("DOCKER_MISSING_IMAGES", "lifecycle-test-devcontainer")
     result = run_stack("prepare")
     assert result.returncode == 0, result.stderr
     calls = docker_calls(docker_environment)
@@ -172,7 +175,22 @@ def test_prepare_removes_stopped_devcontainer_when_its_image_is_missing(
     editor_removal = next(call for call in calls if "rm" in call and call[-1] == "devcontainer")
     assert "--force" in editor_removal
     assert "--stop" not in editor_removal
+    assert not any("build" in call for call in calls)
     assert not any(argument in call for call in calls for argument in ("stop", "down", "up", "--volumes"))
+
+
+def test_prepare_builds_relay_image_on_host_only_when_missing(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert run_stack("prepare").returncode == 0
+    assert not any("build" in call for call in docker_calls(docker_environment))
+    monkeypatch.setenv("DOCKER_MISSING_IMAGES", "treesight-dev:lifecycle-test")
+    result = run_stack("prepare")
+    assert result.returncode == 0, result.stderr
+    calls = docker_calls(docker_environment)
+    build = next(call for call in calls if "build" in call)
+    assert build[-1] == "event-grid-relay"
+    assert calls.index(build) < max(index for index, call in enumerate(calls) if "rm" in call)
 
 
 @pytest.mark.parametrize("action", ["up", "rebuild", "storage"])

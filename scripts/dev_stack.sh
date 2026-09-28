@@ -41,6 +41,11 @@ if [[ "$action" == "prepare" ]]; then
         echo "Devcontainer image $editor_image is missing; removing the stopped devcontainer so it is rebuilt."
         "${compose[@]}" rm --force devcontainer
     fi
+    # The relay's build context is a host path, so in-editor `up` cannot build it.
+    relay_image="$("${compose[@]}" config --images event-grid-relay 2>/dev/null || true)"
+    if [[ -n "$relay_image" ]] && ! docker image inspect "$relay_image" >/dev/null 2>&1; then
+        "${compose[@]}" build event-grid-relay
+    fi
     exec "${compose[@]}" rm --force "${services[@]}"
 fi
 
