@@ -35,6 +35,12 @@ fi
 service_names="$("${compose[@]}" config --services)"
 mapfile -t services < <(printf '%s\n' "$service_names" | sed '/^devcontainer$/d')
 if [[ "$action" == "prepare" ]]; then
+    # If the editor's base image was pruned, the Dev Containers CLI tries to pull it; drop the stopped container so it rebuilds.
+    editor_image="$("${compose[@]}" config --images devcontainer 2>/dev/null || true)"
+    if [[ -n "$editor_image" ]] && ! docker image inspect "$editor_image" >/dev/null 2>&1; then
+        echo "Devcontainer image $editor_image is missing; removing the stopped devcontainer so it is rebuilt."
+        "${compose[@]}" rm --force devcontainer
+    fi
     exec "${compose[@]}" rm --force "${services[@]}"
 fi
 

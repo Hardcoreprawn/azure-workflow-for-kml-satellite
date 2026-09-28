@@ -48,7 +48,7 @@ def test_dev_images_are_scoped_to_the_compose_project() -> None:
     editor_config = yaml.safe_load((ROOT / ".devcontainer/docker-compose.yml").read_text())
     expected = "treesight-dev:${COMPOSE_PROJECT_NAME:-canopex-dev}"
     assert host_config["services"]["event-grid-relay"]["image"] == expected
-    assert editor_config["services"]["devcontainer"]["image"] == expected
+    assert "image" not in editor_config["services"]["devcontainer"]
     assert host_config["services"]["ci-gate"]["image"] == (
         "${CI_GATE_IMAGE:-treesight-dev:${COMPOSE_PROJECT_NAME:-canopex-dev}}"
     )
@@ -106,6 +106,10 @@ def docker_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "    sys.exit(int(os.environ.get('DOCKER_INFO_EXIT', '0')))\n"
         "if args[-2:] == ['config', '--services']:\n"
         "    print('azurite\\ninit-storage\\ncosmos\\nfunc\\norch\\nevent-grid-relay\\nweb\\nollama\\ndevcontainer')\n"
+        "if args[-2:] == ['--images', 'devcontainer']:\n"
+        "    print('lifecycle-test-devcontainer')\n"
+        "if args[:2] == ['image', 'inspect']:\n"
+        "    sys.exit(int(os.environ.get('DOCKER_IMAGE_INSPECT_EXIT', '0')))\n"
         "if 'ps' in args:\n"
         "    print(f\"init-storage exited {os.environ.get('DOCKER_INIT_STORAGE_EXIT', '17')}\")\n"
         "if 'build' in args and 'event-grid-relay' in args:\n"
@@ -155,6 +159,20 @@ def test_prepare_removes_stopped_containers_without_stopping_running_services(do
     assert not any(
         argument in call for call in calls for argument in ("stop", "down", "up", "--stop", "--volumes", "-v")
     )
+
+
+def test_prepare_removes_stopped_devcontainer_when_its_image_is_missing(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOCKER_IMAGE_INSPECT_EXIT", "1")
+    result = run_stack("prepare")
+    assert result.returncode == 0, result.stderr
+    calls = docker_calls(docker_environment)
+    assert ["image", "inspect", "lifecycle-test-devcontainer"] in calls
+    editor_removal = next(call for call in calls if "rm" in call and call[-1] == "devcontainer")
+    assert "--force" in editor_removal
+    assert "--stop" not in editor_removal
+    assert not any(argument in call for call in calls for argument in ("stop", "down", "up", "--volumes"))
 
 
 @pytest.mark.parametrize("action", ["up", "rebuild", "storage"])

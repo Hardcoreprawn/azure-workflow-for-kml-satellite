@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile.dev
       args:
         UV_VERSION: ${UV_VERSION:-0.11.28}
-    image: treesight-dev:${COMPOSE_PROJECT_NAME:-canopex-dev}
+    # No image: tag — sharing event-grid-relay's tag let host builds/prunes orphan the editor image.
     # Keep the service process aligned with devcontainer.json's remoteUser so
     # bind-mounted workspace files are never created as root.
     user: vscode
