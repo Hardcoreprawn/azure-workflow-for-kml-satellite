@@ -124,13 +124,19 @@ and for host commands to use another project. Separate projects still publish
 the same host ports: stop the previous stack before starting another checkout.
 Never kill unrelated port owners to make startup succeed.
 
-   - Open the checkout with **Dev Containers: Reopen in Container**. Compose starts
-      the editor and app services in dependency order; `postStartCommand` runs
-      `bash scripts/dev_stack.sh up` and waits for health. Existing stopped
-      containers are removed only by explicit shutdown/cleanup commands; opening
-      the devcontainer does not run a separate `prepare` hook on this branch.
-      Startup logs remain available in the Dev Containers output panel. A failed
-      startup leaves the stack available for diagnosis and reports the failure.
+- Open the checkout with **Dev Containers: Reopen in Container**. Before
+   Compose starts, the host-side `initializeCommand` runs
+   `bash scripts/dev_stack.sh prepare`: it removes stopped app containers
+   (their bind-mount sources may have vanished after a Docker Desktop/WSL
+   restart), removes a stopped editor container whose image was pruned so
+   the Dev Containers CLI rebuilds it instead of pulling a local-only tag,
+   and builds the `event-grid-relay` image if missing (its build context is
+   a host path the editor cannot use). Running containers and data volumes
+   are never touched. Compose then starts the editor and app services in
+   dependency order; `postStartCommand` runs `bash scripts/dev_stack.sh up`
+   and waits for health. Startup logs remain available in the Dev Containers
+   output panel. A failed startup prints the last service logs, stops the app
+   services, and keeps its original exit code.
 - The editor runs as `vscode`, with the host UID/GID and `HOME=/home/vscode`.
    The prebuilt Python environment is intended to be writable by that user. Creation synchronizes
    locked dependencies once, retaining the baked Rust extension; warm starts do
@@ -140,10 +146,10 @@ Never kill unrelated port owners to make startup succeed.
    container's `/workspace` path. Sibling bind mounts use that value. The editor
    reaches siblings through Compose DNS (`azurite`, `func`, `orch`, `web`). The
    DooD feature alone owns the socket mount; no second socket mount is needed.
-   - `make dev-all` reuses running services and existing images, and waits for
-      readiness. Cleanup commands remove stopped app containers without removing
-      data volumes; `up` itself does not perform that cleanup. Storage-only startup
-      refreshes only stopped storage containers.
+- `make dev-all` reuses running services and existing images, and waits for
+   readiness. `up`, `rebuild`, and `prepare` remove stopped app containers
+   before starting, without removing data volumes; running container IDs are
+   preserved. Storage-only startup refreshes only stopped storage containers.
    On first use, Compose builds missing application images. Use `make dev-rebuild`
    after dependency or root-level application configuration changes. Routine
    `treesight/`, `blueprints/`, and website edits use bind mounts.
@@ -151,8 +157,8 @@ Never kill unrelated port owners to make startup succeed.
    start. Cosmos must also be healthy; web and relay wait for Functions.
    `DEV_WAIT_TIMEOUT` defaults to 240 seconds; failed/interrupted starts return
    nonzero and attempt project-scoped cleanup without deleting data.
-   Storage-only failures stop only storage services. A Compose failure before
-   editor lifecycle hooks run requires host-side `make dev-down` cleanup.
+   Storage-only failures stop only storage services. If a reopen still fails
+   before editor lifecycle hooks run, run host-side `make dev-down` and reopen.
 - `make dev-status` shows service state; `make dev-logs` follows app logs.
    `make dev-up` / `make dev-init` start and initialize storage only.
 - `make dev-down` inside the editor removes app containers but keeps the
