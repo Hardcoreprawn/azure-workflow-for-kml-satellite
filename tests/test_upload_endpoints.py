@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import azure.functions as func
+import pytest
 
 from tests.conftest import TEST_ORIGIN, encode_test_principal
 
@@ -54,6 +55,35 @@ def _make_req(
         route_params=route_params or {},
         body=raw_body,
     )
+
+
+def test_upload_record_requires_authoritative_cosmos_storage():
+    from blueprints.pipeline.history import RunRecordPersistenceError
+    from blueprints.upload import _persist_submission_record
+
+    with (
+        patch("blueprints.upload._cosmos_mod.cosmos_available", return_value=False),
+        patch("treesight.storage.client.BlobStorageClient") as storage_cls,
+        pytest.raises(RunRecordPersistenceError),
+    ):
+        _persist_submission_record("submission-1", {"user_id": "user-1"}, "user-1")
+
+    storage_cls.assert_not_called()
+
+
+def test_upload_token_record_starts_pending_until_kml_is_submitted():
+    from blueprints.upload import _build_run_record
+
+    record = _build_run_record(
+        submission_id="submission-1",
+        user_id="user-1",
+        blob_name="analysis/submission-1.kml",
+        effective_provider="planetary_computer",
+        submission_context={},
+        is_eudr=False,
+    )
+
+    assert record["status"] == "Pending"
 
 
 # ===================================================================
@@ -507,7 +537,7 @@ class TestUploadToken:
         assert record["user_id"] == "test-user"
         assert record["submission_id"] == submission_id
         assert record["instance_id"] == submission_id
-        assert record["status"] == "submitted"
+        assert record["status"] == "Pending"
         assert record["feature_count"] == 3
         assert record["aoi_count"] == 2
 

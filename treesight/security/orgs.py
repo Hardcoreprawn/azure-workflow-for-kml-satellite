@@ -167,11 +167,17 @@ def get_user_org(user_id: str) -> dict[str, Any] | None:
     return resolve_active_org_for_user(user_id)
 
 
+def get_user_org_strict(user_id: str) -> dict[str, Any] | None:
+    """Resolve the user's org while propagating membership and legacy-read failures."""
+    return resolve_active_org_for_user(user_id, raise_on_error=True)
+
+
 def resolve_active_org_for_user(
     user_id: str,
     *,
     requested_org_id: str | None = None,
     verified_email: str = "",
+    raise_on_error: bool = False,
 ) -> dict[str, Any] | None:
     """Resolve the active org for *user_id* from membership data.
 
@@ -189,9 +195,9 @@ def resolve_active_org_for_user(
     from treesight.storage.cosmos import read_item
 
     requested = (requested_org_id or "").strip()
-    orgs = _list_user_memberships(user_id)
+    orgs = list_orgs_for_user_strict(user_id) if raise_on_error else _list_user_memberships(user_id)
     if orgs:
-        selected = _select_membership_org(user_id, orgs, requested, read_item)
+        selected = _select_membership_org(user_id, orgs, requested, read_item, raise_on_error=raise_on_error)
         if not selected:
             return None
         org_id = str(selected.get("org_id", "")).strip()
@@ -216,7 +222,7 @@ def resolve_active_org_for_user(
         if healed:
             return healed
 
-    return _resolve_legacy_user_org(user_id, requested, read_item)
+    return _resolve_legacy_user_org(user_id, requested, read_item, raise_on_error=raise_on_error)
 
 
 def _repair_user_org_if_changed(user_id: str, org_id: str, role: str, read_item: ReadItemFn) -> None:
@@ -350,6 +356,8 @@ def _select_membership_org(
     orgs: list[dict[str, Any]],
     requested_org_id: str,
     read_item: ReadItemFn,
+    *,
+    raise_on_error: bool = False,
 ) -> dict[str, Any] | None:
     if requested_org_id:
         selected = next((o for o in orgs if o.get("org_id") == requested_org_id), None)
@@ -361,6 +369,8 @@ def _select_membership_org(
         user = read_item("users", user_id, user_id) or {}
     except Exception:
         logger.warning("Failed to read legacy org preference for user=%s", user_id, exc_info=True)
+        if raise_on_error:
+            raise
         user = {}
     preferred_org_id = str(user.get("org_id", "")).strip()
     if preferred_org_id:
@@ -376,12 +386,20 @@ def _select_membership_org(
     )[0]
 
 
-def _resolve_legacy_user_org(user_id: str, requested_org_id: str, read_item: ReadItemFn) -> dict[str, Any] | None:
+def _resolve_legacy_user_org(
+    user_id: str,
+    requested_org_id: str,
+    read_item: ReadItemFn,
+    *,
+    raise_on_error: bool = False,
+) -> dict[str, Any] | None:
     """Compatibility fallback for legacy users documents that only have org_id."""
     try:
         user = read_item("users", user_id, user_id) or {}
     except Exception:
         logger.warning("Failed to read legacy org for user=%s", user_id, exc_info=True)
+        if raise_on_error:
+            raise
         return None
     legacy_org_id = str(user.get("org_id", "")).strip()
     if not legacy_org_id:

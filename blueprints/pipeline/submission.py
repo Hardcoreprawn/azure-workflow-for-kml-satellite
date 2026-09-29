@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import azure.functions as func
+from azure.core.exceptions import ResourceNotFoundError
 
 from blueprints._helpers import (
     _requested_org_id,
@@ -37,7 +38,11 @@ from treesight.security.orgs import get_user_org
 from treesight.security.redact import redact_user_id as _redact
 
 from . import bp
-from .history import _extract_submission_context, _persist_submission_record
+from .history import (
+    RunRecordPersistenceError,
+    _extract_submission_context,
+    _persist_submission_record,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +61,55 @@ def _release_admission_on_failure(instance_id: str) -> None:
         release_admission_slot(instance_id)
     except Exception:
         logger.exception("Failed to release admission slot for instance=%s", instance_id)
+
+
+def _build_submission_history_record(
+    blob_prefix: str,
+    submission_id: str,
+    user_id: str,
+    submission_context: dict[str, Any],
+    effective_provider: str,
+    eudr_mode: Any,
+    body: Any,
+) -> dict[str, Any] | None:
+    """Build the run record for analysis submissions, if this path is enabled."""
+    if (blob_prefix.strip("/") or "analysis") != "analysis":
+        return None
+
+    from treesight.models.records import RunRecord
+
+    context = {key: value for key, value in submission_context.items() if key != "provider_name"}
+    run = RunRecord(
+        submission_id=submission_id,
+        instance_id=submission_id,
+        user_id=user_id,
+        submitted_at=datetime.now(UTC).isoformat(),
+        kml_blob_name=f"{blob_prefix.strip('/') or 'analysis'}/{submission_id}.kml",
+        kml_size_bytes=len(body.get("kml_content", "").encode("utf-8"))
+        if isinstance(body, dict) and body.get("kml_content")
+        else 0,
+        submission_prefix=blob_prefix.strip("/") or "analysis",
+        provider_name=effective_provider,
+        status="Pending",
+        eudr_mode=eudr_mode is True,
+        **context,
+    )
+    return run.model_dump(exclude_none=True)
+
+
+def _mark_submission_history_failed(
+    response: func.HttpResponse,
+    history_record: dict[str, Any] | None,
+    user_id: str,
+    submission_id: str,
+) -> None:
+    """Mark a persisted run failed if blob publication failed after validation."""
+    if response.status_code != 502 or history_record is None:
+        return
+    try:
+        _persist_submission_record(history_record | {"status": "failed"}, user_id, submission_id)
+    except RunRecordPersistenceError:
+        logger.exception("Unable to mark failed submission in history instance=%s", submission_id)
 
 
 def _reserve_admission_or_response(req: func.HttpRequest, submission_id: str) -> func.HttpResponse | None:
@@ -91,11 +145,15 @@ _PRIOR_SUBMISSION_ID_RE = __import__("re").compile(
 )
 
 
+class PriorSubmissionTicketLookupError(RuntimeError):
+    """Raised when a prior upload ticket cannot be verified due to storage failure."""
+
+
 def _load_prior_ticket_for_user(user_id: str, prior_submission_id: str) -> dict[str, Any] | None:
     """Return the prior ticket when it belongs to *user_id*, else ``None``.
 
-    Any lookup failure is treated as a cache miss so the fallback path still
-    charges quota rather than leaking a free slot.
+    A confirmed missing ticket is a cache miss. Other lookup failures must not
+    be treated as a miss because that could reserve quota a second time.
     """
     if not _PRIOR_SUBMISSION_ID_RE.match(prior_submission_id):
         return None
@@ -107,9 +165,15 @@ def _load_prior_ticket_for_user(user_id: str, prior_submission_id: str) -> dict[
         if isinstance(ticket, dict) and ticket.get("user_id") == user_id:
             return ticket
         return None
-    except Exception:
-        logger.debug("Prior quota ticket not found for prior_submission_id=%s", prior_submission_id)
+    except ResourceNotFoundError:
         return None
+    except Exception as exc:
+        logger.warning(
+            "Prior quota ticket lookup failed for prior_submission_id=%s",
+            prior_submission_id,
+            exc_info=True,
+        )
+        raise PriorSubmissionTicketLookupError("Prior submission ticket lookup failed") from exc
 
 
 def _quota_already_consumed(user_id: str, prior_submission_id: str) -> bool:
@@ -379,7 +443,10 @@ async def _submit_analysis_request(
         return error_response(400, "parcel_count must be a positive integer", req=req)
 
     prior_submission_id = body.get("prior_submission_id", "") if isinstance(body, dict) else ""
-    prior_ticket = _load_prior_ticket_for_user(user_id, prior_submission_id)
+    try:
+        prior_ticket = _load_prior_ticket_for_user(user_id, prior_submission_id)
+    except PriorSubmissionTicketLookupError:
+        return error_response(503, "Unable to verify the previous submission right now. Please retry.", req=req)
     if prior_ticket and not _prior_ticket_matches_request(prior_ticket, body):
         return error_response(
             409,
@@ -410,9 +477,19 @@ async def _submit_analysis_request(
 
     effective_provider = submission_context.get("provider_name", DEFAULT_PROVIDER)
     plan_overrides = _submission_plan_overrides(user_id)
+    eudr_mode = body.get("eudr_mode") if isinstance(body, dict) else None
+
+    history_record = _build_submission_history_record(
+        blob_prefix,
+        submission_id,
+        user_id,
+        submission_context,
+        effective_provider,
+        eudr_mode,
+        body,
+    )
 
     # EUDR mode flag — only accept strict boolean True
-    eudr_mode = body.get("eudr_mode") if isinstance(body, dict) else None
     eudr_input: dict[str, Any] = {}
     if eudr_mode is True:
         eudr_input["eudr_mode"] = True
@@ -435,40 +512,18 @@ async def _submit_analysis_request(
             **eudr_input,
         },
         instance_id=submission_id,
+        history_record=history_record,
+        history_user_id=user_id,
         log_tag=f"Analysis process started prefix={blob_prefix}",
     )
 
-    # If submission failed, refund reserved quota and release the slot.
+    # Refund new reservations on failure; verified upload tickets remain retryable.
     if resp.status_code != 202:
-        if reserved and org_id:
+        _mark_submission_history_failed(resp, history_record, user_id, submission_id)
+        # A verified upload ticket keeps its reservation alive for a same-ID retry.
+        if reserved and org_id and not prior_ticket:
             _finalize_run_on_failure(org_id, submission_id)
         _release_admission_on_failure(submission_id)
-
-    # Persist submission record for analysis history
-    if resp.status_code == 202 and (blob_prefix.strip("/") or "analysis") == "analysis":
-        from treesight.storage.client import BlobStorageClient
-
-        storage = BlobStorageClient()
-        from treesight.models.records import RunRecord
-
-        ctx = {k: v for k, v in submission_context.items() if k != "provider_name"}
-        run = RunRecord(
-            submission_id=submission_id,
-            instance_id=submission_id,
-            user_id=user_id,
-            submitted_at=datetime.now(UTC).isoformat(),
-            kml_blob_name=f"{blob_prefix.strip('/') or 'analysis'}/{submission_id}.kml",
-            kml_size_bytes=len(body.get("kml_content", "").encode("utf-8"))
-            if isinstance(body, dict) and body.get("kml_content")
-            else 0,
-            submission_prefix=blob_prefix.strip("/") or "analysis",
-            provider_name=effective_provider,
-            status="submitted",
-            eudr_mode=eudr_mode is True,
-            **ctx,
-        )
-        record = run.model_dump(exclude_none=True)
-        _persist_submission_record(storage, record, user_id, submission_id)
 
     return resp
 
@@ -480,6 +535,8 @@ async def _submit_kml(
     blob_prefix: str,
     instance_id: str,
     extra_input: dict[str, Any] | None = None,
+    history_record: dict[str, Any] | None = None,
+    history_user_id: str = "",
     log_tag: str = "",
 ) -> func.HttpResponse:
     """Validate KML, write ticket, upload blob.
@@ -491,6 +548,16 @@ async def _submit_kml(
     kml_bytes = _validated_kml_bytes(req, body)
     if isinstance(kml_bytes, func.HttpResponse):
         return kml_bytes
+
+    if history_record is not None:
+        try:
+            _persist_submission_record(history_record, history_user_id, instance_id)
+        except RunRecordPersistenceError:
+            return error_response(
+                503,
+                "Unable to save submission history right now. Please retry.",
+                req=req,
+            )
 
     safe_prefix = blob_prefix.strip("/") or "analysis"
     kml_blob_name = f"{safe_prefix}/{instance_id}.kml"

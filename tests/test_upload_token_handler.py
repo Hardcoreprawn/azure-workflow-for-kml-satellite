@@ -312,6 +312,44 @@ def test_persist_called_with_correct_user_id():
     assert persist_calls == ["user-xyz"]
 
 
+def test_persist_failure_returns_service_error_and_releases_reservation():
+    finalize_calls = []
+
+    def _fail_persist(*_args):
+        raise RuntimeError("Cosmos unavailable")
+
+    def _capture_finalize(*, org_id, instance_id, status):
+        finalize_calls.append({"org_id": org_id, "instance_id": instance_id, "status": status})
+
+    handler = _make_handler(
+        persist_submission_record_fn=_fail_persist,
+        finalize_run_fn=_capture_finalize,
+    )
+    payload, err = handler.mint()
+
+    assert payload is None
+    assert err.status_code == 503
+    assert len(finalize_calls) == 1
+    assert finalize_calls[0]["status"] == "failed"
+
+
+def test_persist_failure_still_returns_service_error_when_refund_fails():
+    def _fail_persist(*_args):
+        raise RuntimeError("Cosmos unavailable")
+
+    def _fail_finalize(*, org_id, instance_id, status):
+        raise RuntimeError("billing unavailable")
+
+    handler = _make_handler(
+        persist_submission_record_fn=_fail_persist,
+        finalize_run_fn=_fail_finalize,
+    )
+    payload, err = handler.mint()
+
+    assert payload is None
+    assert err.status_code == 503
+
+
 def test_blob_name_uses_submission_id_and_kml_extension():
     """Default filename → .kml extension in blob path."""
     captured_blob_name = {}

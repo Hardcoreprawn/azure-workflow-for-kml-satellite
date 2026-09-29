@@ -197,7 +197,27 @@ class UploadTokenHandler:
             submission_context=self._submission_context,
             is_eudr=self.is_eudr,
         )
-        self._persist_submission_record(self._submission_id, record, self.user_id)
+        try:
+            self._persist_submission_record(self._submission_id, record, self.user_id)
+        except Exception:
+            logger.exception(
+                "Unable to persist submission record user=%s instance=%s",
+                _redact(self.user_id),
+                self._submission_id,
+            )
+            try:
+                self._finalize_run(org_id=self._org_id, instance_id=self._submission_id, status="failed")
+            except Exception:
+                logger.exception(
+                    "Failed to refund reservation after record persistence error org=%s instance=%s",
+                    self._org_id,
+                    self._submission_id,
+                )
+            return self._error_response(
+                503,
+                "Unable to save submission history right now. Please retry.",
+                req=self.req,
+            )
         logger.info(
             "Upload URL minted submission_id=%s blob=%s",
             self._submission_id,

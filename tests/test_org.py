@@ -686,6 +686,31 @@ class TestListOrgsForUser:
 
 
 class TestResolveActiveOrgForUser:
+    def test_strict_resolution_propagates_legacy_org_read_failure(self):
+        from treesight.security.orgs import resolve_active_org_for_user
+
+        with (
+            patch("treesight.security.orgs.list_orgs_for_user_strict", return_value=[]),
+            patch(f"{_COSMOS_PKG}.read_item", side_effect=RuntimeError("Cosmos down")),
+            pytest.raises(RuntimeError, match="Cosmos down"),
+        ):
+            resolve_active_org_for_user("user-1", raise_on_error=True)
+
+    def test_strict_resolution_propagates_org_preference_read_failure(self):
+        from treesight.security.orgs import resolve_active_org_for_user
+
+        memberships = [
+            {"org_id": "org-a", "org_role": "owner", "created_at": "2026-01-01"},
+            {"org_id": "org-b", "org_role": "member", "created_at": "2026-02-01"},
+        ]
+        with (
+            patch("treesight.security.orgs.list_orgs_for_user_strict", return_value=memberships),
+            patch(f"{_COSMOS_PKG}.read_item", side_effect=RuntimeError("preference read failed")),
+            patch("treesight.security.orgs.get_org", return_value={"org_id": "org-a"}),
+            pytest.raises(RuntimeError, match="preference read failed"),
+        ):
+            resolve_active_org_for_user("user-1", raise_on_error=True)
+
     def test_prefers_requested_org_id_when_user_is_member(self):
         from treesight.security.orgs import create_org, resolve_active_org_for_user
 

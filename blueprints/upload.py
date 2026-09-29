@@ -49,34 +49,10 @@ bp = func.Blueprint()
 
 
 def _persist_submission_record(submission_id: str, record: dict, user_id: str) -> None:
-    """Write a submission record so the run appears in analysis history."""
-    if _cosmos_mod.cosmos_available():
-        try:
-            _cosmos_mod.upsert_item("runs", {"id": submission_id, **record})
-            return
-        except Exception:
-            logger.warning(
-                "Cosmos upsert failed for instance=%s user=%s",
-                submission_id,
-                user_id,
-                exc_info=True,
-            )
+    """Write the authoritative run record used by history and access checks."""
+    from blueprints.pipeline.history import _persist_submission_record as persist_record
 
-    # Blob fallback
-    from treesight.constants import PIPELINE_PAYLOADS_CONTAINER
-    from treesight.storage.client import BlobStorageClient
-
-    try:
-        storage = BlobStorageClient()
-        blob_name = f"analysis-submissions/{user_id}/{submission_id}.json"
-        storage.upload_json(PIPELINE_PAYLOADS_CONTAINER, blob_name, record)
-    except Exception:
-        logger.warning(
-            "Unable to persist submission record instance=%s user=%s",
-            submission_id,
-            user_id,
-            exc_info=True,
-        )
+    persist_record(record, user_id, submission_id)
 
 
 def _sanitise_submission_context(ctx: dict) -> dict:
@@ -466,7 +442,7 @@ def _build_run_record(
         kml_size_bytes=0,
         submission_prefix="analysis",
         provider_name=effective_provider,
-        status="submitted",
+        status="Pending",
         eudr_mode=is_eudr,
         **ctx,
     )
