@@ -52,10 +52,20 @@ Owner decision (2026-09-16): require authentication and run-access authorization
 before leaving local development (#1527). The current anonymous contract remains until
 that change is implemented and tested; it is not approved for public promotion.
 
-A submission `202` means the ticket and KML were accepted into blob storage, not
-that Durable execution has started. Event Grid admits the run asynchronously;
-an initial diagnostics `404` can precede admission. The response uses `instance_id`,
-while diagnostics uses `instanceId`, `customStatus`, and camelCase output fields.
+A submission `202` means the authoritative run record was persisted to Cosmos and
+the ticket and KML were accepted into blob storage, not that Durable execution
+has started. If Cosmos cannot persist the run record or a prior upload ticket
+cannot be verified, the endpoint returns `503` before publishing ticket or KML
+blobs. Event Grid admits accepted runs
+asynchronously; an initial diagnostics `404` can precede admission. The response
+uses `instance_id`, while diagnostics uses `instanceId`, `customStatus`, and
+camelCase output fields.
+
+Analysis history and EUDR usage/export queries return `503` when the authoritative
+Cosmos history store is unavailable or the query fails. An empty `200` history
+means the query completed successfully and found no runs.
+Upload-token records remain `Pending` until KML is submitted; a retryable follow-up
+failure preserves the ticket's quota reservation for a same-ID retry.
 
 ## Trigger and Orchestrator Entry Points
 

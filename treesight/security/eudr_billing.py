@@ -187,7 +187,12 @@ def check_eudr_entitlement(org_id: str, *, user_id: str | None = None) -> dict[s
 # ---------------------------------------------------------------------------
 
 
-def get_eudr_billing_status(org_id: str, *, user_id: str | None = None) -> dict[str, Any]:
+def get_eudr_billing_status(
+    org_id: str,
+    *,
+    user_id: str | None = None,
+    org: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Return EUDR billing status for the frontend."""
     del user_id  # Reserved for compatibility with existing call sites.
 
@@ -208,7 +213,7 @@ def get_eudr_billing_status(org_id: str, *, user_id: str | None = None) -> dict[
             "overage_parcels": 0,
         }
 
-    org = get_org(org_id)
+    org = org if org is not None else get_org(org_id)
     if not org:
         return {
             "plan": "none",

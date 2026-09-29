@@ -11,7 +11,7 @@ import pytest
 from azure.core.exceptions import ResourceNotFoundError
 
 from tests.conftest import TEST_LOCAL_ORIGIN, make_test_request
-from treesight.constants import DEFAULT_INPUT_CONTAINER, PIPELINE_PAYLOADS_CONTAINER
+from treesight.constants import DEFAULT_INPUT_CONTAINER
 
 PIPELINE_PKG = Path(__file__).resolve().parent.parent / "blueprints" / "pipeline"
 
@@ -97,10 +97,116 @@ class _UncertainDurableClient(_FakeDurableClient):
 
 
 class TestAnalysisSubmissionRoutes:
+    @pytest.fixture(autouse=True)
+    def _cosmos_run_store(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.upsert_item"),
+            patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
+        ):
+            yield
+
     def test_pipeline_declares_production_named_analysis_route(self):
         source = (PIPELINE_PKG / "submission.py").read_text()
         assert 'route="analysis/submit"' in source
         assert 'route="demo-process"' not in source
+
+    def test_analysis_submit_fails_before_upload_when_history_store_unavailable(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req("/api/analysis/submit")
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
+            patch("blueprints.pipeline.submission.finalize_run") as finalize_run,
+            patch("blueprints.pipeline.submission.release_admission_slot") as release_admission,
+            patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=False),
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 503
+        mock_storage_cls.return_value.upload_json.assert_not_called()
+        mock_storage_cls.return_value.upload_bytes.assert_not_called()
+        finalize_run.assert_called_once()
+        release_admission.assert_called_once()
+
+    def test_analysis_submit_fails_before_upload_when_history_write_fails(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        persisted_records = []
+
+        def _upsert_then_timeout(container, record):
+            persisted_records.append((container, record))
+            raise RuntimeError("write timed out after commit")
+
+        req = _make_req("/api/analysis/submit")
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
+            patch("blueprints.pipeline.submission.finalize_run") as finalize_run,
+            patch("blueprints.pipeline.submission.release_admission_slot") as release_admission,
+            patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.upsert_item", side_effect=_upsert_then_timeout),
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 503
+        assert persisted_records[0][1]["status"] == "Pending"
+        mock_storage_cls.return_value.upload_json.assert_not_called()
+        mock_storage_cls.return_value.upload_bytes.assert_not_called()
+        finalize_run.assert_called_once()
+        release_admission.assert_called_once()
+
+    def test_analysis_submit_recovers_when_ambiguous_history_write_is_visible(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        persisted_record = {}
+
+        def _upsert_then_timeout(_container, record):
+            persisted_record.update(record)
+            raise TimeoutError("write timed out after commit")
+
+        req = _make_req("/api/analysis/submit")
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
+            patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.upsert_item", side_effect=_upsert_then_timeout),
+            patch("treesight.storage.cosmos.read_item", side_effect=lambda *_args: persisted_record),
+            patch("treesight.storage.client.BlobStorageClient") as storage_cls,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+        assert persisted_record["status"] == "Pending"
+        storage_cls.return_value.upload_bytes.assert_called_once()
+
+    def test_analysis_submit_marks_history_failed_when_blob_publish_fails(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req("/api/analysis/submit")
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
+            patch("blueprints.pipeline.submission.finalize_run"),
+            patch("blueprints.pipeline.submission.release_admission_slot"),
+            patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.upsert_item") as mock_upsert,
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+        ):
+            mock_storage_cls.return_value.upload_json.side_effect = RuntimeError("storage unavailable")
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 502
+        assert [call.args[1]["status"] for call in mock_upsert.call_args_list] == ["Pending", "failed"]
 
     def test_analysis_submit_rejects_unavailable_requested_org(self):
         from blueprints.pipeline.submission import _submit_analysis_request
@@ -142,6 +248,7 @@ class TestAnalysisSubmissionRoutes:
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
+            patch("treesight.storage.cosmos.upsert_item") as mock_upsert,
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
@@ -171,23 +278,20 @@ class TestAnalysisSubmissionRoutes:
         ticket_data = ticket_args[2]
         assert ticket_data["user_id"] == "user-123"
 
-        # Verify submission history record
-        history_calls = [
-            c for c in mock_storage_cls.return_value.upload_json.call_args_list if "analysis-submissions/" in str(c)
-        ]
-        assert len(history_calls) >= 1
-        record_args = history_calls[0][0]
-        assert record_args[0] == PIPELINE_PAYLOADS_CONTAINER
-        assert record_args[1] == f"analysis-submissions/user-123/{data['instance_id']}.json"
-        assert record_args[2]["instance_id"] == data["instance_id"]
-        assert record_args[2]["user_id"] == "user-123"
-        assert record_args[2]["submission_prefix"] == "analysis"
-        assert record_args[2]["feature_count"] == 12
-        assert record_args[2]["aoi_count"] == 10
-        assert record_args[2]["max_spread_km"] == 37.4
-        assert record_args[2]["processing_mode"] == "Bulk-ready"
-        assert record_args[2]["workspace_role"] == "portfolio"
-        assert record_args[2]["workspace_preference"] == "report"
+        # Verify the authoritative submission history record exists before enqueue.
+        mock_upsert.assert_called_once()
+        container, history_record = mock_upsert.call_args.args
+        assert container == "runs"
+        assert history_record["id"] == data["instance_id"]
+        assert history_record["instance_id"] == data["instance_id"]
+        assert history_record["user_id"] == "user-123"
+        assert history_record["submission_prefix"] == "analysis"
+        assert history_record["feature_count"] == 12
+        assert history_record["aoi_count"] == 10
+        assert history_record["max_spread_km"] == 37.4
+        assert history_record["processing_mode"] == "Bulk-ready"
+        assert history_record["workspace_role"] == "portfolio"
+        assert history_record["workspace_preference"] == "report"
 
         # No direct orchestrator start — Event Grid handles it now
 
@@ -400,6 +504,62 @@ class TestAnalysisSubmissionRoutes:
         assert data["runtimeStatus"] == "Running"
         assert data["customStatus"]["phase"] == "acquisition"
         assert data["customStatus"]["step"] == "searching"
+
+    def test_analysis_history_returns_503_when_cosmos_unavailable(self):
+        from blueprints.pipeline.history import _build_analysis_history_response
+
+        req = _make_req("/api/analysis/history", body={}, method="GET")
+        with patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=False):
+            resp = asyncio.run(_build_analysis_history_response(req, _HistoryDurableClient({}), "user-123"))
+
+        assert resp.status_code == 503
+        assert "temporarily unavailable" in json.loads(resp.get_body())["error"]
+
+    def test_analysis_history_returns_503_when_cosmos_query_fails(self):
+        from blueprints.pipeline.history import _build_analysis_history_response
+
+        req = _make_req("/api/analysis/history", body={}, method="GET")
+        with (
+            patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=True),
+            patch("blueprints.pipeline.history._cosmos_mod.query_items", side_effect=RuntimeError("query failed")),
+        ):
+            resp = asyncio.run(_build_analysis_history_response(req, _HistoryDurableClient({}), "user-123"))
+
+        assert resp.status_code == 503
+        assert "temporarily unavailable" in json.loads(resp.get_body())["error"]
+
+    def test_submission_history_recovers_after_cosmos_returns(self):
+        from blueprints.pipeline.history import (
+            RunRecordPersistenceError,
+            _build_analysis_history_response,
+            _persist_submission_record,
+        )
+
+        record = {
+            "submission_id": "restored-run",
+            "instance_id": "restored-run",
+            "user_id": "user-123",
+            "submitted_at": "2026-04-01T12:00:00Z",
+            "status": "submitted",
+        }
+        req = _make_req("/api/analysis/history", body={}, method="GET")
+        with (
+            patch(
+                "blueprints.pipeline.history._cosmos_mod.cosmos_available",
+                side_effect=[False, True, True],
+            ),
+            patch("treesight.storage.cosmos.upsert_item") as upsert_item,
+            patch("treesight.storage.cosmos.query_items", return_value=[record]),
+        ):
+            with pytest.raises(RunRecordPersistenceError):
+                _persist_submission_record(record, "user-123", "restored-run")
+            _persist_submission_record(record, "user-123", "restored-run")
+            resp = asyncio.run(_build_analysis_history_response(req, _HistoryDurableClient({}), "user-123"))
+
+        upsert_item.assert_called_once_with("runs", {"id": "restored-run", **record})
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert [run["instanceId"] for run in data["runs"]] == ["restored-run"]
 
     def test_analysis_history_does_not_treat_stalled_run_as_active(self):
         from blueprints.pipeline.history import _build_analysis_history_response
@@ -625,7 +785,7 @@ class TestAnalysisSubmissionRoutes:
             return []
 
         with (
-            patch("blueprints.pipeline.history.get_user_org") as mock_get_org,
+            patch("blueprints.pipeline.history.get_user_org_strict") as mock_get_org,
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.query_items", side_effect=_cosmos_query),
         ):
@@ -654,6 +814,23 @@ class TestAnalysisSubmissionRoutes:
             "lastSubmittedAt": "2026-04-10T11:00:00+00:00",
         }
 
+    def test_analysis_history_org_scope_returns_503_when_membership_lookup_fails(self):
+        from blueprints.pipeline.history import _build_analysis_history_response
+
+        req = _make_req(
+            "/api/analysis/history",
+            body={},
+            method="GET",
+            params={"scope": "org"},
+        )
+        with (
+            patch("treesight.security.orgs.list_orgs_for_user_strict", side_effect=RuntimeError("Cosmos down")),
+            patch("treesight.storage.cosmos.query_items", return_value=[]),
+        ):
+            resp = asyncio.run(_build_analysis_history_response(req, _HistoryDurableClient({}), "user-123"))
+
+        assert resp.status_code == 503
+
     def test_analysis_history_org_scope_falls_back_to_user_scope_without_org(self):
         from blueprints.pipeline.history import _build_analysis_history_response
 
@@ -666,7 +843,7 @@ class TestAnalysisSubmissionRoutes:
         )
 
         with (
-            patch("blueprints.pipeline.history.get_user_org", return_value=None),
+            patch("blueprints.pipeline.history.get_user_org_strict", return_value=None),
             patch("blueprints.pipeline.history._fetch_submission_records", return_value=[]),
         ):
             resp = asyncio.run(_build_analysis_history_response(req, client, "user-123"))
@@ -706,6 +883,82 @@ class TestAnalysisSubmissionRoutes:
         data = json.loads(resp.get_body())
         assert data["instance_id"] == prior_id
         mock_reserve.assert_not_called()
+
+    def test_prior_ticket_lookup_storage_error_returns_503_without_reserving(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            },
+        )
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.reserve_admission_slot") as reserve_admission,
+            patch("blueprints.pipeline.submission.reserve_run") as reserve_run,
+            patch("treesight.storage.client.BlobStorageClient") as storage_cls,
+        ):
+            storage_cls.return_value.download_json.side_effect = OSError("storage unavailable")
+            resp = asyncio.run(_submit_analysis_request(req))
+
+        assert resp.status_code == 503
+        reserve_admission.assert_not_called()
+        reserve_run.assert_not_called()
+
+    def test_missing_prior_ticket_is_a_confirmed_cache_miss(self):
+        from blueprints.pipeline.submission import _load_prior_ticket_for_user
+
+        with patch("treesight.storage.client.BlobStorageClient") as storage_cls:
+            storage_cls.return_value.download_json.side_effect = ResourceNotFoundError("ticket missing")
+            result = _load_prior_ticket_for_user("user-123", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        assert result is None
+
+    def test_prior_submission_retry_after_history_outage_keeps_reservation(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        prior_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        ticket = {
+            "user_id": "user-123",
+            "org_id": "org-123",
+            "eudr_mode": False,
+            "parcel_count": 1,
+        }
+        req = _make_req(
+            "/api/analysis/submit",
+            {"kml_content": "<kml></kml>", "prior_submission_id": prior_id},
+        )
+        reserve_run = MagicMock()
+        finalize_run = MagicMock()
+        release_admission = MagicMock()
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
+            patch("blueprints.pipeline.submission.reserve_run", reserve_run),
+            patch("blueprints.pipeline.submission.finalize_run", finalize_run),
+            patch("blueprints.pipeline.submission.release_admission_slot", release_admission),
+            patch("blueprints.pipeline.submission._load_prior_ticket_for_user", return_value=ticket),
+            patch("blueprints.pipeline.submission._submission_plan_overrides", return_value={"tier": "free"}),
+            patch(
+                "blueprints.pipeline.history._cosmos_mod.cosmos_available",
+                side_effect=[False, True],
+            ),
+            patch("treesight.storage.cosmos.upsert_item") as upsert_item,
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+        ):
+            first_response = asyncio.run(_submit_analysis_request(req))
+            retry_response = asyncio.run(_submit_analysis_request(req))
+
+        assert first_response.status_code == 503
+        assert retry_response.status_code == 202
+        finalize_run.assert_not_called()
+        reserve_run.assert_not_called()
+        release_admission.assert_called_once_with(prior_id)
+        upsert_item.assert_called_once()
+        mock_storage_cls.return_value.upload_bytes.assert_called_once()
 
     def test_prior_submission_id_rejects_mismatched_org_selector(self):
         """A prior ticket must not honour an org selector that isn't its own org."""
@@ -1399,6 +1652,15 @@ class TestEnrichFromTicket:
 
 
 class TestEudrModeSubmission:
+    @pytest.fixture(autouse=True)
+    def _cosmos_run_store(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.upsert_item"),
+            patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
+        ):
+            yield
+
     """Verify eudr_mode flows from request body to ticket and run record."""
 
     def test_eudr_mode_true_included_in_ticket(self):
@@ -1484,18 +1746,16 @@ class TestEudrModeSubmission:
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
-            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+            patch("treesight.storage.cosmos.upsert_item") as mock_upsert,
+            patch("treesight.storage.client.BlobStorageClient"),
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
 
         assert resp.status_code == 202
 
-        # Check the run record (uploaded to analysis-submissions/)
-        history_calls = [
-            c for c in mock_storage_cls.return_value.upload_json.call_args_list if "analysis-submissions/" in str(c)
-        ]
-        assert len(history_calls) >= 1
-        record = history_calls[0][0][2]
+        # Check the authoritative Cosmos run record.
+        mock_upsert.assert_called_once()
+        record = mock_upsert.call_args.args[1]
         assert record["eudr_mode"] is True
 
 
@@ -1560,24 +1820,24 @@ class TestFetchSubmissionRecordsCosmos:
         assert args[0] == "runs"
         assert kwargs["partition_key"] == "u1"
 
-    def test_returns_empty_when_cosmos_not_available(self):
-        from blueprints.pipeline.history import _fetch_submission_records
+    def test_raises_when_cosmos_not_available(self):
+        from blueprints.pipeline.history import AnalysisHistoryUnavailableError, _fetch_submission_records
 
-        with patch("treesight.storage.cosmos.cosmos_available", return_value=False):
-            result = _fetch_submission_records("u1", 8)
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=False),
+            pytest.raises(AnalysisHistoryUnavailableError, match="Cosmos unavailable"),
+        ):
+            _fetch_submission_records("u1", 8)
 
-        assert result == []
-
-    def test_returns_empty_on_cosmos_error(self):
-        from blueprints.pipeline.history import _fetch_submission_records
+    def test_raises_on_cosmos_query_error(self):
+        from blueprints.pipeline.history import AnalysisHistoryUnavailableError, _fetch_submission_records
 
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.query_items", side_effect=RuntimeError("boom")),
+            pytest.raises(AnalysisHistoryUnavailableError, match="History query failed"),
         ):
-            result = _fetch_submission_records("u1", 8)
-
-        assert result == []
+            _fetch_submission_records("u1", 8)
 
 
 class TestPersistSubmissionRecordCosmos:
@@ -1590,45 +1850,48 @@ class TestPersistSubmissionRecordCosmos:
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.upsert_item") as mock_upsert,
         ):
-            _persist_submission_record(None, record, "u1", "s1")
+            _persist_submission_record(record, "u1", "s1")
 
         mock_upsert.assert_called_once()
         args = mock_upsert.call_args[0]
         assert args[0] == "runs"
         assert args[1]["id"] == "s1"
 
-    def test_falls_back_to_blob_when_cosmos_unavailable(self):
-        from unittest.mock import MagicMock
+    def test_raises_when_cosmos_unavailable(self):
+        from blueprints.pipeline.history import RunRecordPersistenceError, _persist_submission_record
 
-        from blueprints.pipeline.history import _persist_submission_record
-
-        storage = MagicMock()
         record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
 
-        with patch("treesight.storage.cosmos.cosmos_available", return_value=False):
-            _persist_submission_record(storage, record, "u1", "s1")
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=False),
+            pytest.raises(RunRecordPersistenceError, match="Cosmos unavailable"),
+        ):
+            _persist_submission_record(record, "u1", "s1")
 
-        storage.upload_json.assert_called_once()
+    def test_raises_on_cosmos_write_error(self):
+        from blueprints.pipeline.history import RunRecordPersistenceError, _persist_submission_record
 
-    def test_falls_back_to_blob_on_cosmos_error(self):
-        from unittest.mock import MagicMock
-
-        from blueprints.pipeline.history import _persist_submission_record
-
-        storage = MagicMock()
         record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
 
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.upsert_item", side_effect=RuntimeError("boom")),
+            pytest.raises(RunRecordPersistenceError, match="could not be verified"),
         ):
-            _persist_submission_record(storage, record, "u1", "s1")
-
-        storage.upload_json.assert_called_once()
+            _persist_submission_record(record, "u1", "s1")
 
 
 class TestCoordinateSubmission:
     """Tests for coordinate/CSV submission paths (#601)."""
+
+    @pytest.fixture(autouse=True)
+    def _cosmos_run_store(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.upsert_item"),
+            patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
+        ):
+            yield
 
     def test_coordinate_text_submission(self):
         from blueprints.pipeline.submission import _submit_analysis_request
@@ -1687,10 +1950,12 @@ class TestCoordinateSubmission:
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
+            patch("treesight.storage.cosmos.upsert_item") as mock_upsert,
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
 
         assert resp.status_code == 400
+        mock_upsert.assert_not_called()
 
     def test_invalid_csv_returns_400(self):
         from blueprints.pipeline.submission import _submit_analysis_request

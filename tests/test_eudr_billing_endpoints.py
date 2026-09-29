@@ -16,6 +16,8 @@ import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from tests.conftest import TEST_ORIGIN, make_test_request
 
 _ALLOWED_ORIGIN = TEST_ORIGIN
@@ -134,13 +136,68 @@ class TestEudrUsage:
     def test_returns_usage_payload(self, _payload):
         from blueprints.eudr import eudr_usage_status
 
-        req = _make_req(url="/api/eudr/usage")
-        resp = eudr_usage_status(req)
+        req = make_test_request(
+            url="/api/eudr/usage",
+            origin=_ALLOWED_ORIGIN,
+            principal_user_id="user-123",
+        )
+        with (
+            patch("treesight.security.orgs.get_user_org_strict", return_value=None),
+            patch("blueprints.eudr._fetch_org_run_records_for_org", return_value=[]),
+        ):
+            resp = eudr_usage_status(req)
 
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
         assert data["current"]["periodParcelsUsed"] == 47
         assert data["history"][0]["month"] == "2026-01"
+
+    def test_usage_uses_one_org_snapshot_for_history_and_billing(self):
+        from blueprints.eudr import eudr_usage_status
+
+        org = {"org_id": "org-1", "members": [{"user_id": "test-user"}]}
+        req = _make_req(url="/api/eudr/usage")
+        with (
+            patch("blueprints.eudr._fetch_org_run_records_for_org", return_value=[]),
+            patch("treesight.security.orgs.get_user_org_strict", return_value=org),
+            patch("treesight.security.orgs.get_user_org", return_value=None) as get_user_org,
+            patch(
+                "treesight.security.eudr_billing.get_eudr_billing_status",
+                return_value={"plan": "eudr_pro", "period_parcels_used": 0},
+            ) as get_billing,
+            patch("treesight.eudr.usage.eudr_usage_payload", return_value={"current": {}, "history": []}),
+        ):
+            resp = eudr_usage_status(req)
+
+        assert resp.status_code == 200
+        get_user_org.assert_not_called()
+        get_billing.assert_called_once_with("org-1", user_id="test-user", org=org)
+
+    def test_history_unavailable_returns_503(self):
+        from blueprints.eudr import eudr_usage_status
+        from blueprints.pipeline.history import AnalysisHistoryUnavailableError
+
+        req = _make_req(url="/api/eudr/usage")
+        with (
+            patch("treesight.security.orgs.get_user_org_strict", return_value=None),
+            patch(
+                "blueprints.eudr._fetch_org_run_records_for_org",
+                side_effect=AnalysisHistoryUnavailableError("Cosmos unavailable"),
+            ),
+        ):
+            resp = eudr_usage_status(req)
+
+        assert resp.status_code == 503
+
+    def test_org_run_history_fails_when_membership_lookup_fails(self):
+        from blueprints.eudr import _fetch_org_run_records
+        from blueprints.pipeline.history import AnalysisHistoryUnavailableError
+
+        with (
+            patch("treesight.security.orgs.list_orgs_for_user_strict", side_effect=RuntimeError("Cosmos down")),
+            pytest.raises(AnalysisHistoryUnavailableError, match="Org history lookup failed"),
+        ):
+            _fetch_org_run_records("user-123")
 
     @_REQUIRE_AUTH
     def test_unauthenticated_returns_401(self):
@@ -582,3 +639,20 @@ class TestEudrSummaryExport:
         req = make_test_request(url="/api/eudr/summary-export")
         resp = asyncio.run(_eudr_summary_export(req, client))
         assert resp.status_code == 404
+
+    def test_history_unavailable_returns_503(self):
+        from blueprints.eudr import _eudr_summary_export
+        from blueprints.pipeline.history import AnalysisHistoryUnavailableError
+
+        client = AsyncMock()
+        req = make_test_request(url="/api/eudr/summary-export")
+        with (
+            patch("blueprints.eudr.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.eudr._fetch_org_run_records",
+                side_effect=AnalysisHistoryUnavailableError("Cosmos unavailable"),
+            ),
+        ):
+            resp = asyncio.run(_eudr_summary_export(req, client))
+
+        assert resp.status_code == 503
