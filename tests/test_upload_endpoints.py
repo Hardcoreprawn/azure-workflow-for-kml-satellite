@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import azure.functions as func
 import pytest
+from azure.core.exceptions import ResourceNotFoundError
 
 from tests.conftest import TEST_ORIGIN, encode_test_principal
 
@@ -55,6 +56,31 @@ def _make_req(
         route_params=route_params or {},
         body=raw_body,
     )
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_ticket_revocation_confirms_deleted_or_missing_ticket(missing):
+    from blueprints.upload import _revoke_upload_ticket
+
+    with patch("blueprints.upload.get_blob_service_client") as storage_cls:
+        blob = storage_cls.return_value.get_blob_client.return_value
+        if missing:
+            blob.delete_blob.side_effect = ResourceNotFoundError("ticket absent")
+        _revoke_upload_ticket("submission-1")
+
+    storage_cls.return_value.get_blob_client.assert_called_once_with("kml-input", ".tickets/submission-1.json")
+    blob.delete_blob.assert_called_once()
+
+
+def test_ticket_revocation_does_not_hide_storage_failure():
+    from blueprints.upload import _revoke_upload_ticket
+
+    with (
+        patch("blueprints.upload.get_blob_service_client") as storage_cls,
+        pytest.raises(OSError, match="storage unavailable"),
+    ):
+        storage_cls.return_value.get_blob_client.return_value.delete_blob.side_effect = OSError("storage unavailable")
+        _revoke_upload_ticket("submission-1")
 
 
 def test_upload_record_requires_authoritative_cosmos_storage():

@@ -151,12 +151,28 @@ def _persist_submission_record(
     record: dict,
     user_id: str,
     submission_id: str,
+    *,
+    reuse_existing: bool = False,
 ) -> None:
     """Persist the authoritative run record before a submission is published."""
     if not _cosmos_mod.cosmos_available():
         raise RunRecordPersistenceError("Cosmos unavailable")
+    if reuse_existing:
+        try:
+            stored_record = _cosmos_mod.read_item("runs", submission_id, user_id)
+        except Exception as exc:
+            raise RunRecordPersistenceError("Previous submission history could not be verified") from exc
+        if (
+            stored_record
+            and stored_record.get("id") == submission_id
+            and stored_record.get("user_id") == user_id
+            and str(stored_record.get("status", "")).lower() not in {"failed", "terminated", "canceled"}
+        ):
+            return
+        raise RunRecordPersistenceError("Previous submission history is not reusable")
+    expected_record = {"id": submission_id, **record}
     try:
-        _cosmos_mod.upsert_item("runs", {"id": submission_id, **record})
+        _cosmos_mod.upsert_item("runs", expected_record)
     except Exception as exc:
         logger.warning(
             "Cosmos upsert failed for instance=%s user=%s",
@@ -174,7 +190,9 @@ def _persist_submission_record(
                 exc_info=True,
             )
             raise RunRecordPersistenceError("Run record persistence could not be verified") from exc
-        if stored_record and stored_record.get("id") == submission_id and stored_record.get("user_id") == user_id:
+        if stored_record and all(
+            field in stored_record and stored_record[field] == value for field, value in expected_record.items()
+        ):
             logger.info("Recovered ambiguous Cosmos upsert instance=%s user=%s", submission_id, user_id)
             return
         raise RunRecordPersistenceError("Run record persistence failed") from exc

@@ -16,6 +16,7 @@ import logging
 import uuid
 
 import azure.functions as func
+from azure.core.exceptions import ResourceNotFoundError
 from azure.storage.blob import (
     BlobSasPermissions,
     ContentSettings,
@@ -269,6 +270,14 @@ def _write_ticket_and_mint_sas(
     return sas_url, None
 
 
+def _revoke_upload_ticket(submission_id: str) -> None:
+    ticket_blob = get_blob_service_client().get_blob_client(DEFAULT_INPUT_CONTAINER, f".tickets/{submission_id}.json")
+    try:
+        ticket_blob.delete_blob()
+    except ResourceNotFoundError:
+        return
+
+
 def _reserve_run_or_error(
     org_id: str,
     user_id: str,
@@ -479,6 +488,7 @@ def upload_token(
         ensure_user_org_fn=_ensure_user_org,
         reserve_run_or_error_fn=_reserve_run_or_error,
         write_ticket_and_mint_sas_fn=_write_ticket_and_mint_sas,
+        revoke_ticket_fn=_revoke_upload_ticket,
         finalize_run_fn=_release_reservation,
         persist_submission_record_fn=_persist_submission_record,
         requested_parcel_count_fn=lambda b: _requested_parcel_count(b, default=1),

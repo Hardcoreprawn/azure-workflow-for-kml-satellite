@@ -79,15 +79,14 @@ def _build_submission_history_record(
     from treesight.models.records import RunRecord
 
     context = {key: value for key, value in submission_context.items() if key != "provider_name"}
+    kml_content = body.get("kml_content", "") if isinstance(body, dict) else ""
     run = RunRecord(
         submission_id=submission_id,
         instance_id=submission_id,
         user_id=user_id,
         submitted_at=datetime.now(UTC).isoformat(),
         kml_blob_name=f"{blob_prefix.strip('/') or 'analysis'}/{submission_id}.kml",
-        kml_size_bytes=len(body.get("kml_content", "").encode("utf-8"))
-        if isinstance(body, dict) and body.get("kml_content")
-        else 0,
+        kml_size_bytes=len(kml_content.encode("utf-8")) if isinstance(kml_content, str) else 0,
         submission_prefix=blob_prefix.strip("/") or "analysis",
         provider_name=effective_provider,
         status="Pending",
@@ -103,8 +102,8 @@ def _mark_submission_history_failed(
     user_id: str,
     submission_id: str,
 ) -> None:
-    """Mark a persisted run failed if blob publication failed after validation."""
-    if response.status_code != 502 or history_record is None:
+    """Mark an unpublished run failed after a history or blob storage failure."""
+    if response.status_code not in {502, 503} or history_record is None:
         return
     try:
         _persist_submission_record(history_record | {"status": "failed"}, user_id, submission_id)
@@ -514,12 +513,13 @@ async def _submit_analysis_request(
         instance_id=submission_id,
         history_record=history_record,
         history_user_id=user_id,
+        reuse_history=bool(prior_ticket),
         log_tag=f"Analysis process started prefix={blob_prefix}",
     )
 
     # Refund new reservations on failure; verified upload tickets remain retryable.
     if resp.status_code != 202:
-        _mark_submission_history_failed(resp, history_record, user_id, submission_id)
+        _mark_submission_history_failed(resp, None if prior_ticket else history_record, user_id, submission_id)
         # A verified upload ticket keeps its reservation alive for a same-ID retry.
         if reserved and org_id and not prior_ticket:
             _finalize_run_on_failure(org_id, submission_id)
@@ -537,6 +537,7 @@ async def _submit_kml(
     extra_input: dict[str, Any] | None = None,
     history_record: dict[str, Any] | None = None,
     history_user_id: str = "",
+    reuse_history: bool = False,
     log_tag: str = "",
 ) -> func.HttpResponse:
     """Validate KML, write ticket, upload blob.
@@ -551,7 +552,7 @@ async def _submit_kml(
 
     if history_record is not None:
         try:
-            _persist_submission_record(history_record, history_user_id, instance_id)
+            _persist_submission_record(history_record, history_user_id, instance_id, reuse_existing=reuse_history)
         except RunRecordPersistenceError:
             return error_response(
                 503,

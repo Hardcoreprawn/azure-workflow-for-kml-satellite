@@ -29,9 +29,9 @@ class UploadTokenHandler:
     1. Resolve (or auto-create) the user's organisation.
     2. Validate parcel count.
     3. Reserve a run against the org quota.
-    4. Write ticket blob and mint the SAS URL.
-       On failure → release the reservation.
-    5. Persist the submission record.
+     4. Persist the submission record before a usable upload ticket exists.
+     5. Write ticket blob and mint the SAS URL.
+         On failure → mark history failed and release the reservation.
 
     Call :meth:`mint` to run all steps and return either a success payload
     dict or an adapter-specific error response.
@@ -54,6 +54,7 @@ class UploadTokenHandler:
             Any | None,
         ],
         write_ticket_and_mint_sas_fn: Callable[..., tuple[str | None, Any | None]],
+        revoke_ticket_fn: Callable[[str], None],
         finalize_run_fn: Callable[..., None],
         persist_submission_record_fn: Callable[[str, dict[str, Any], str], None],
         # Injected pure helpers (allow override in tests)
@@ -74,6 +75,7 @@ class UploadTokenHandler:
         self._ensure_user_org = ensure_user_org_fn
         self._reserve_run_or_error = reserve_run_or_error_fn
         self._write_ticket_and_mint_sas = write_ticket_and_mint_sas_fn
+        self._revoke_ticket = revoke_ticket_fn
         self._finalize_run = finalize_run_fn
         self._persist_submission_record = persist_submission_record_fn
         self._requested_parcel_count = requested_parcel_count_fn
@@ -92,6 +94,7 @@ class UploadTokenHandler:
         self._submission_context: dict[str, Any] = {}
         self._effective_provider: str = ""
         self._sas_url: str = ""
+        self._submission_record: dict[str, Any] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -108,8 +111,8 @@ class UploadTokenHandler:
             self._step_validate_parcel_count,
             self._step_reserve_run,
             self._step_prepare_blob,
-            self._step_write_ticket_and_mint_sas,
             self._step_persist_record,
+            self._step_write_ticket_and_mint_sas,
         )
         for step in steps:
             err = step()
@@ -177,6 +180,11 @@ class UploadTokenHandler:
         if storage_err is not None or not sas_url:
             error = storage_err or self._error_response(502, "Storage service temporarily unavailable", req=self.req)
             try:
+                self._revoke_ticket(self._submission_id)
+            except Exception:
+                logger.exception("Ticket revocation failed; reservation retained instance=%s", self._submission_id)
+                return error
+            try:
                 self._finalize_run(org_id=self._org_id, instance_id=self._submission_id, status="failed")
             except Exception:
                 logger.exception(
@@ -184,6 +192,12 @@ class UploadTokenHandler:
                     self._org_id,
                     self._submission_id,
                 )
+            try:
+                self._persist_submission_record(
+                    self._submission_id, self._submission_record | {"status": "failed"}, self.user_id
+                )
+            except Exception:
+                logger.exception("Unable to mark failed upload history instance=%s", self._submission_id)
             return error
         self._sas_url = sas_url
         return None
@@ -197,6 +211,7 @@ class UploadTokenHandler:
             submission_context=self._submission_context,
             is_eudr=self.is_eudr,
         )
+        self._submission_record = record
         try:
             self._persist_submission_record(self._submission_id, record, self.user_id)
         except Exception:
@@ -219,7 +234,7 @@ class UploadTokenHandler:
                 req=self.req,
             )
         logger.info(
-            "Upload URL minted submission_id=%s blob=%s",
+            "Upload history saved submission_id=%s blob=%s",
             self._submission_id,
             self._blob_name,
         )
