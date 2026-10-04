@@ -45,6 +45,7 @@ def _make_handler(
     ensure_user_org_fn=None,
     reserve_run_or_error_fn=None,
     write_ticket_and_mint_sas_fn=None,
+    revoke_ticket_fn=None,
     finalize_run_fn=None,
     persist_submission_record_fn=None,
     requested_parcel_count_fn=None,
@@ -98,6 +99,7 @@ def _make_handler(
         ensure_user_org_fn=ensure_user_org_fn or _default_ensure_user_org,
         reserve_run_or_error_fn=reserve_run_or_error_fn or _default_reserve,
         write_ticket_and_mint_sas_fn=write_ticket_and_mint_sas_fn or _default_write_ticket,
+        revoke_ticket_fn=revoke_ticket_fn or (lambda _submission_id: None),
         finalize_run_fn=finalize_run_fn or _default_finalize_run,
         persist_submission_record_fn=persist_submission_record_fn or _default_persist,
         requested_parcel_count_fn=requested_parcel_count_fn or _default_parcel_count,
@@ -262,6 +264,42 @@ def test_eudr_mode_false_propagated_to_reserve():
 # ---------------------------------------------------------------------------
 
 
+def test_revokes_ticket_before_refunding_sas_failure():
+    events = []
+    error = func.HttpResponse(b"storage unavailable", status_code=502)
+    handler = _make_handler(
+        write_ticket_and_mint_sas_fn=lambda *_args, **_kwargs: (None, error),
+        revoke_ticket_fn=lambda _submission_id: events.append("revoked"),
+        finalize_run_fn=lambda **_kwargs: events.append("refunded"),
+    )
+
+    payload, response = handler.mint()
+
+    assert payload is None
+    assert response is error
+    assert events == ["revoked", "refunded"]
+
+
+def test_ticket_revocation_failure_does_not_refund_reusable_reservation():
+    refunds = []
+
+    def fail_revocation(_submission_id):
+        raise OSError("ticket storage unavailable")
+
+    error = func.HttpResponse(b"storage unavailable", status_code=502)
+    handler = _make_handler(
+        write_ticket_and_mint_sas_fn=lambda *_args, **_kwargs: (None, error),
+        revoke_ticket_fn=fail_revocation,
+        finalize_run_fn=lambda **kwargs: refunds.append(kwargs),
+    )
+
+    payload, response = handler.mint()
+
+    assert payload is None
+    assert response is error
+    assert refunds == []
+
+
 def test_releases_reservation_when_sas_fails():
     """finalize_run_fn is called to release the reservation when SAS minting fails."""
     finalize_calls = []
@@ -282,7 +320,7 @@ def test_releases_reservation_when_sas_fails():
     assert finalize_calls[0]["status"] == "failed"
 
 
-def test_does_not_call_persist_when_sas_fails():
+def test_marks_persisted_history_failed_when_sas_fails():
     persist_calls = []
 
     sas_error = func.HttpResponse(b'{"error": "storage down"}', status_code=502)
@@ -292,12 +330,35 @@ def test_does_not_call_persist_when_sas_fails():
     )
     handler.mint()
 
-    assert persist_calls == [], "persist must not be called when SAS fails"
+    assert [call[1]["status"] for call in persist_calls] == ["submitted", "failed"]
+    assert persist_calls[0][0] == persist_calls[1][0]
+    assert persist_calls[0][2] == persist_calls[1][2]
 
 
 # ---------------------------------------------------------------------------
 # Step: _step_persist_record
 # ---------------------------------------------------------------------------
+
+
+def test_history_failure_does_not_create_reusable_upload_ticket():
+    ticket_calls = []
+
+    def fail_persist(*_args):
+        raise TimeoutError("history write could not be verified")
+
+    def write_ticket(*args, **_kwargs):
+        ticket_calls.append(args)
+        return "https://storage.example.com/blob?sas=fake", None
+
+    handler = _make_handler(
+        persist_submission_record_fn=fail_persist,
+        write_ticket_and_mint_sas_fn=write_ticket,
+    )
+    payload, error = handler.mint()
+
+    assert payload is None
+    assert error.status_code == 503
+    assert ticket_calls == []
 
 
 def test_persist_called_with_correct_user_id():
@@ -310,6 +371,75 @@ def test_persist_called_with_correct_user_id():
     handler.mint()
 
     assert persist_calls == ["user-xyz"]
+
+
+def test_persist_failure_returns_service_error_and_releases_reservation():
+    finalize_calls = []
+
+    def _fail_persist(*_args):
+        raise RuntimeError("Cosmos unavailable")
+
+    def _capture_finalize(*, org_id, instance_id, status):
+        finalize_calls.append({"org_id": org_id, "instance_id": instance_id, "status": status})
+
+    handler = _make_handler(
+        persist_submission_record_fn=_fail_persist,
+        finalize_run_fn=_capture_finalize,
+    )
+    payload, err = handler.mint()
+
+    assert payload is None
+    assert err.status_code == 503
+    assert len(finalize_calls) == 1
+    assert finalize_calls[0]["status"] == "failed"
+
+
+def test_committed_token_history_failure_is_marked_failed_after_refund():
+    records = []
+    tickets = []
+    refunds = []
+
+    def persist_then_recover(_submission_id, record, _user_id):
+        records.append(record)
+        if len(records) == 1:
+            raise TimeoutError("committed write could not be verified")
+
+    handler = _make_handler(
+        persist_submission_record_fn=persist_then_recover,
+        build_run_record_fn=lambda **kwargs: {
+            "submission_id": kwargs["submission_id"],
+            "user_id": kwargs["user_id"],
+            "status": "Pending",
+        },
+        write_ticket_and_mint_sas_fn=lambda *_args, **_kwargs: tickets.append("published"),
+        finalize_run_fn=lambda **kwargs: refunds.append(kwargs),
+    )
+    payload, error = handler.mint()
+
+    assert payload is None
+    assert error.status_code == 503
+    assert [record["status"] for record in records] == ["Pending", "failed"]
+    assert len(refunds) == 1
+    assert refunds[0]["status"] == "failed"
+    assert refunds[0]["instance_id"] == records[-1]["submission_id"]
+    assert tickets == []
+
+
+def test_persist_failure_still_returns_service_error_when_refund_fails():
+    def _fail_persist(*_args):
+        raise RuntimeError("Cosmos unavailable")
+
+    def _fail_finalize(*, org_id, instance_id, status):
+        raise RuntimeError("billing unavailable")
+
+    handler = _make_handler(
+        persist_submission_record_fn=_fail_persist,
+        finalize_run_fn=_fail_finalize,
+    )
+    payload, err = handler.mint()
+
+    assert payload is None
+    assert err.status_code == 503
 
 
 def test_blob_name_uses_submission_id_and_kml_extension():

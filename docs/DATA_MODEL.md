@@ -94,9 +94,13 @@ migration must preserve access, query behavior, historical records and accountin
 
 - Cosmos queries without an explicit partition key enable cross-partition queries.
   Query cost and tenant filtering must be reviewed at each caller.
-- Run-history writers can fall back to blobs under
-  `pipeline-payloads/analysis-submissions/`; history readers remain Cosmos-only
-  and may return an empty result on failure. This is not transparent failover (#1531).
+- Run-history writers and readers require authoritative Cosmos records, with
+  no blob fallback. Failed writes or history queries return `503`; an empty
+  successful result means the query found no records (#1531).
+- API-managed publication requires verified history persistence. Partial ticket
+  writes must be revoked before refund; uncertain revocation retains the quota
+  reservation. Failed-history and refund writes are best-effort across services,
+  so a continuing outage can require explicit reconciliation.
 - Catalogue persistence has no equivalent blob fallback. Subscription absence
   may select free defaults; storage failures are not interchangeable with absence.
 - Invite-token expiration does not delete the invite document. Token validity,

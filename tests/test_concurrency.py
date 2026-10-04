@@ -336,6 +336,8 @@ class TestSubmissionConcurrencyCap:
             patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.upsert_item"),
             patch("treesight.storage.client.BlobStorageClient"),
         ):
             resp = asyncio.run(_submit_analysis_request(req))

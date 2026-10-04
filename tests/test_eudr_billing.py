@@ -311,6 +311,25 @@ class TestGetEudrBillingStatus:
         assert status["period_parcels_used"] == 10
         assert status["overage_parcels"] == 2
 
+    def test_status_uses_supplied_org_snapshot_without_refetching(self):
+        from treesight.security.eudr_billing import get_eudr_billing_status
+
+        org = {
+            "org_id": "org-1",
+            "billing": {"eudr_status": "active", "eudr_tier": "eudr_pro"},
+        }
+        with (
+            patch(_GET_ORG) as mock_get_org,
+            patch(
+                "treesight.billing.accounting.get_pool_status",
+                return_value={"allowance": 10, "available": 10, "completed": 0, "reserved": 0},
+            ),
+        ):
+            status = get_eudr_billing_status("org-1", org=org)
+
+        assert status["plan"] == "eudr_pro"
+        mock_get_org.assert_not_called()
+
     @patch(_GET_ORG)
     def test_nonexistent_org_returns_empty(self, mock_get_org):
         from treesight.security.eudr_billing import get_eudr_billing_status

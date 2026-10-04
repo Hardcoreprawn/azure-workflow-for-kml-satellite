@@ -104,6 +104,35 @@ def test_openapi_routes_exist_in_live_code():
     assert not missing, f"openapi.yaml references routes not found in live code: {sorted(missing)}"
 
 
+@pytest.mark.parametrize("status", ["502", "503"])
+def test_upload_token_documents_storage_errors(status: str) -> None:
+    spec = yaml.safe_load(OPENAPI.read_text())
+    responses = spec["paths"]["/upload/token"]["post"]["responses"]
+    assert status in responses
+    assert responses[status]["content"]["application/json"]["schema"]["$ref"] == "#/components/schemas/Error"
+
+
+def test_owning_docs_describe_authoritative_history() -> None:
+    data = (
+        (ROOT / "docs/DATA_MODEL.md")
+        .read_text()
+        .split("### Query and Failure Behavior", 1)[1]
+        .split("## Accounting", 1)[0]
+    )
+    architecture = (
+        (ROOT / "docs/ARCHITECTURE_OVERVIEW.md")
+        .read_text()
+        .split("## Pipeline and Verification", 1)[1]
+        .split("| Responsibility", 1)[0]
+    )
+    assert "no blob fallback" in data
+    assert "`503`" in data
+    assert "may return an empty result on failure" not in data
+    assert "Cosmos" in architecture
+    assert "`503`" in architecture
+    assert "revocation" in architecture
+
+
 def test_no_legacy_module_names_in_docs():
     """Docs must not reference the old kml_satellite package name."""
     legacy_pattern = re.compile(r"kml_satellite/")

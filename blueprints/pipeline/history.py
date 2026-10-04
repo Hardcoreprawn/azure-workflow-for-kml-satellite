@@ -9,14 +9,13 @@ import contextlib
 import json
 import logging
 from typing import Any
-from urllib.parse import quote
 
 import azure.durable_functions as df
 import azure.functions as func
 
-from blueprints._helpers import cors_headers
-from treesight.constants import DEFAULT_PROVIDER, PIPELINE_PAYLOADS_CONTAINER
-from treesight.security.orgs import get_user_org
+from blueprints._helpers import cors_headers, error_response
+from treesight.constants import DEFAULT_PROVIDER
+from treesight.security.orgs import get_user_org, get_user_org_strict
 from treesight.storage import cosmos as _cosmos_mod
 
 from ._status import (
@@ -31,7 +30,6 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-_SIGNED_IN_SUBMISSIONS_PREFIX = "analysis-submissions"
 _DEFAULT_HISTORY_LIMIT = 8
 _MAX_HISTORY_LIMIT = 20
 _MAX_HISTORY_OFFSET = 200
@@ -43,12 +41,8 @@ _MAX_ORG_MEMBERS = 50
 # ---------------------------------------------------------------------------
 
 
-def _analysis_submission_prefix(user_id: str) -> str:
-    return f"{_SIGNED_IN_SUBMISSIONS_PREFIX}/{quote(user_id, safe='')}/"
-
-
-def _analysis_submission_blob_name(user_id: str, submission_id: str) -> str:
-    return f"{_analysis_submission_prefix(user_id)}{submission_id}.json"
+class RunRecordPersistenceError(RuntimeError):
+    """Raised when an authoritative submission record cannot be stored."""
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +52,10 @@ def _analysis_submission_blob_name(user_id: str, submission_id: str) -> str:
 
 class RunRecordLookupError(RuntimeError):
     """Raised when a run record lookup fails due to backend availability/errors."""
+
+
+class AnalysisHistoryUnavailableError(RuntimeError):
+    """Raised when history cannot be read authoritatively from Cosmos."""
 
 
 def get_run_record_by_instance_id(
@@ -150,39 +148,54 @@ def _extract_submission_context(body: Any) -> dict[str, Any]:
 
 
 def _persist_submission_record(
-    storage: Any,
     record: dict,
     user_id: str,
     submission_id: str,
+    *,
+    reuse_existing: bool = False,
 ) -> None:
-    """Write a submission record to Cosmos (preferred) or blob storage."""
-    if _cosmos_mod.cosmos_available():
+    """Persist the authoritative run record before a submission is published."""
+    if not _cosmos_mod.cosmos_available():
+        raise RunRecordPersistenceError("Cosmos unavailable")
+    if reuse_existing:
         try:
-            from treesight.storage import cosmos
-
-            cosmos.upsert_item("runs", {"id": submission_id, **record})
+            stored_record = _cosmos_mod.read_item("runs", submission_id, user_id)
+        except Exception as exc:
+            raise RunRecordPersistenceError("Previous submission history could not be verified") from exc
+        if (
+            stored_record
+            and stored_record.get("id") == submission_id
+            and stored_record.get("user_id") == user_id
+            and str(stored_record.get("status", "")).lower() not in {"failed", "terminated", "canceled"}
+        ):
             return
-        except Exception:
-            logger.warning(
-                "Cosmos upsert failed for instance=%s user=%s, falling back to blob",
-                submission_id,
-                user_id,
-                exc_info=True,
-            )
-
+        raise RunRecordPersistenceError("Previous submission history is not reusable")
+    expected_record = {"id": submission_id, **record}
     try:
-        storage.upload_json(
-            PIPELINE_PAYLOADS_CONTAINER,
-            _analysis_submission_blob_name(user_id, submission_id),
-            record,
-        )
-    except Exception:
+        _cosmos_mod.upsert_item("runs", expected_record)
+    except Exception as exc:
         logger.warning(
-            "Unable to persist analysis history record instance=%s user=%s",
+            "Cosmos upsert failed for instance=%s user=%s",
             submission_id,
             user_id,
             exc_info=True,
         )
+        try:
+            stored_record = _cosmos_mod.read_item("runs", submission_id, user_id)
+        except Exception:
+            logger.warning(
+                "Unable to verify Cosmos run record after upsert failure instance=%s user=%s",
+                submission_id,
+                user_id,
+                exc_info=True,
+            )
+            raise RunRecordPersistenceError("Run record persistence could not be verified") from exc
+        if stored_record and all(
+            field in stored_record and stored_record[field] == value for field, value in expected_record.items()
+        ):
+            logger.info("Recovered ambiguous Cosmos upsert instance=%s user=%s", submission_id, user_id)
+            return
+        raise RunRecordPersistenceError("Run record persistence failed") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -207,16 +220,10 @@ def _parse_history_offset(raw_offset: str) -> int:
 
 
 def _fetch_submission_records(user_id: str, limit: int, *, offset: int = 0) -> list:
-    """Retrieve submission records from Cosmos using server-side pagination.
-
-    Returns an empty list when Cosmos is unavailable or the query fails.
-    Callers should not treat an empty result as definitive without checking
-    ``cosmos_available()`` independently if they need to distinguish
-    "no runs" from "Cosmos unavailable".
-    """
+    """Retrieve submission records from Cosmos using server-side pagination."""
     if not _cosmos_mod.cosmos_available():
         logger.warning("Cosmos unavailable — history query skipped for user=%s", user_id)
-        return []
+        raise AnalysisHistoryUnavailableError("Cosmos unavailable")
     try:
         from treesight.storage import cosmos
 
@@ -231,13 +238,13 @@ def _fetch_submission_records(user_id: str, limit: int, *, offset: int = 0) -> l
             ],
             partition_key=user_id,
         )
-    except Exception:
+    except Exception as exc:
         logger.warning(
             "Cosmos query failed for user=%s",
             user_id,
             exc_info=True,
         )
-        return []
+        raise AnalysisHistoryUnavailableError("History query failed") from exc
 
 
 def _fetch_portfolio_submission_records(
@@ -247,7 +254,11 @@ def _fetch_portfolio_submission_records(
 
     Falls back to user scope when no org is configured.
     """
-    org = get_user_org(user_id)
+    try:
+        org = get_user_org_strict(user_id)
+    except Exception as exc:
+        logger.warning("Org history lookup failed for user=%s", user_id, exc_info=True)
+        raise AnalysisHistoryUnavailableError("Org history lookup failed") from exc
     if not org:
         return _fetch_submission_records(user_id, limit, offset=offset), "user", None, 1
 
@@ -320,15 +331,18 @@ async def _build_analysis_history_response(
     offset = _parse_history_offset(req.params.get("offset", ""))
     scope = str(req.params.get("scope", "user")).strip().lower()
 
-    if scope == "org":
-        records, resolved_scope, org_id, member_count = _fetch_portfolio_submission_records(
-            user_id, limit, offset=offset
-        )
-    else:
-        records = _fetch_submission_records(user_id, limit, offset=offset)
-        resolved_scope = "user"
-        org_id = None
-        member_count = 1
+    try:
+        if scope == "org":
+            records, resolved_scope, org_id, member_count = _fetch_portfolio_submission_records(
+                user_id, limit, offset=offset
+            )
+        else:
+            records = _fetch_submission_records(user_id, limit, offset=offset)
+            resolved_scope = "user"
+            org_id = None
+            member_count = 1
+    except AnalysisHistoryUnavailableError:
+        return error_response(503, "Analysis history is temporarily unavailable. Please retry.", req=req)
 
     runs = await asyncio.gather(*(_build_analysis_history_entry(record, client) for record in records))
     active_run = next((run for run in runs if _history_run_is_active(run)), None)

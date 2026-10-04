@@ -29,12 +29,27 @@ logger = logging.getLogger(__name__)
 
 def _fetch_org_run_records(user_id: str, limit: int = 250) -> list[dict]:
     """Fetch and merge run records for all members of the user's org."""
+    from blueprints.pipeline.history import AnalysisHistoryUnavailableError
+    from treesight.security.orgs import get_user_org_strict
+
+    try:
+        org = get_user_org_strict(user_id)
+    except Exception as exc:
+        raise AnalysisHistoryUnavailableError("Org history lookup failed") from exc
+    return _fetch_org_run_records_for_org(user_id, org, limit)
+
+
+def _fetch_org_run_records_for_org(
+    user_id: str,
+    org: dict | None,
+    limit: int,
+) -> list[dict]:
+    """Fetch and merge run records using one already-resolved org snapshot."""
     from blueprints.pipeline.history import _fetch_submission_records  # type: ignore[reportPrivateUsage]
     from treesight.eudr.usage import org_member_ids
-    from treesight.security.orgs import get_user_org
 
     all_records: list[dict] = []
-    for member_id in org_member_ids(get_user_org(user_id), user_id):
+    for member_id in org_member_ids(org, user_id):
         all_records.extend(_fetch_submission_records(member_id, limit, offset=0))
     all_records.sort(key=lambda r: str(r.get("submitted_at", "")), reverse=True)
     return all_records[:limit]
@@ -139,12 +154,16 @@ def eudr_usage_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str)
     """GET /api/eudr/usage — org-scoped usage and billing summary for dashboard."""
     from treesight.eudr.usage import eudr_usage_payload
     from treesight.security.eudr_billing import get_eudr_billing_status
-    from treesight.security.orgs import get_user_org
+    from treesight.security.orgs import get_user_org_strict
 
-    records = _fetch_org_run_records(user_id, limit=400)
-    org = get_user_org(user_id)
+    try:
+        org = get_user_org_strict(user_id)
+        records = _fetch_org_run_records_for_org(user_id, org, limit=400)
+    except Exception:
+        logger.warning("Unable to resolve EUDR org history for user=%s", user_id, exc_info=True)
+        return error_response(503, "Analysis history is temporarily unavailable. Please retry.", req=req)
     org_id = org.get("org_id", "") if isinstance(org, dict) else ""
-    billing = get_eudr_billing_status(org_id, user_id=user_id)
+    billing = get_eudr_billing_status(org_id, user_id=user_id, org=org)
     payload = eudr_usage_payload(user_id, records, org=org, billing=billing)
     return func.HttpResponse(
         json.dumps(payload),
@@ -174,7 +193,7 @@ def eudr_billing_status(req: func.HttpRequest, *, auth_claims: dict, user_id: st
             headers=cors_headers(req),
         )
 
-    status = get_eudr_billing_status(org["org_id"], user_id=user_id)
+    status = get_eudr_billing_status(org["org_id"], user_id=user_id, org=org)
     return func.HttpResponse(
         json.dumps(status),
         status_code=200,
@@ -297,7 +316,12 @@ async def _eudr_summary_export(
     from treesight.storage.client import BlobStorageClient
 
     storage = BlobStorageClient()
-    run_records = _fetch_org_run_records(user_id, limit=20)
+    from blueprints.pipeline.history import AnalysisHistoryUnavailableError
+
+    try:
+        run_records = _fetch_org_run_records(user_id, limit=20)
+    except AnalysisHistoryUnavailableError:
+        return error_response(503, "Analysis history is temporarily unavailable. Please retry.", req=req)
 
     all_rows: list[dict[str, Any]] = []
     for record in run_records:

@@ -227,7 +227,7 @@ paths:
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "503":
-          description: Reservation or org lookup is temporarily unavailable
+          description: Reservation, org lookup, prior-ticket verification, or authoritative run-record persistence is temporarily unavailable; a history-store failure happens before ticket/KML publication
           content:
             application/json:
               schema:
@@ -901,6 +901,18 @@ paths:
                 type: object
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "502":
+          description: Ticket storage or SAS minting failed; reservation refund requires confirmed ticket revocation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Authoritative history or another required service is unavailable; no upload URL is returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /upload/status/{submission_id}:
     get:
@@ -1224,6 +1236,12 @@ paths:
                         type: string
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: Authoritative run history is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /eudr-assessment:
     post:

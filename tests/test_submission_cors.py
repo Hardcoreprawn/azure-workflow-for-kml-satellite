@@ -99,7 +99,12 @@ class TestAnalysisSubmitCORS:
 
         req = _make_request({"kml_content": "<kml>test</kml>"})
 
-        resp = await _submit_analysis_request(req, blob_prefix="analysis")
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.upsert_item"),
+            patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
+        ):
+            resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
         assert resp.status_code == 202
         assert "Access-Control-Allow-Origin" in resp.headers, (
@@ -282,8 +287,15 @@ class TestSubmissionResilience:
 
         req = _make_request({"kml_content": "<kml>test</kml>"})
 
-        resp = await _submit_analysis_request(req, blob_prefix="analysis")
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.upsert_item"),
+            patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
+            patch("blueprints.upload._revoke_upload_ticket") as revoke_ticket,
+        ):
+            resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
         assert resp.status_code == 502
         assert "Access-Control-Allow-Origin" in resp.headers
+        revoke_ticket.assert_called_once()
         mock_finalize.assert_called_once()

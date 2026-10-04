@@ -82,8 +82,13 @@ billing does not eliminate storage charges or prove total idle cost is zero.
 
 ## Pipeline and Verification
 
-Submission `202` means ticket/source persistence, not Durable admission. Event Grid
-starts API-managed runs using submission identity and an admission marker. Metadata
+Submission `202` means authoritative Cosmos history plus ticket/source persistence,
+not Durable admission. Unavailable history or unverifiable persistence returns
+`503` before publication; an empty history success is not a storage-outage fallback.
+On partial publication failure, confirmed ticket revocation precedes quota refund;
+uncertain revocation retains the reservation. Cross-service failed-history/refund
+compensation is best-effort and can require reconciliation during an outage.
+Event Grid starts API-managed runs using submission identity and an admission marker. Metadata
 is written during ingestion. Single-AOI acquisition/fulfilment runs directly;
 multi-AOI work fans out into `aoi_pipeline` children before enrichment and fan-in.
 

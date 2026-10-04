@@ -16,6 +16,7 @@ import logging
 import uuid
 
 import azure.functions as func
+from azure.core.exceptions import ResourceNotFoundError
 from azure.storage.blob import (
     BlobSasPermissions,
     ContentSettings,
@@ -49,34 +50,10 @@ bp = func.Blueprint()
 
 
 def _persist_submission_record(submission_id: str, record: dict, user_id: str) -> None:
-    """Write a submission record so the run appears in analysis history."""
-    if _cosmos_mod.cosmos_available():
-        try:
-            _cosmos_mod.upsert_item("runs", {"id": submission_id, **record})
-            return
-        except Exception:
-            logger.warning(
-                "Cosmos upsert failed for instance=%s user=%s",
-                submission_id,
-                user_id,
-                exc_info=True,
-            )
+    """Write the authoritative run record used by history and access checks."""
+    from blueprints.pipeline.history import _persist_submission_record as persist_record
 
-    # Blob fallback
-    from treesight.constants import PIPELINE_PAYLOADS_CONTAINER
-    from treesight.storage.client import BlobStorageClient
-
-    try:
-        storage = BlobStorageClient()
-        blob_name = f"analysis-submissions/{user_id}/{submission_id}.json"
-        storage.upload_json(PIPELINE_PAYLOADS_CONTAINER, blob_name, record)
-    except Exception:
-        logger.warning(
-            "Unable to persist submission record instance=%s user=%s",
-            submission_id,
-            user_id,
-            exc_info=True,
-        )
+    persist_record(record, user_id, submission_id)
 
 
 def _sanitise_submission_context(ctx: dict) -> dict:
@@ -293,6 +270,14 @@ def _write_ticket_and_mint_sas(
     return sas_url, None
 
 
+def _revoke_upload_ticket(submission_id: str) -> None:
+    ticket_blob = get_blob_service_client().get_blob_client(DEFAULT_INPUT_CONTAINER, f".tickets/{submission_id}.json")
+    try:
+        ticket_blob.delete_blob()
+    except ResourceNotFoundError:
+        return
+
+
 def _reserve_run_or_error(
     org_id: str,
     user_id: str,
@@ -466,7 +451,7 @@ def _build_run_record(
         kml_size_bytes=0,
         submission_prefix="analysis",
         provider_name=effective_provider,
-        status="submitted",
+        status="Pending",
         eudr_mode=is_eudr,
         **ctx,
     )
@@ -503,6 +488,7 @@ def upload_token(
         ensure_user_org_fn=_ensure_user_org,
         reserve_run_or_error_fn=_reserve_run_or_error,
         write_ticket_and_mint_sas_fn=_write_ticket_and_mint_sas,
+        revoke_ticket_fn=_revoke_upload_ticket,
         finalize_run_fn=_release_reservation,
         persist_submission_record_fn=_persist_submission_record,
         requested_parcel_count_fn=lambda b: _requested_parcel_count(b, default=1),
