@@ -2298,6 +2298,12 @@ class TestDiffCoverRequiredGate:
             "docs/example.py",
             ".venv/generated.py",
             ".tools/generated.py",
+            "build/lib/blueprints/generated.py",
+            "dist/unpacked/generated.py",
+            ".eggs/generated.py",
+            "sample.egg-info/generated.py",
+            ".python_packages/lib/site-packages/vendor.py",
+            ".func/vendor/generated.py",
         ]
         driver = (
             "import runpy\nimport sys\nfrom treesight.seed import value\n"
@@ -2441,7 +2447,20 @@ def test_coverage_includes_runtime_surfaces() -> None:
     with (ROOT / "pyproject.toml").open("rb") as configuration:
         coverage = tomllib.load(configuration)["tool"]["coverage"]
     assert coverage["report"]["include_namespace_packages"] is True
-    assert {"tests/*", "typings/*", "rust/*", "docs/*", ".venv/*", ".tools/*"}.issubset(coverage["run"]["omit"])
+    assert {
+        "tests/*",
+        "typings/*",
+        "rust/*",
+        "docs/*",
+        ".venv/*",
+        ".tools/*",
+        "build/*",
+        "dist/*",
+        ".eggs/*",
+        "**/*.egg-info/*",
+        ".python_packages/*",
+        ".func/*",
+    }.issubset(coverage["run"]["omit"])
 
 
 class TestInfracostCostGate:

@@ -80,6 +80,12 @@ omit = [
     "docs/*",
     ".venv/*",
     ".tools/*",
+    "build/*",
+    "dist/*",
+    ".eggs/*",
+    "**/*.egg-info/*",
+    ".python_packages/*",
+    ".func/*",
 ]
 
 [tool.coverage.report]
