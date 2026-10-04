@@ -64,7 +64,9 @@ camelCase output fields.
 A timed-out Cosmos write is accepted only when readback confirms every submitted
 record field; a pre-existing record with the same ID and owner is insufficient.
 Malformed KML values return `400` through normal reservation cleanup. Rejected
-new submissions refund quota and release admission; after a history or blob
+new submissions release admission; partial direct publication must confirm ticket
+revocation before refund, and uncertain revocation retains the reservation.
+After a history or blob
 publication failure, marking history `failed` is best-effort and logged if it
 cannot be verified. A continuing storage outage can leave an uncertain record
 requiring reconciliation; it does not authorize publishing the submission.

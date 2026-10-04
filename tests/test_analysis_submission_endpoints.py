@@ -109,6 +109,7 @@ class TestAnalysisSubmissionRoutes:
                 ),
             ),
             patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
+            patch("blueprints.upload._revoke_upload_ticket"),
         ):
             yield
 
@@ -238,6 +239,40 @@ class TestAnalysisSubmissionRoutes:
 
         assert resp.status_code == 502
         assert [call.args[1]["status"] for call in mock_upsert.call_args_list] == ["Pending", "failed"]
+
+    @pytest.mark.parametrize("revocation_fails", [False, True])
+    def test_failed_direct_publication_revokes_ticket_before_refund(self, revocation_fails):
+        from blueprints.pipeline.history import RunRecordPersistenceError
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        events = []
+
+        def revoke(_submission_id):
+            events.append("revocation")
+            if revocation_fails:
+                raise OSError("ticket storage unavailable")
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission._submission_plan_overrides", return_value={"tier": "free"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
+            patch("blueprints.pipeline.submission.finalize_run", side_effect=lambda **_kwargs: events.append("refund")),
+            patch("blueprints.pipeline.submission.release_admission_slot") as release,
+            patch(
+                "blueprints.pipeline.submission._persist_submission_record",
+                side_effect=[None, RunRecordPersistenceError("history unavailable")],
+            ),
+            patch("blueprints.upload._revoke_upload_ticket", side_effect=revoke),
+            patch("treesight.storage.client.BlobStorageClient") as storage_cls,
+        ):
+            storage_cls.return_value.upload_bytes.side_effect = OSError("KML publication failed")
+            response = asyncio.run(_submit_analysis_request(_make_req("/api/analysis/submit")))
+
+        assert response.status_code == 502
+        assert events == (["revocation"] if revocation_fails else ["revocation", "refund"])
+        storage_cls.return_value.upload_json.assert_called_once()
+        release.assert_called_once()
 
     def test_analysis_submit_rejects_unavailable_requested_org(self):
         from blueprints.pipeline.submission import _submit_analysis_request

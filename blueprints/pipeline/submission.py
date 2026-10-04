@@ -63,6 +63,20 @@ def _release_admission_on_failure(instance_id: str) -> None:
         logger.exception("Failed to release admission slot for instance=%s", instance_id)
 
 
+def _refund_submission_failure(response: func.HttpResponse, org_id: str, submission_id: str) -> None:
+    if response.status_code == 502:
+        from blueprints.upload import _revoke_upload_ticket
+
+        try:
+            _revoke_upload_ticket(submission_id)
+        except Exception:
+            logger.exception(
+                "Direct submission ticket revocation failed; reservation retained instance=%s", submission_id
+            )
+            return
+    _finalize_run_on_failure(org_id, submission_id)
+
+
 def _build_submission_history_record(
     blob_prefix: str,
     submission_id: str,
@@ -522,7 +536,7 @@ async def _submit_analysis_request(
         _mark_submission_history_failed(resp, None if prior_ticket else history_record, user_id, submission_id)
         # A verified upload ticket keeps its reservation alive for a same-ID retry.
         if reserved and org_id and not prior_ticket:
-            _finalize_run_on_failure(org_id, submission_id)
+            _refund_submission_failure(resp, org_id, submission_id)
         _release_admission_on_failure(submission_id)
 
     return resp
