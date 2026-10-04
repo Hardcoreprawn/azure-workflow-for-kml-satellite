@@ -3,8 +3,8 @@
 User-initiated writes are authorised at the application layer:
 - The Function App's managed identity / connection string provides infrastructure
   access to Cosmos DB.
-- ``assert_run_write_access`` enforces that the authenticated user is the run
-  owner or an org member before any mutation is applied.
+- ``assert_run_write_access`` requires current membership in the run's selected
+    originating organisation before mutation; creators have no membership bypass.
 - Notes and overrides are stored as fields on the Cosmos ``runs`` document
   (not in blob storage) so they can be queried and updated atomically.
 
@@ -51,7 +51,9 @@ def _check_standard_guards(
 ) -> tuple[str, dict | None, func.HttpResponse | None]:
     """Run auth + rate-limit + Cosmos-availability guards shared by both endpoints.
 
-    Returns ``(user_id, None)`` on success, or ``("", error_response)`` on failure.
+    Returns ``(user_id, active_org, None)`` on success, or
+    ``("", None, error_response)`` on failure. The snapshot is passed to the
+    originating-org membership guard before accessing or mutating run data.
     """
     try:
         _claims, user_id, active_org = check_auth(req, include_active_org=True)

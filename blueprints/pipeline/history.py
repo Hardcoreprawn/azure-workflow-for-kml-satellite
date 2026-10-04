@@ -255,9 +255,10 @@ def _fetch_submission_records(user_id: str | None, limit: int, *, offset: int = 
 def _fetch_portfolio_submission_records(
     user_id: str, limit: int, *, offset: int = 0, active_org: dict[str, Any] | None = None
 ) -> tuple[list[dict[str, Any]], str, str | None, int]:
-    """Retrieve history records for the signed-in user's org portfolio.
+    """Retrieve origin-owned portfolio history from an authenticated org snapshot.
 
-    Falls back to user scope when no org is configured.
+    Requires current membership; absent/mismatched org raises ValueError rather
+    than falling back to creator scope. Origin filtering precedes pagination.
     """
     org_id = active_org.get("org_id") if active_org else None
     assert_run_write_access({"org_id": org_id}, user_id, active_org=active_org)

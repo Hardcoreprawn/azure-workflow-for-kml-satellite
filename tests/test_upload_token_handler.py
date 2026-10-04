@@ -7,8 +7,10 @@ the constructor — no module-level patching required.
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock
 
 import azure.functions as func
+import pytest
 
 from treesight.submission.upload_token_handler import UploadTokenHandler
 
@@ -164,6 +166,37 @@ def test_returns_503_when_ensure_user_org_returns_none_org_and_no_error():
     assert payload is None
     assert err is not None
     assert err.status_code == 503
+
+
+@pytest.mark.parametrize(
+    "org",
+    [
+        {"org_id": "org-1"},
+        {"org_id": "org-1", "members": None},
+        {"org_id": "org-1", "members": []},
+        {"org_id": "org-1", "members": {"user_id": "user-1"}},
+        {"org_id": "org-1", "members": [{"user_id": "other-user"}]},
+    ],
+)
+def test_sas_denies_missing_membership_before_any_side_effect(org):
+    reserve = MagicMock()
+    persist = MagicMock()
+    ticket = MagicMock()
+    finalize = MagicMock()
+    handler = _make_handler(
+        ensure_user_org_fn=lambda *_args: (org, None),
+        reserve_run_or_error_fn=reserve,
+        persist_submission_record_fn=persist,
+        write_ticket_and_mint_sas_fn=ticket,
+        finalize_run_fn=finalize,
+    )
+    payload, error = handler.mint()
+    assert payload is None
+    assert error.status_code == 403
+    reserve.assert_not_called()
+    persist.assert_not_called()
+    ticket.assert_not_called()
+    finalize.assert_not_called()
 
 
 def test_org_id_is_captured_from_ensure_user_org():

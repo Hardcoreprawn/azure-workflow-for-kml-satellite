@@ -356,8 +356,17 @@ paths:
       summary: Persist a timelapse analysis result
       description: |
         Saves a completed analysis to blob storage for later retrieval.
+        Requires current membership in the selected originating org; creator
+        identity does not bypass membership, and unknown origin is denied.
         Maximum body size 128 KiB.
       tags: [analysis]
+      parameters:
+        - name: org_id
+          in: query
+          required: false
+          description: Authorized active organisation selector; defaults to the auth-selected originating org.
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -387,7 +396,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Caller does not own this run
+          description: Caller is not a current member of the selected originating org; creator identity grants no bypass.
           content:
             application/json:
               schema:
@@ -415,9 +424,16 @@ paths:
     get:
       operationId: timelapseAnalysisLoad
       summary: Load a previously saved timelapse analysis
+      description: Requires current membership in the selected originating org; creator identity grants no bypass and unknown origin is denied.
       tags: [analysis]
       parameters:
         - $ref: "#/components/parameters/instanceId"
+        - name: org_id
+          in: query
+          required: false
+          description: Authorized active organisation selector; defaults to the auth-selected originating org.
+          schema:
+            type: string
       responses:
         "200":
           description: Previously saved analysis
@@ -428,7 +444,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Caller does not own this run
+          description: Caller is not a current member of the selected originating org; creator identity grants no bypass.
           content:
             application/json:
               schema:
@@ -1246,7 +1262,6 @@ paths:
                     type: string
                   orgId:
                     type: string
-                    nullable: true
                     description: Selected originating organisation for both scopes; org-less history is denied.
                   memberCount:
                     type: integer
