@@ -176,6 +176,8 @@ def _resolve_active_org(
     req: func.HttpRequest,
     user_id: str,
     claims: dict[str, Any] | None = None,
+    *,
+    raise_on_error: bool = False,
 ) -> dict[str, Any] | None:
     """Resolve the caller's active organisation once at the auth boundary."""
     from treesight.security.auth import get_email_from_bearer_claims
@@ -186,6 +188,7 @@ def _resolve_active_org(
         user_id,
         requested_org_id=_requested_org_id(req),
         verified_email=verified_email,
+        raise_on_error=raise_on_error,
     )
 
 
@@ -234,7 +237,11 @@ def require_auth(fn):
         if claims:
             uid = get_user_id_from_bearer_claims(claims)
             logger.info("auth_path=bearer")
-            active_org = _resolve_active_org(req, uid, claims)
+            try:
+                active_org = _resolve_active_org(req, uid, claims, raise_on_error=accepts_active_org)
+            except Exception:
+                logger.exception("Active organisation lookup unavailable")
+                return error_response(503, "Organisation lookup unavailable", req=req)
             resp = _invoke_endpoint_with_auth(
                 fn,
                 req,
@@ -293,7 +300,7 @@ def check_auth(
         uid = get_user_id_from_bearer_claims(claims)
         logger.info("auth_path=bearer")
         if include_active_org:
-            return claims, uid, _resolve_active_org(req, uid, claims)
+            return claims, uid, _resolve_active_org(req, uid, claims, raise_on_error=True)
         return claims, uid
 
     if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):

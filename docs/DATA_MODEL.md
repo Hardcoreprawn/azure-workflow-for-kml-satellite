@@ -6,7 +6,7 @@ document does not approve a schema migration or certify live infrastructure.
 
 ## Domain and Identity
 
-An organisation is the intended ownership and pooled-accounting boundary. Users
+An organisation is the run ownership and pooled-accounting boundary. Users
 submit runs that process one or more AOIs derived from KML/KMZ features. Runs
 produce imagery and enrichment evidence; catalogue records support querying that
 evidence. Monitors and alerts support repeated observation. Subscription data and
@@ -17,7 +17,7 @@ replace the billing implementation with a new pricing policy.
 erDiagram
     ORGANISATION ||--o{ MEMBERSHIP : contains
     USER ||--o{ MEMBERSHIP : participates
-    ORGANISATION ||--o{ RUN : "intended owner"
+    ORGANISATION ||--o{ RUN : owns
     USER ||--o{ RUN : submits
     RUN ||--o{ AOI : processes
     AOI }o--|| FEATURE : derives_from
@@ -30,6 +30,14 @@ erDiagram
 
 The diagram expresses domain relationships, not physical foreign keys. A failed
 run may have no manifest; a constructed artifact path does not prove the blob exists.
+
+API-managed run records persist immutable originating `org_id` matching their
+ticket and quota reservation. `user_id` attributes the creator and remains the
+physical partition key; it does not grant permanent access. History, parcel
+review and saved-analysis access require current membership in the selected
+originating organisation, including for the creator. Missing legacy origin is
+denied/excluded, never inferred from creator names, default orgs or co-membership.
+No automatic backfill or partition-key migration is performed by this contract.
 
 | Entity | Identity and authoritative implementation |
 | --- | --- |
@@ -97,6 +105,10 @@ migration must preserve access, query behavior, historical records and accountin
 - Run-history writers and readers require authoritative Cosmos records, with
   no blob fallback. Failed writes or history queries return `503`; an empty
   successful result means the query found no records (#1531).
+- User history constrains both creator and originating org; portfolio history
+  constrains the originating org independently of current creator membership.
+  These predicates precede SQL ordering/pagination and response statistics.
+  Membership lookup failures are explicit errors, not empty successful history.
 - API-managed publication requires verified history persistence. Partial ticket
   writes must be revoked before refund; uncertain revocation retains the quota
   reservation. Failed-history and refund writes are best-effort across services,

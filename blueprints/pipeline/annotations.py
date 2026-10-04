@@ -3,8 +3,8 @@
 User-initiated writes are authorised at the application layer:
 - The Function App's managed identity / connection string provides infrastructure
   access to Cosmos DB.
-- ``assert_run_write_access`` enforces that the authenticated user is the run
-  owner or an org member before any mutation is applied.
+- ``assert_run_write_access`` requires current membership in the run's selected
+    originating organisation before mutation; creators have no membership bypass.
 - Notes and overrides are stored as fields on the Cosmos ``runs`` document
   (not in blob storage) so they can be queried and updated atomically.
 
@@ -48,32 +48,38 @@ def _sanitise_text(text: str, max_length: int) -> str:
 def _check_standard_guards(
     req: func.HttpRequest,
     feature: str,
-) -> tuple[str, func.HttpResponse | None]:
+) -> tuple[str, dict | None, func.HttpResponse | None]:
     """Run auth + rate-limit + Cosmos-availability guards shared by both endpoints.
 
-    Returns ``(user_id, None)`` on success, or ``("", error_response)`` on failure.
+    Returns ``(user_id, active_org, None)`` on success, or
+    ``("", None, error_response)`` on failure. The snapshot is passed to the
+    originating-org membership guard before accessing or mutating run data.
     """
     try:
-        _claims, user_id = check_auth(req)
+        _claims, user_id, active_org = check_auth(req, include_active_org=True)
     except ValueError as exc:
-        return "", error_response(401, str(exc), req=req)
+        return "", None, error_response(401, str(exc), req=req)
+    except Exception:
+        return "", None, error_response(503, "Organisation lookup unavailable", req=req)
 
     if user_id == "anonymous":
-        return "", error_response(401, "Authentication required", req=req)
+        return "", None, error_response(401, "Authentication required", req=req)
 
     if not get_pipeline_limiter().is_allowed(get_client_ip(req)):
-        return "", error_response(429, "Rate limit exceeded — try again later", req=req)
+        return "", None, error_response(429, "Rate limit exceeded — try again later", req=req)
 
     if not _cosmos_mod.cosmos_available():
-        return "", error_response(503, f"{feature} requires Cosmos DB — not configured", req=req)
+        return "", None, error_response(503, f"{feature} requires Cosmos DB — not configured", req=req)
 
-    return user_id, None
+    return user_id, active_org, None
 
 
 def _fetch_and_authorise(
     instance_id: str,
     user_id: str,
     req: func.HttpRequest,
+    *,
+    active_org: dict | None = None,
 ) -> tuple[dict | None, func.HttpResponse | None]:
     """Fetch the run record and assert write access.
 
@@ -83,7 +89,7 @@ def _fetch_and_authorise(
     if not run:
         return None, error_response(404, "Run not found", req=req)
     try:
-        assert_run_write_access(run, user_id)
+        assert_run_write_access(run, user_id, active_org=active_org)
     except ValueError as exc:
         return None, error_response(403, str(exc), req=req)
     return run, None
@@ -108,7 +114,7 @@ def analysis_notes(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_preflight(req)
 
-    user_id, err = _check_standard_guards(req, "Notes")
+    user_id, active_org, err = _check_standard_guards(req, "Notes")
     if err:
         return err
 
@@ -129,7 +135,7 @@ def analysis_notes(req: func.HttpRequest) -> func.HttpResponse:
 
     note_text = _sanitise_text(note_text, _MAX_NOTE_LENGTH)
 
-    run, err = _fetch_and_authorise(instance_id, user_id, req)
+    run, err = _fetch_and_authorise(instance_id, user_id, req, active_org=active_org)
     if err:
         return err
     assert run is not None  # _fetch_and_authorise guarantees this
@@ -181,7 +187,7 @@ def analysis_override(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_preflight(req)
 
-    user_id, err = _check_standard_guards(req, "Overrides")
+    user_id, active_org, err = _check_standard_guards(req, "Overrides")
     if err:
         return err
 
@@ -208,7 +214,7 @@ def analysis_override(req: func.HttpRequest) -> func.HttpResponse:
     if not revert:
         reason = _sanitise_text(reason, _MAX_OVERRIDE_REASON_LENGTH)
 
-    run, err = _fetch_and_authorise(instance_id, user_id, req)
+    run, err = _fetch_and_authorise(instance_id, user_id, req, active_org=active_org)
     if err:
         return err
     assert run is not None  # _fetch_and_authorise guarantees this
@@ -265,7 +271,7 @@ def analysis_review_list(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_preflight(req)
 
-    user_id, err = _check_standard_guards(req, "Reviews")
+    user_id, active_org, err = _check_standard_guards(req, "Reviews")
     if err:
         return err
 
@@ -273,7 +279,7 @@ def analysis_review_list(req: func.HttpRequest) -> func.HttpResponse:
     if not instance_id:
         return error_response(400, "instance_id is required", req=req)
 
-    run, err = _fetch_and_authorise(instance_id, user_id, req)
+    run, err = _fetch_and_authorise(instance_id, user_id, req, active_org=active_org)
     if err:
         return err
     assert run is not None  # _fetch_and_authorise guarantees this
@@ -479,7 +485,7 @@ def analysis_parcel_review(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_preflight(req)
 
-    user_id, err = _check_standard_guards(req, "Reviews")
+    user_id, active_org, err = _check_standard_guards(req, "Reviews")
     if err:
         return err
 
@@ -501,7 +507,7 @@ def analysis_parcel_review(req: func.HttpRequest) -> func.HttpResponse:
     if body_err:
         return body_err
 
-    run, err = _fetch_and_authorise(instance_id, user_id, req)
+    run, err = _fetch_and_authorise(instance_id, user_id, req, active_org=active_org)
     if err:
         return err
     assert run is not None  # _fetch_and_authorise guarantees this

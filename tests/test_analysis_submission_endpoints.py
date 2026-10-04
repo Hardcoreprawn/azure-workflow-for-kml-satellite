@@ -4,7 +4,7 @@ import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import azure.functions as func
 import pytest
@@ -14,6 +14,7 @@ from tests.conftest import TEST_LOCAL_ORIGIN, make_test_request
 from treesight.constants import DEFAULT_INPUT_CONTAINER
 
 PIPELINE_PKG = Path(__file__).resolve().parent.parent / "blueprints" / "pipeline"
+_ORG_123 = {"org_id": "org-123", "members": [{"user_id": "user-123"}]}
 
 
 def _make_req(
@@ -105,7 +106,9 @@ class TestAnalysisSubmissionRoutes:
             patch(
                 "treesight.storage.cosmos.read_item",
                 side_effect=lambda container, instance_id, user_id: (
-                    {"id": instance_id, "user_id": user_id, "status": "Pending"} if container == "runs" else None
+                    {"id": instance_id, "user_id": user_id, "org_id": "org-123", "status": "Pending"}
+                    if container == "runs"
+                    else None
                 ),
             ),
             patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
@@ -124,7 +127,7 @@ class TestAnalysisSubmissionRoutes:
 
         req = _make_req("/api/analysis/submit", {"kml_content": kml_content})
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("blueprints.pipeline.submission.finalize_run") as finalize_run,
@@ -146,7 +149,7 @@ class TestAnalysisSubmissionRoutes:
 
         req = _make_req("/api/analysis/submit")
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
@@ -174,7 +177,7 @@ class TestAnalysisSubmissionRoutes:
 
         req = _make_req("/api/analysis/submit")
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
@@ -206,7 +209,7 @@ class TestAnalysisSubmissionRoutes:
 
         req = _make_req("/api/analysis/submit")
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=True),
@@ -225,7 +228,7 @@ class TestAnalysisSubmissionRoutes:
 
         req = _make_req("/api/analysis/submit")
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("blueprints.pipeline.submission.finalize_run"),
@@ -253,7 +256,7 @@ class TestAnalysisSubmissionRoutes:
                 raise OSError("ticket storage unavailable")
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission._submission_plan_overrides", return_value={"tier": "free"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
@@ -311,7 +314,7 @@ class TestAnalysisSubmissionRoutes:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.cosmos.upsert_item") as mock_upsert,
@@ -367,7 +370,7 @@ class TestAnalysisSubmissionRoutes:
         req = _make_req("/api/analysis/submit")
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch(
@@ -411,7 +414,7 @@ class TestAnalysisSubmissionRoutes:
 
         mock_reserve = MagicMock(return_value={"reserved_parcels": 1})
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
             patch(
@@ -441,7 +444,7 @@ class TestAnalysisSubmissionRoutes:
 
         mock_reserve = MagicMock(return_value={"reserved_parcels": 1})
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
             patch(
@@ -576,7 +579,9 @@ class TestAnalysisSubmissionRoutes:
 
         req = _make_req("/api/analysis/history", body={}, method="GET")
         with patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=False):
-            resp = asyncio.run(_build_analysis_history_response(req, _HistoryDurableClient({}), "user-123"))
+            resp = asyncio.run(
+                _build_analysis_history_response(req, _HistoryDurableClient({}), "user-123", active_org=_ORG_123)
+            )
 
         assert resp.status_code == 503
         assert "temporarily unavailable" in json.loads(resp.get_body())["error"]
@@ -589,7 +594,9 @@ class TestAnalysisSubmissionRoutes:
             patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=True),
             patch("blueprints.pipeline.history._cosmos_mod.query_items", side_effect=RuntimeError("query failed")),
         ):
-            resp = asyncio.run(_build_analysis_history_response(req, _HistoryDurableClient({}), "user-123"))
+            resp = asyncio.run(
+                _build_analysis_history_response(req, _HistoryDurableClient({}), "user-123", active_org=_ORG_123)
+            )
 
         assert resp.status_code == 503
         assert "temporarily unavailable" in json.loads(resp.get_body())["error"]
@@ -605,6 +612,7 @@ class TestAnalysisSubmissionRoutes:
             "submission_id": "restored-run",
             "instance_id": "restored-run",
             "user_id": "user-123",
+            "org_id": "org-123",
             "submitted_at": "2026-04-01T12:00:00Z",
             "status": "submitted",
         }
@@ -620,7 +628,9 @@ class TestAnalysisSubmissionRoutes:
             with pytest.raises(RunRecordPersistenceError):
                 _persist_submission_record(record, "user-123", "restored-run")
             _persist_submission_record(record, "user-123", "restored-run")
-            resp = asyncio.run(_build_analysis_history_response(req, _HistoryDurableClient({}), "user-123"))
+            resp = asyncio.run(
+                _build_analysis_history_response(req, _HistoryDurableClient({}), "user-123", active_org=_ORG_123)
+            )
 
         upsert_item.assert_called_once_with("runs", {"id": "restored-run", **record})
         assert resp.status_code == 200
@@ -656,7 +666,7 @@ class TestAnalysisSubmissionRoutes:
         )
 
         with (
-            patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch(
@@ -666,6 +676,7 @@ class TestAnalysisSubmissionRoutes:
                         "submission_id": "done-run",
                         "instance_id": "done-run",
                         "user_id": "user-123",
+                        "org_id": "org-123",
                         "submitted_at": "2026-03-28T18:00:00+00:00",
                         "submission_prefix": "analysis",
                         "status": "submitted",
@@ -674,6 +685,7 @@ class TestAnalysisSubmissionRoutes:
                         "submission_id": "stale-run",
                         "instance_id": "stale-run",
                         "user_id": "user-123",
+                        "org_id": "org-123",
                         "submitted_at": "2026-03-28T19:07:20+00:00",
                         "submission_prefix": "analysis",
                         "status": "submitted",
@@ -681,7 +693,7 @@ class TestAnalysisSubmissionRoutes:
                 ],
             ),
         ):
-            resp = asyncio.run(_build_analysis_history_response(req, client, "user-123"))
+            resp = asyncio.run(_build_analysis_history_response(req, client, "user-123", active_org=_ORG_123))
 
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
@@ -740,6 +752,7 @@ class TestAnalysisSubmissionRoutes:
                 "submission_id": "active-run",
                 "instance_id": "active-run",
                 "user_id": "user-123",
+                "org_id": "org-123",
                 "submitted_at": "2026-03-28T19:07:20+00:00",
                 "kml_blob_name": "analysis/active-run.kml",
                 "kml_size_bytes": 240,
@@ -755,6 +768,7 @@ class TestAnalysisSubmissionRoutes:
                 "submission_id": "done-run",
                 "instance_id": "done-run",
                 "user_id": "user-123",
+                "org_id": "org-123",
                 "submitted_at": "2026-03-28T18:00:00+00:00",
                 "kml_blob_name": "analysis/done-run.kml",
                 "kml_size_bytes": 120,
@@ -768,12 +782,12 @@ class TestAnalysisSubmissionRoutes:
         ]
 
         with (
-            patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.query_items", return_value=cosmos_records),
         ):
-            resp = asyncio.run(_build_analysis_history_response(req, client, "user-123"))
+            resp = asyncio.run(_build_analysis_history_response(req, client, "user-123", active_org=_ORG_123))
 
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
@@ -824,38 +838,34 @@ class TestAnalysisSubmissionRoutes:
         )
 
         def _cosmos_query(_container: str, _query: str, parameters=None, partition_key=None):
-            if partition_key == "user-123":
-                return [
-                    {
-                        "submission_id": "member-a-run",
-                        "instance_id": "member-a-run",
-                        "user_id": "user-123",
-                        "submitted_at": "2026-04-10T11:00:00+00:00",
-                        "aoi_count": 5,
-                        "provider_name": "planetary_computer",
-                        "status": "submitted",
-                    }
-                ]
-            if partition_key == "member-b":
-                return [
-                    {
-                        "submission_id": "member-b-run",
-                        "instance_id": "member-b-run",
-                        "user_id": "member-b",
-                        "submitted_at": "2026-04-10T09:00:00+00:00",
-                        "aoi_count": 2,
-                        "provider_name": "planetary_computer",
-                        "status": "submitted",
-                    }
-                ]
-            return []
+            assert partition_key is None
+            assert "c.org_id = @org" in _query
+            return [
+                {
+                    "submission_id": "member-a-run",
+                    "instance_id": "member-a-run",
+                    "user_id": "user-123",
+                    "org_id": "org-1",
+                    "submitted_at": "2026-04-10T11:00:00+00:00",
+                    "aoi_count": 5,
+                    "status": "submitted",
+                },
+                {
+                    "submission_id": "member-b-run",
+                    "instance_id": "member-b-run",
+                    "user_id": "member-b",
+                    "org_id": "org-1",
+                    "submitted_at": "2026-04-10T09:00:00+00:00",
+                    "aoi_count": 2,
+                    "status": "submitted",
+                },
+            ]
 
         with (
-            patch("blueprints.pipeline.history.get_user_org_strict") as mock_get_org,
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.query_items", side_effect=_cosmos_query),
         ):
-            mock_get_org.return_value = {
+            active_org = {
                 "org_id": "org-1",
                 "members": [
                     {"user_id": "user-123", "role": "owner"},
@@ -863,7 +873,7 @@ class TestAnalysisSubmissionRoutes:
                 ],
             }
 
-            resp = asyncio.run(_build_analysis_history_response(req, client, "user-123"))
+            resp = asyncio.run(_build_analysis_history_response(req, client, "user-123", active_org=active_org))
 
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
@@ -881,7 +891,7 @@ class TestAnalysisSubmissionRoutes:
         }
 
     def test_analysis_history_org_scope_returns_503_when_membership_lookup_fails(self):
-        from blueprints.pipeline.history import _build_analysis_history_response
+        from blueprints.pipeline.diagnostics import _build_analysis_history_route_response
 
         req = _make_req(
             "/api/analysis/history",
@@ -890,14 +900,14 @@ class TestAnalysisSubmissionRoutes:
             params={"scope": "org"},
         )
         with (
-            patch("treesight.security.orgs.list_orgs_for_user_strict", side_effect=RuntimeError("Cosmos down")),
+            patch("blueprints.pipeline.diagnostics.check_auth", side_effect=RuntimeError("Cosmos down")),
             patch("treesight.storage.cosmos.query_items", return_value=[]),
         ):
-            resp = asyncio.run(_build_analysis_history_response(req, _HistoryDurableClient({}), "user-123"))
+            resp = asyncio.run(_build_analysis_history_route_response(req, _HistoryDurableClient({})))
 
         assert resp.status_code == 503
 
-    def test_analysis_history_org_scope_falls_back_to_user_scope_without_org(self):
+    def test_analysis_history_org_scope_denies_without_org(self):
         from blueprints.pipeline.history import _build_analysis_history_response
 
         client = _HistoryDurableClient({})
@@ -909,16 +919,12 @@ class TestAnalysisSubmissionRoutes:
         )
 
         with (
-            patch("blueprints.pipeline.history.get_user_org_strict", return_value=None),
-            patch("blueprints.pipeline.history._fetch_submission_records", return_value=[]),
+            patch("blueprints.pipeline.history._fetch_submission_records", return_value=[]) as fetch,
         ):
-            resp = asyncio.run(_build_analysis_history_response(req, client, "user-123"))
+            resp = asyncio.run(_build_analysis_history_response(req, client, "user-123", active_org=None))
 
-        assert resp.status_code == 200
-        data = json.loads(resp.get_body())
-        assert data["scope"] == "user"
-        assert data["orgId"] is None
-        assert data["memberCount"] == 1
+        assert resp.status_code == 403
+        fetch.assert_not_called()
 
     def test_prior_submission_id_skips_quota_consume_when_ticket_verified(self):
         """Fallback submit must not double-charge quota when upload-token already consumed it."""
@@ -935,7 +941,7 @@ class TestAnalysisSubmissionRoutes:
 
         mock_reserve = MagicMock()
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
             patch(
                 "blueprints.pipeline.submission._load_prior_ticket_for_user",
@@ -958,12 +964,13 @@ class TestAnalysisSubmissionRoutes:
         record = {
             "id": prior_id,
             "user_id": "user-123",
+            "org_id": "org-123",
             "status": "Completed",
             "parcel_reviews": {"0": {"notes": "original review"}},
         }
         req = _make_req("/api/analysis/submit", {"kml_content": "<kml></kml>", "prior_submission_id": prior_id})
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission._load_prior_ticket_for_user", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission._submission_plan_overrides", return_value={"tier": "free"}),
             patch("blueprints.pipeline.submission.finalize_run") as finalize_run,
@@ -990,7 +997,7 @@ class TestAnalysisSubmissionRoutes:
         record = {"id": prior_id, "user_id": "user-123", "status": status} if status else None
         req = _make_req("/api/analysis/submit", {"kml_content": "<kml></kml>", "prior_submission_id": prior_id})
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission._load_prior_ticket_for_user", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission._submission_plan_overrides", return_value={"tier": "free"}),
             patch("blueprints.pipeline.submission.reserve_run") as reserve_run,
@@ -1019,7 +1026,7 @@ class TestAnalysisSubmissionRoutes:
             },
         )
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.reserve_admission_slot") as reserve_admission,
             patch("blueprints.pipeline.submission.reserve_run") as reserve_run,
             patch("treesight.storage.client.BlobStorageClient") as storage_cls,
@@ -1059,7 +1066,7 @@ class TestAnalysisSubmissionRoutes:
         release_admission = MagicMock()
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
             patch("blueprints.pipeline.submission.reserve_run", reserve_run),
             patch("blueprints.pipeline.submission.finalize_run", finalize_run),
@@ -1101,7 +1108,7 @@ class TestAnalysisSubmissionRoutes:
 
         mock_reserve = MagicMock()
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
             patch(
                 "blueprints.pipeline.submission._load_prior_ticket_for_user",
@@ -1128,7 +1135,7 @@ class TestAnalysisSubmissionRoutes:
 
         mock_reserve = MagicMock(return_value=None)
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
             patch(
@@ -1156,7 +1163,7 @@ class TestAnalysisSubmissionRoutes:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch(
                 "blueprints.pipeline.submission._load_prior_ticket_for_user",
                 return_value={"org_id": "org-123", "parcel_count": 1},
@@ -1179,7 +1186,7 @@ class TestAnalysisSubmissionRoutes:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch(
                 "blueprints.pipeline.submission._load_prior_ticket_for_user",
                 return_value={"org_id": "org-123", "eudr_mode": True, "parcel_count": 1},
@@ -1203,7 +1210,7 @@ class TestAnalysisSubmissionRoutes:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch(
                 "blueprints.pipeline.submission._load_prior_ticket_for_user",
                 return_value={"org_id": "org-123", "parcel_count": 1},
@@ -1226,7 +1233,7 @@ class TestAnalysisSubmissionRoutes:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch(
                 "blueprints.pipeline.submission._load_prior_ticket_for_user",
                 return_value={"org_id": "org-123", "parcel_count": 3},
@@ -1252,7 +1259,7 @@ class TestAnalysisSubmissionRoutes:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch(
                 "blueprints.pipeline.submission._load_prior_ticket_for_user",
                 return_value={"org_id": "org-123", "eudr_mode": True, "parcel_count": 3},
@@ -1277,7 +1284,7 @@ class TestAnalysisSubmissionRoutes:
         mock_storage.upload_json.side_effect = RuntimeError("blob down")
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch(
                 "blueprints.pipeline.submission.reserve_run",
@@ -1307,7 +1314,7 @@ class TestAnalysisSubmissionRoutes:
         req = _make_req("/api/analysis/submit", {"kml_content": "<kml></kml>"})
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch(
                 "blueprints.pipeline.submission.reserve_run",
@@ -1328,7 +1335,7 @@ class TestAnalysisSubmissionRoutes:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.reserve_run") as mock_reserve,
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
@@ -1797,7 +1804,7 @@ class TestEudrModeSubmission:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
@@ -1820,7 +1827,7 @@ class TestEudrModeSubmission:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
@@ -1842,7 +1849,7 @@ class TestEudrModeSubmission:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
@@ -1868,7 +1875,7 @@ class TestEudrModeSubmission:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.cosmos.upsert_item") as mock_upsert,
@@ -1937,7 +1944,7 @@ class TestFetchSubmissionRecordsCosmos:
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.query_items", return_value=records) as mock_q,
         ):
-            result = _fetch_submission_records("u1", 8)
+            result = _fetch_submission_records("u1", 8, org_id="org-123")
 
         assert result == records
         mock_q.assert_called_once()
@@ -1952,7 +1959,7 @@ class TestFetchSubmissionRecordsCosmos:
             patch("treesight.storage.cosmos.cosmos_available", return_value=False),
             pytest.raises(AnalysisHistoryUnavailableError, match="Cosmos unavailable"),
         ):
-            _fetch_submission_records("u1", 8)
+            _fetch_submission_records("u1", 8, org_id="org-123")
 
     def test_raises_on_cosmos_query_error(self):
         from blueprints.pipeline.history import AnalysisHistoryUnavailableError, _fetch_submission_records
@@ -1962,14 +1969,14 @@ class TestFetchSubmissionRecordsCosmos:
             patch("treesight.storage.cosmos.query_items", side_effect=RuntimeError("boom")),
             pytest.raises(AnalysisHistoryUnavailableError, match="History query failed"),
         ):
-            _fetch_submission_records("u1", 8)
+            _fetch_submission_records("u1", 8, org_id="org-123")
 
 
 class TestPersistSubmissionRecordCosmos:
     def test_upserts_to_cosmos_when_available(self):
         from blueprints.pipeline.history import _persist_submission_record
 
-        record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
+        record = {"submission_id": "s1", "user_id": "u1", "org_id": "org-123", "status": "submitted"}
 
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
@@ -1985,7 +1992,7 @@ class TestPersistSubmissionRecordCosmos:
     def test_raises_when_cosmos_unavailable(self):
         from blueprints.pipeline.history import RunRecordPersistenceError, _persist_submission_record
 
-        record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
+        record = {"submission_id": "s1", "user_id": "u1", "org_id": "org-123", "status": "submitted"}
 
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=False),
@@ -1996,7 +2003,7 @@ class TestPersistSubmissionRecordCosmos:
     def test_raises_on_cosmos_write_error(self):
         from blueprints.pipeline.history import RunRecordPersistenceError, _persist_submission_record
 
-        record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
+        record = {"submission_id": "s1", "user_id": "u1", "org_id": "org-123", "status": "submitted"}
 
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
@@ -2008,7 +2015,7 @@ class TestPersistSubmissionRecordCosmos:
     def test_stale_record_does_not_confirm_failed_update(self):
         from blueprints.pipeline.history import RunRecordPersistenceError, _persist_submission_record
 
-        record = {"submission_id": "s1", "user_id": "u1", "status": "failed"}
+        record = {"submission_id": "s1", "user_id": "u1", "org_id": "org-123", "status": "failed"}
         stored_record = {"id": "s1", **record, "status": "Pending", "_etag": "old"}
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
@@ -2040,7 +2047,7 @@ class TestCoordinateSubmission:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
@@ -2064,7 +2071,7 @@ class TestCoordinateSubmission:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
@@ -2085,7 +2092,7 @@ class TestCoordinateSubmission:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.cosmos.upsert_item") as mock_upsert,
@@ -2104,7 +2111,7 @@ class TestCoordinateSubmission:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
         ):
@@ -2122,7 +2129,7 @@ class TestCoordinateSubmission:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient"),
@@ -2139,9 +2146,414 @@ class TestCoordinateSubmission:
 _FAKE_RUN = {
     "id": "inst-abc",
     "user_id": "user-123",
+    "org_id": "org-123",
     "submitted_at": "2026-04-01T10:00:00Z",
     "status": "completed",
 }
+
+
+@pytest.mark.parametrize("requesting_user", ["bob", "alice"])
+def test_run_access_uses_originating_org(requesting_user: str) -> None:
+    from blueprints.pipeline.history import assert_run_write_access
+
+    record = {"id": "org-b-run", "user_id": "alice", "org_id": "org-b"}
+    other_org = {"org_id": "org-a", "members": [{"user_id": "alice"}, {"user_id": "bob"}]}
+    with (
+        patch("treesight.security.orgs.resolve_active_org_for_user", side_effect=AssertionError("must not resolve")),
+        pytest.raises(ValueError, match="permission"),
+    ):
+        assert_run_write_access(record, requesting_user, active_org=other_org)
+
+
+def test_direct_submission_persists_selected_originating_org() -> None:
+    from blueprints.pipeline.submission import _submit_analysis_request
+
+    org = {"org_id": "org-b", "members": [{"user_id": "alice"}]}
+    with (
+        patch("blueprints.pipeline.submission.check_auth", return_value=({}, "alice", org)),
+        patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
+        patch("blueprints.pipeline.submission.reserve_run"),
+        patch("blueprints.pipeline.submission._submission_plan_overrides", return_value={"tier": "free"}),
+        patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+        patch("treesight.storage.cosmos.upsert_item") as upsert,
+        patch("treesight.storage.client.BlobStorageClient") as storage,
+    ):
+        response = asyncio.run(_submit_analysis_request(_make_req("/api/analysis/submit")))
+    assert response.status_code == 202
+    assert upsert.call_args.args[1]["org_id"] == "org-b"
+    assert storage.return_value.upload_json.call_args.args[2]["org_id"] == "org-b"
+
+
+def test_portfolio_query_filters_origin_before_pagination() -> None:
+    from blueprints.pipeline.history import _fetch_portfolio_submission_records
+
+    org = {"org_id": "org-b", "members": [{"user_id": "carol"}]}
+    record = {"user_id": "former-member", "org_id": "org-b"}
+    with (
+        patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+        patch("treesight.storage.cosmos.query_items", return_value=[record]) as query,
+    ):
+        result = _fetch_portfolio_submission_records("carol", 2, offset=3, active_org=org)
+    assert result == ([record], "org", "org-b", 1)
+    sql = query.call_args.args[1]
+    assert sql.index("c.org_id = @org") < sql.index("OFFSET")
+    assert "c.user_id" not in sql
+    assert {parameter["name"]: parameter["value"] for parameter in query.call_args.kwargs["parameters"]} == {
+        "@org": "org-b",
+        "@off": 3,
+        "@lim": 2,
+    }
+
+
+def test_upload_record_persists_originating_org() -> None:
+    from blueprints.upload import _build_run_record
+
+    record = _build_run_record(
+        submission_id="run-b",
+        user_id="alice",
+        org_id="org-b",
+        blob_name="analysis/run-b.kml",
+        effective_provider="planetary_computer",
+        submission_context={},
+        is_eudr=True,
+    )
+    assert record["org_id"] == "org-b"
+
+
+@pytest.mark.parametrize("requesting_user", ["alice", "carol"])
+def test_originating_org_current_members_can_access_run(requesting_user: str) -> None:
+    from blueprints.pipeline.history import assert_run_write_access
+
+    record = {"user_id": "alice", "org_id": "org-b"}
+    org = {"org_id": "org-b", "members": [{"user_id": "alice"}, {"user_id": "carol"}]}
+    with patch(
+        "treesight.security.orgs.resolve_active_org_for_user", side_effect=AssertionError("must not re-resolve org")
+    ):
+        assert_run_write_access(record, requesting_user, active_org=org)
+
+
+@pytest.mark.parametrize("org_id", [None, "", 42])
+def test_unknown_run_org_denies_even_creator(org_id):
+    from blueprints.pipeline.history import assert_run_write_access
+
+    with pytest.raises(ValueError, match="permission"):
+        assert_run_write_access(
+            {"user_id": "alice", "org_id": org_id},
+            "alice",
+            active_org={"org_id": "org-b", "members": [{"user_id": "alice"}]},
+        )
+
+
+def test_removed_creator_cannot_access_originating_org_run() -> None:
+    from blueprints.pipeline.history import assert_run_write_access
+
+    with pytest.raises(ValueError, match="permission"):
+        assert_run_write_access(
+            {"user_id": "alice", "org_id": "org-b"},
+            "alice",
+            active_org={"org_id": "org-b", "members": [{"user_id": "carol"}]},
+        )
+
+
+@pytest.mark.parametrize("requesting_user", ["bob", "alice"])
+def test_authenticated_review_rejects_other_origin_without_mutation(requesting_user):
+    from blueprints.pipeline.annotations import analysis_notes
+
+    user_id = f"tenant:{requesting_user}"
+    org = {"org_id": "org-a", "members": [{"user_id": "tenant:alice"}, {"user_id": "tenant:bob"}]}
+    req = _make_req("/api/analysis/notes", {"instance_id": "b-run", "parcel_key": "0", "note": "private"})
+    with (
+        patch("blueprints._helpers._resolve_bearer_claims", return_value={"tid": "tenant", "oid": requesting_user}),
+        patch("blueprints._helpers._resolve_active_org", return_value=org) as resolve,
+        patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+        patch("blueprints.pipeline.annotations.get_pipeline_limiter") as limiter,
+        patch(
+            "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+            return_value={
+                "user_id": "tenant:alice",
+                "org_id": "org-b",
+                "id": "b-run",
+            },
+        ),
+        patch("blueprints.pipeline.annotations.cosmos.upsert_item") as upsert,
+    ):
+        limiter.return_value.is_allowed.return_value = True
+        response = analysis_notes(req)
+    assert response.status_code == 403
+    upsert.assert_not_called()
+    resolve.assert_called_once_with(req, user_id, {"tid": "tenant", "oid": requesting_user}, raise_on_error=True)
+
+
+def test_current_org_peer_can_review_after_creator_leaves():
+    from blueprints.pipeline.annotations import analysis_notes
+
+    org = {"org_id": "org-b", "members": [{"user_id": "tenant:carol"}]}
+    record = {"id": "b-run", "user_id": "tenant:alice", "org_id": "org-b"}
+    with (
+        patch("blueprints._helpers._resolve_bearer_claims", return_value={"tid": "tenant", "oid": "carol"}),
+        patch("blueprints._helpers._resolve_active_org", return_value=org),
+        patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+        patch("blueprints.pipeline.annotations.get_pipeline_limiter") as limiter,
+        patch("blueprints.pipeline.annotations.get_run_record_by_instance_id", return_value=record),
+        patch("blueprints.pipeline.annotations.cosmos.upsert_item") as upsert,
+    ):
+        limiter.return_value.is_allowed.return_value = True
+        response = analysis_notes(
+            _make_req(
+                "/api/analysis/notes",
+                {
+                    "instance_id": "b-run",
+                    "parcel_key": "0",
+                    "note": "Org B evidence review",
+                },
+            )
+        )
+    assert response.status_code == 200
+    saved = upsert.call_args.args[1]
+    assert saved["org_id"] == "org-b"
+    assert saved["user_id"] == "tenant:alice"
+
+
+def test_new_run_requires_nonempty_origin_before_write():
+    from blueprints.pipeline.history import RunRecordPersistenceError, _persist_submission_record
+
+    with (
+        patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+        patch("treesight.storage.cosmos.upsert_item") as upsert,
+        pytest.raises(RunRecordPersistenceError, match="Originating organisation"),
+    ):
+        _persist_submission_record({"user_id": "alice"}, "alice", "new-run")
+    upsert.assert_not_called()
+
+
+@pytest.mark.parametrize("operation", ["save", "load"])
+def test_saved_analysis_membership_outage_stops_before_evidence_lookup(operation):
+    from blueprints.pipeline.enrichment import timelapse_analysis_load, timelapse_analysis_save
+
+    req = _make_req("/api/timelapse-analysis-save", {"instance_id": "b-run", "analysis": {"summary": "private"}})
+    with (
+        patch("blueprints._helpers._resolve_bearer_claims", return_value={"tid": "tenant", "oid": "bob"}),
+        patch("blueprints._helpers._resolve_active_org", side_effect=OSError("membership unavailable")),
+        patch("blueprints.pipeline.enrichment.get_run_record_by_instance_id") as lookup,
+        patch("treesight.storage.client.BlobStorageClient") as storage,
+    ):
+        response = timelapse_analysis_save(req) if operation == "save" else timelapse_analysis_load(req)
+    assert response.status_code == 503
+    lookup.assert_not_called()
+    storage.assert_not_called()
+
+
+def test_eudr_history_uses_selected_origin_with_departed_creator():
+    from blueprints.eudr import _fetch_org_run_records
+
+    org = {"org_id": "org-b", "members": [{"user_id": "carol"}]}
+    record = {"user_id": "departed-alice", "org_id": "org-b"}
+    with (
+        patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+        patch("treesight.storage.cosmos.query_items", return_value=[record]) as query,
+        patch("treesight.security.orgs.resolve_active_org_for_user", side_effect=AssertionError("must not resolve")),
+    ):
+        assert _fetch_org_run_records("carol", active_org=org) == [record]
+    assert "c.org_id = @org" in query.call_args.args[1]
+    assert query.call_args.kwargs["partition_key"] is None
+
+
+def test_eudr_usage_denies_missing_membership_before_records():
+    from blueprints.eudr import eudr_usage_status
+
+    with (
+        patch("blueprints._helpers._resolve_bearer_claims", return_value={"tid": "tenant", "oid": "bob"}),
+        patch("blueprints._helpers._resolve_active_org", return_value={"org_id": "org-b", "members": []}),
+        patch("treesight.storage.cosmos.query_items") as query,
+    ):
+        response = eudr_usage_status(_make_req("/api/eudr/usage", method="GET"))
+    assert response.status_code == 403
+    query.assert_not_called()
+
+
+@pytest.mark.parametrize("operation", ["review_get", "review_post", "analysis_save", "analysis_load"])
+def test_review_and_saved_evidence_endpoints_deny_cross_org(operation):
+    from blueprints.pipeline.annotations import analysis_parcel_review, analysis_review_list
+    from blueprints.pipeline.enrichment import timelapse_analysis_load, timelapse_analysis_save
+
+    handlers = {
+        "review_get": analysis_review_list,
+        "review_post": analysis_parcel_review,
+        "analysis_save": timelapse_analysis_save,
+        "analysis_load": timelapse_analysis_load,
+    }
+    record = {"id": "b-run", "user_id": "tenant:alice", "org_id": "org-b"}
+    req = func.HttpRequest(
+        url="/api/analysis/b-run/review",
+        method="POST" if operation.endswith(("post", "save")) else "GET",
+        body=json.dumps(
+            {"instance_id": "b-run", "analysis": {"summary": "private"}, "note": "Review note", "override": False}
+        ).encode(),
+        route_params={"instance_id": "b-run", "aoi_index": "0"},
+        headers={"Authorization": "Bearer fake-token", "Content-Type": "application/json"},
+        params={},
+    )
+    with (
+        patch("blueprints._helpers._resolve_bearer_claims", return_value={"tid": "tenant", "oid": "bob"}),
+        patch(
+            "blueprints._helpers._resolve_active_org",
+            return_value={"org_id": "org-a", "members": [{"user_id": "tenant:bob"}]},
+        ),
+        patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+        patch("blueprints.pipeline.annotations.get_pipeline_limiter") as limiter,
+        patch("blueprints.pipeline.annotations.get_run_record_by_instance_id", return_value=record),
+        patch("blueprints.pipeline.enrichment.get_run_record_by_instance_id", return_value=record),
+        patch("treesight.storage.cosmos.upsert_item") as upsert,
+        patch("treesight.storage.client.BlobStorageClient") as storage,
+    ):
+        limiter.return_value.is_allowed.return_value = True
+        response = handlers[operation](req)
+    assert response.status_code == 403
+    upsert.assert_not_called()
+    storage.assert_not_called()
+
+
+def test_review_membership_outage_stops_before_run_lookup():
+    from blueprints.pipeline.annotations import analysis_notes
+
+    with (
+        patch("blueprints._helpers._resolve_bearer_claims", return_value={"tid": "tenant", "oid": "bob"}),
+        patch("blueprints._helpers._resolve_active_org", side_effect=OSError("membership unavailable")),
+        patch("blueprints.pipeline.annotations.get_run_record_by_instance_id") as lookup,
+        patch("blueprints.pipeline.annotations.cosmos.upsert_item") as upsert,
+    ):
+        response = analysis_notes(_make_req("/api/analysis/notes", {"instance_id": "b-run", "note": "private"}))
+    assert response.status_code == 503
+    lookup.assert_not_called()
+    upsert.assert_not_called()
+
+
+def test_history_never_serializes_other_or_unknown_org_records():
+    from blueprints.pipeline.history import _build_analysis_history_response
+
+    client = MagicMock()
+    client.get_status = AsyncMock(return_value=None)
+    records = [
+        {"instance_id": "a-run", "org_id": "org-123", "user_id": "user-123", "status": "Pending"},
+        {"instance_id": "private-b-run", "org_id": "org-b", "user_id": "user-123", "status": "Pending"},
+        {"instance_id": "unknown-origin", "user_id": "user-123", "status": "Pending"},
+    ]
+    with (
+        patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+        patch("treesight.storage.cosmos.query_items", return_value=records) as query,
+    ):
+        response = asyncio.run(
+            _build_analysis_history_response(
+                _make_req("/api/analysis/history", method="GET"),
+                client,
+                "user-123",
+                active_org=_ORG_123,
+            )
+        )
+    assert response.status_code == 200
+    payload = json.loads(response.get_body())
+    assert [run["instanceId"] for run in payload["runs"]] == ["a-run"]
+    assert "private-b-run" not in response.get_body().decode()
+    assert "unknown-origin" not in response.get_body().decode()
+    assert payload["stats"]["totalRuns"] == 1
+    assert "c.org_id = @org AND c.user_id = @uid" in query.call_args.args[1]
+    client.get_status.assert_awaited_once()
+
+
+@pytest.mark.parametrize("stored_org", [None, "org-b"])
+def test_retry_cannot_rebind_missing_or_other_origin(stored_org):
+    from blueprints.pipeline.history import RunRecordPersistenceError, _persist_submission_record
+
+    record = {"id": "run", "user_id": "alice", "org_id": stored_org, "status": "Pending"}
+    with (
+        patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+        patch("treesight.storage.cosmos.read_item", return_value=record),
+        patch("treesight.storage.cosmos.upsert_item") as upsert,
+        pytest.raises(RunRecordPersistenceError, match="not reusable"),
+    ):
+        _persist_submission_record({"user_id": "alice", "org_id": "org-a"}, "alice", "run", reuse_existing=True)
+    upsert.assert_not_called()
+    assert record["org_id"] == stored_org
+
+
+def test_cross_org_retry_denial_preserves_running_admission_slot():
+    from blueprints.pipeline.submission import _submit_analysis_request
+
+    prior_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    slots = {prior_id}
+    with (
+        patch(
+            "blueprints.pipeline.submission.check_auth",
+            return_value=(
+                {},
+                "alice",
+                {
+                    "org_id": "org-a",
+                    "members": [{"user_id": "alice"}],
+                },
+            ),
+        ),
+        patch("blueprints.pipeline.submission._load_prior_ticket_for_user", return_value={"org_id": "org-b"}),
+        patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True) as admission,
+        patch("blueprints.pipeline.submission.release_admission_slot", side_effect=slots.discard),
+        patch("blueprints.pipeline.submission.reserve_run") as quota,
+    ):
+        response = asyncio.run(
+            _submit_analysis_request(
+                _make_req(
+                    "/api/analysis/submit",
+                    {
+                        "kml_content": "<kml/>",
+                        "prior_submission_id": prior_id,
+                    },
+                )
+            )
+        )
+    assert response.status_code == 403
+    assert slots == {prior_id}
+    admission.assert_not_called()
+    quota.assert_not_called()
+
+
+def test_summary_export_denies_before_storage_or_durable_access():
+    from blueprints.eudr import _eudr_summary_export
+
+    client = MagicMock()
+    with (
+        patch("blueprints._helpers._resolve_bearer_claims", return_value={"tid": "tenant", "oid": "bob"}),
+        patch("blueprints._helpers._resolve_active_org", return_value=None),
+        patch("treesight.storage.client.BlobStorageClient", side_effect=RuntimeError("storage unavailable")) as storage,
+    ):
+        response = asyncio.run(_eudr_summary_export(_make_req("/api/eudr/summary-export", method="GET"), client))
+    assert response.status_code == 403
+    storage.assert_not_called()
+    client.get_status.assert_not_called()
+
+
+def test_removed_creator_submission_denied_before_admission():
+    from blueprints.pipeline.submission import _submit_analysis_request
+
+    with (
+        patch(
+            "blueprints.pipeline.submission.check_auth",
+            return_value=(
+                {},
+                "alice",
+                {
+                    "org_id": "org-b",
+                    "members": [{"user_id": "carol"}],
+                },
+            ),
+        ),
+        patch("blueprints.pipeline.submission.reserve_admission_slot") as admission,
+        patch("blueprints.pipeline.submission.reserve_run") as quota,
+        patch("treesight.storage.client.BlobStorageClient") as storage,
+    ):
+        response = asyncio.run(_submit_analysis_request(_make_req("/api/analysis/submit")))
+    assert response.status_code == 403
+    admission.assert_not_called()
+    quota.assert_not_called()
+    storage.assert_not_called()
 
 
 class TestRunRecordLookup:
@@ -2219,25 +2631,20 @@ class TestRunRecordLookup:
         from blueprints.pipeline.history import assert_run_write_access
 
         # Should not raise
-        assert_run_write_access(_FAKE_RUN, "user-123")
+        assert_run_write_access(_FAKE_RUN, "user-123", active_org=_ORG_123)
 
     def test_assert_run_write_access_permits_org_member(self):
         from blueprints.pipeline.history import assert_run_write_access
 
-        org = {"members": [{"user_id": "user-123"}, {"user_id": "user-456"}]}
-        with patch("blueprints.pipeline.history.get_user_org", return_value=org):
-            # user-456 is an org member; user-123 is the owner → access granted
-            assert_run_write_access(_FAKE_RUN, "user-456")
+        org = {"org_id": "org-123", "members": [{"user_id": "user-123"}, {"user_id": "user-456"}]}
+        assert_run_write_access(_FAKE_RUN, "user-456", active_org=org)
 
     def test_assert_run_write_access_denies_stranger(self):
         import pytest
 
         from blueprints.pipeline.history import assert_run_write_access
 
-        with (
-            patch("blueprints.pipeline.history.get_user_org", return_value=None),
-            pytest.raises(ValueError, match="permission"),
-        ):
+        with pytest.raises(ValueError, match="permission"):
             assert_run_write_access(_FAKE_RUN, "stranger-999")
 
 
@@ -2278,7 +2685,7 @@ class TestAnnotationEndpoints:
             {"instance_id": "inst-abc", "parcel_key": "0", "note": "This parcel looks fine."},
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
             patch(
@@ -2308,7 +2715,7 @@ class TestAnnotationEndpoints:
             {"instance_id": "inst-abc", "parcel_key": "0", "note": "sneaky"},
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "stranger-999")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "stranger-999", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
             patch(
@@ -2332,7 +2739,7 @@ class TestAnnotationEndpoints:
             {"instance_id": "inst-abc", "parcel_key": "0", "reason": "too short"},
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
         ):
@@ -2350,7 +2757,7 @@ class TestAnnotationEndpoints:
             {"instance_id": "inst-abc", "parcel_key": "1", "reason": reason},
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
             patch(
@@ -2388,7 +2795,7 @@ class TestAnnotationEndpoints:
             {"instance_id": "inst-abc", "parcel_key": "0", "revert": True},
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
             patch(
@@ -2475,7 +2882,7 @@ class TestParcelReviewEndpoints:
             body=b'{"override": false, "note": "valid note text here"}',
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
         ):
@@ -2488,7 +2895,7 @@ class TestParcelReviewEndpoints:
 
         req = self._make_post_req("inst-abc", 0, {"override": False, "note": ""})
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
         ):
@@ -2500,7 +2907,7 @@ class TestParcelReviewEndpoints:
 
         req = self._make_post_req("inst-abc", 0, {"override": True, "note": "too short"})
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
         ):
@@ -2516,7 +2923,7 @@ class TestParcelReviewEndpoints:
         with (
             patch(
                 "blueprints.pipeline.annotations.check_auth",
-                return_value=({}, "reviewer@org.com"),
+                return_value=({}, "reviewer@org.com", _ORG_123),
             ),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
@@ -2546,7 +2953,7 @@ class TestParcelReviewEndpoints:
         note = "Short note."
         req = self._make_post_req("inst-abc", 0, {"override": False, "note": note})
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
             patch(
@@ -2587,7 +2994,7 @@ class TestParcelReviewEndpoints:
 
         req = self._make_get_req("inst-abc")
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
             patch(
@@ -2617,7 +3024,7 @@ class TestParcelReviewEndpoints:
         }
         req = self._make_get_req("inst-abc")
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
             patch(
@@ -2639,7 +3046,7 @@ class TestParcelReviewEndpoints:
         from unittest.mock import patch
 
         return (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
         )
@@ -2653,7 +3060,7 @@ class TestParcelReviewEndpoints:
         run = dict(_FAKE_RUN)
 
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
             patch(
@@ -2711,7 +3118,7 @@ class TestParcelReviewEndpoints:
         }
 
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
             patch(
@@ -2747,7 +3154,7 @@ class TestParcelReviewEndpoints:
             {"override": "true", "note": "Seasonal clearing confirmed by farmer visit."},
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
         ):
@@ -2765,7 +3172,7 @@ class TestParcelReviewEndpoints:
             {"override": "false", "note": "Some note here."},
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
         ):
@@ -2783,7 +3190,7 @@ class TestParcelReviewEndpoints:
             {"override": 1, "note": "Seasonal clearing confirmed."},
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
         ):
@@ -2801,7 +3208,7 @@ class TestParcelReviewEndpoints:
             {"override": None, "note": "Some note here."},
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
         ):
@@ -2822,7 +3229,7 @@ class TestParcelReviewEndpoints:
             body=b'{"override": false, "note": "valid note text here"}',
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
         ):
@@ -2840,7 +3247,7 @@ class TestParcelReviewEndpoints:
             {"override": False, "note": "Some note about this parcel."},
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
             patch(
@@ -2864,7 +3271,7 @@ class TestParcelReviewEndpoints:
             {"override": False, "note": "Note for a non-existent parcel."},
         )
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
             patch(
@@ -2910,7 +3317,7 @@ class TestParcelReviewEndpoints:
         }
         req = self._make_get_req("inst-abc")
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
             patch(
@@ -2970,7 +3377,7 @@ class TestTimelapseAnalysisSave:
         req = self._make_req({"instance_id": "inst-abc", "analysis": {"result": "ok"}})
         with patch(
             "blueprints.pipeline.enrichment.check_auth",
-            return_value=({}, "anonymous"),
+            return_value=({}, "anonymous", _ORG_123),
         ):
             resp = timelapse_analysis_save(req)
 
@@ -2987,7 +3394,7 @@ class TestTimelapseAnalysisSave:
             origin=TEST_LOCAL_ORIGIN,
             auth_header="Bearer fake-token",
         )
-        with patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")):
+        with patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123", _ORG_123)):
             resp = timelapse_analysis_save(req)
 
         assert resp.status_code == 400
@@ -2998,7 +3405,7 @@ class TestTimelapseAnalysisSave:
 
         req = self._make_req({"instance_id": "inst-abc", "analysis": {"result": "ok"}})
         with (
-            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 side_effect=RunRecordLookupError("Cosmos unavailable"),
@@ -3013,7 +3420,7 @@ class TestTimelapseAnalysisSave:
 
         req = self._make_req({"instance_id": "inst-abc", "analysis": {"result": "ok"}})
         with (
-            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 return_value=None,
@@ -3029,7 +3436,7 @@ class TestTimelapseAnalysisSave:
         req = self._make_req({"instance_id": "inst-abc", "analysis": {"result": "ok"}})
         run = {"id": "inst-abc", "user_id": "owner-999", "org_id": "org-1"}
         with (
-            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "attacker-456")),
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "attacker-456", _ORG_123)),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 return_value=run,
@@ -3050,7 +3457,7 @@ class TestTimelapseAnalysisSave:
         run = {"id": "inst-abc", "user_id": "user-123", "org_id": "org-1"}
         mock_storage = MagicMock()
         with (
-            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 return_value=run,
@@ -3106,7 +3513,7 @@ class TestTimelapseAnalysisLoad:
         from blueprints.pipeline.enrichment import timelapse_analysis_load
 
         req = self._make_req("inst-abc")
-        with patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "anonymous")):
+        with patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "anonymous", _ORG_123)):
             resp = timelapse_analysis_load(req)
 
         assert resp.status_code == 401
@@ -3117,7 +3524,7 @@ class TestTimelapseAnalysisLoad:
 
         req = self._make_req("inst-abc")
         with (
-            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 side_effect=RunRecordLookupError("Run lookup failed"),
@@ -3132,7 +3539,7 @@ class TestTimelapseAnalysisLoad:
 
         req = self._make_req("inst-abc")
         with (
-            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 return_value=None,
@@ -3148,7 +3555,7 @@ class TestTimelapseAnalysisLoad:
         req = self._make_req("inst-abc")
         run = {"id": "inst-abc", "user_id": "owner-999", "org_id": "org-1"}
         with (
-            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "attacker-456")),
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "attacker-456", _ORG_123)),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 return_value=run,
@@ -3170,7 +3577,7 @@ class TestTimelapseAnalysisLoad:
         mock_storage = MagicMock()
         mock_storage.download_json.return_value = {"summary": "ok"}
         with (
-            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123", _ORG_123)),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 return_value=run,

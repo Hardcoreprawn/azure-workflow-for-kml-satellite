@@ -15,7 +15,6 @@ import azure.functions as func
 
 from blueprints._helpers import cors_headers, error_response
 from treesight.constants import DEFAULT_PROVIDER
-from treesight.security.orgs import get_user_org, get_user_org_strict
 from treesight.storage import cosmos as _cosmos_mod
 
 from ._status import (
@@ -33,7 +32,6 @@ logger = logging.getLogger(__name__)
 _DEFAULT_HISTORY_LIMIT = 8
 _MAX_HISTORY_LIMIT = 20
 _MAX_HISTORY_OFFSET = 200
-_MAX_ORG_MEMBERS = 50
 
 
 # ---------------------------------------------------------------------------
@@ -93,26 +91,22 @@ def get_run_record_by_instance_id(
         return None
 
 
-def assert_run_write_access(run_record: dict[str, Any], requesting_user_id: str) -> None:
+def assert_run_write_access(
+    run_record: dict[str, Any], requesting_user_id: str, *, active_org: dict[str, Any] | None = None
+) -> None:
     """Raise ValueError if *requesting_user_id* is not permitted to write to *run_record*.
 
-    Permits the run owner directly, or any member of the owner's org.
+    Requires current membership in the run's immutable originating organisation.
     Raises ValueError with a generic message to avoid leaking run ownership
     to unauthorised callers.
     """
-    owner_id = str(run_record.get("user_id", "")).strip()
-    if owner_id and owner_id == requesting_user_id:
-        return
-
-    try:
-        org = get_user_org(requesting_user_id)
-        if org and isinstance(org, dict):
-            member_ids = {str(m.get("user_id", "")).strip() for m in org.get("members", []) if isinstance(m, dict)}
-            if owner_id in member_ids:
-                return
-    except Exception:
-        logger.warning("Org lookup failed for user=%s", requesting_user_id, exc_info=True)
-
+    org_id = run_record.get("org_id")
+    if isinstance(org_id, str) and org_id.strip() and active_org and active_org.get("org_id") == org_id:
+        members = active_org.get("members", [])
+        if isinstance(members, list) and any(
+            isinstance(member, dict) and member.get("user_id") == requesting_user_id for member in members
+        ):
+            return
     raise ValueError("Run not found or you do not have permission to modify it")
 
 
@@ -157,6 +151,8 @@ def _persist_submission_record(
     """Persist the authoritative run record before a submission is published."""
     if not _cosmos_mod.cosmos_available():
         raise RunRecordPersistenceError("Cosmos unavailable")
+    if not isinstance(record.get("org_id"), str) or not record["org_id"].strip():
+        raise RunRecordPersistenceError("Originating organisation required")
     if reuse_existing:
         try:
             stored_record = _cosmos_mod.read_item("runs", submission_id, user_id)
@@ -166,6 +162,7 @@ def _persist_submission_record(
             stored_record
             and stored_record.get("id") == submission_id
             and stored_record.get("user_id") == user_id
+            and stored_record.get("org_id") == record["org_id"]
             and str(stored_record.get("status", "")).lower() not in {"failed", "terminated", "canceled"}
         ):
             return
@@ -219,23 +216,31 @@ def _parse_history_offset(raw_offset: str) -> int:
     return max(0, min(offset, _MAX_HISTORY_OFFSET))
 
 
-def _fetch_submission_records(user_id: str, limit: int, *, offset: int = 0) -> list:
+def _fetch_submission_records(user_id: str | None, limit: int, *, offset: int = 0, org_id: str | None = None) -> list:
     """Retrieve submission records from Cosmos using server-side pagination."""
     if not _cosmos_mod.cosmos_available():
         logger.warning("Cosmos unavailable — history query skipped for user=%s", user_id)
         raise AnalysisHistoryUnavailableError("Cosmos unavailable")
+    if not org_id:
+        raise AnalysisHistoryUnavailableError("Originating organisation required")
     try:
         from treesight.storage import cosmos
 
-        query = "SELECT * FROM c WHERE c.user_id = @uid ORDER BY c.submitted_at DESC OFFSET @off LIMIT @lim"
+        query = "SELECT * FROM c WHERE c.org_id = @org"
+        if user_id:
+            query += " AND c.user_id = @uid"
+        query += " ORDER BY c.submitted_at DESC OFFSET @off LIMIT @lim"
+        parameters = [
+            {"name": "@org", "value": org_id},
+            {"name": "@off", "value": offset},
+            {"name": "@lim", "value": limit},
+        ]
+        if user_id:
+            parameters.append({"name": "@uid", "value": user_id})
         return cosmos.query_items(
             "runs",
             query,
-            parameters=[
-                {"name": "@uid", "value": user_id},
-                {"name": "@off", "value": offset},
-                {"name": "@lim", "value": limit},
-            ],
+            parameters=parameters,
             partition_key=user_id,
         )
     except Exception as exc:
@@ -248,50 +253,19 @@ def _fetch_submission_records(user_id: str, limit: int, *, offset: int = 0) -> l
 
 
 def _fetch_portfolio_submission_records(
-    user_id: str, limit: int, *, offset: int = 0
+    user_id: str, limit: int, *, offset: int = 0, active_org: dict[str, Any] | None = None
 ) -> tuple[list[dict[str, Any]], str, str | None, int]:
-    """Retrieve history records for the signed-in user's org portfolio.
+    """Retrieve origin-owned portfolio history from an authenticated org snapshot.
 
-    Falls back to user scope when no org is configured.
+    Requires current membership; absent/mismatched org raises ValueError rather
+    than falling back to creator scope. Origin filtering precedes pagination.
     """
-    try:
-        org = get_user_org_strict(user_id)
-    except Exception as exc:
-        logger.warning("Org history lookup failed for user=%s", user_id, exc_info=True)
-        raise AnalysisHistoryUnavailableError("Org history lookup failed") from exc
-    if not org:
-        return _fetch_submission_records(user_id, limit, offset=offset), "user", None, 1
-
-    members = org.get("members", []) if isinstance(org, dict) else []
-    member_ids = [
-        str(member.get("user_id", "")).strip()
-        for member in members
-        if isinstance(member, dict) and str(member.get("user_id", "")).strip()
-    ]
-    if user_id not in member_ids:
-        member_ids.append(user_id)
-
-    # Deduplicate while preserving order.
-    seen: set[str] = set()
-    deduped_member_ids: list[str] = []
-    for member_id in member_ids:
-        if member_id in seen:
-            continue
-        seen.add(member_id)
-        deduped_member_ids.append(member_id)
-
-    fetch_limit = max(1, min(_MAX_HISTORY_LIMIT + _MAX_HISTORY_OFFSET, limit + offset + 20))
-    records: list[dict[str, Any]] = []
-    for member_id in deduped_member_ids[:_MAX_ORG_MEMBERS]:
-        records.extend(_fetch_submission_records(member_id, fetch_limit, offset=0))
-
-    records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
-    return (
-        records[offset : offset + limit],
-        "org",
-        str(org.get("org_id", "")) or None,
-        len(deduped_member_ids),
-    )
+    org_id = active_org.get("org_id") if active_org else None
+    assert_run_write_access({"org_id": org_id}, user_id, active_org=active_org)
+    members = active_org.get("members", []) if active_org else []
+    member_ids = {member["user_id"] for member in members if isinstance(member, dict) and member.get("user_id")}
+    records = _fetch_submission_records(None, limit, offset=offset, org_id=org_id)
+    return records, "org", org_id, len(member_ids)
 
 
 def _history_stats_from_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -325,6 +299,8 @@ async def _build_analysis_history_response(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
     user_id: str,
+    *,
+    active_org: dict[str, Any] | None = None,
 ) -> func.HttpResponse:
     """Build signed-in history response for user or org portfolio scope."""
     limit = _parse_history_limit(req.params.get("limit", ""))
@@ -332,18 +308,22 @@ async def _build_analysis_history_response(
     scope = str(req.params.get("scope", "user")).strip().lower()
 
     try:
+        org_id = active_org.get("org_id") if active_org else None
+        assert_run_write_access({"org_id": org_id}, user_id, active_org=active_org)
         if scope == "org":
             records, resolved_scope, org_id, member_count = _fetch_portfolio_submission_records(
-                user_id, limit, offset=offset
+                user_id, limit, offset=offset, active_org=active_org
             )
         else:
-            records = _fetch_submission_records(user_id, limit, offset=offset)
+            records = _fetch_submission_records(user_id, limit, offset=offset, org_id=org_id)
             resolved_scope = "user"
-            org_id = None
             member_count = 1
+    except ValueError as exc:
+        return error_response(403, str(exc), req=req)
     except AnalysisHistoryUnavailableError:
         return error_response(503, "Analysis history is temporarily unavailable. Please retry.", req=req)
 
+    records = [record for record in records if record.get("org_id") == org_id]
     runs = await asyncio.gather(*(_build_analysis_history_entry(record, client) for record in records))
     active_run = next((run for run in runs if _history_run_is_active(run)), None)
 

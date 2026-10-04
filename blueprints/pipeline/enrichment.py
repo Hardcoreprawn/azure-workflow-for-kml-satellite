@@ -97,9 +97,11 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
         return cors_preflight(req)
 
     try:
-        _claims, user_id = check_auth(req)
+        _claims, user_id, active_org = check_auth(req, include_active_org=True)
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
+    except Exception:
+        return error_response(503, "Organisation lookup unavailable", req=req)
 
     if user_id == "anonymous":
         return error_response(401, "Authentication required", req=req)
@@ -130,7 +132,7 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
     if not run_record:
         return error_response(404, "Run not found", req=req)
     try:
-        assert_run_write_access(run_record, user_id)
+        assert_run_write_access(run_record, user_id, active_org=active_org)
     except ValueError as exc:
         return error_response(403, str(exc), req=req)
 
@@ -159,9 +161,11 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
 def timelapse_analysis_load(req: func.HttpRequest) -> func.HttpResponse:
     """GET /api/timelapse-analysis-load/{instance_id} — retrieve saved analysis."""
     try:
-        _claims, user_id = check_auth(req)
+        _claims, user_id, active_org = check_auth(req, include_active_org=True)
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
+    except Exception:
+        return error_response(503, "Organisation lookup unavailable", req=req)
 
     if user_id == "anonymous":
         return error_response(401, "Authentication required", req=req)
@@ -178,7 +182,7 @@ def timelapse_analysis_load(req: func.HttpRequest) -> func.HttpResponse:
     if not run_record:
         return error_response(404, "Run not found", req=req)
     try:
-        assert_run_write_access(run_record, user_id)
+        assert_run_write_access(run_record, user_id, active_org=active_org)
     except ValueError as exc:
         return error_response(403, str(exc), req=req)
 

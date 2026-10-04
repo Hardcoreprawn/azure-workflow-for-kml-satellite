@@ -98,9 +98,11 @@ async def _build_analysis_history_route_response(
         return cors_preflight(req)
 
     try:
-        _claims, user_id = check_auth(req)
+        _claims, user_id, active_org = check_auth(req, include_active_org=True)
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
+    except Exception:
+        return error_response(503, "Organisation lookup unavailable", req=req)
 
     if user_id == "anonymous":
         return error_response(401, "Authentication required for analysis history", req=req)
@@ -108,4 +110,4 @@ async def _build_analysis_history_route_response(
     if not get_pipeline_limiter().is_allowed(get_client_ip(req)):
         return error_response(429, "Rate limit exceeded — try again later", req=req)
 
-    return await _build_analysis_history_response(req, client, user_id)
+    return await _build_analysis_history_response(req, client, user_id, active_org=active_org)

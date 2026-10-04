@@ -133,6 +133,53 @@ def test_owning_docs_describe_authoritative_history() -> None:
     assert "revocation" in architecture
 
 
+def test_openapi_binds_history_and_reviews_to_originating_org() -> None:
+    spec = yaml.safe_load(OPENAPI.read_text())
+    history = spec["paths"]["/analysis/history"]["get"]
+    assert "403" in history["responses"]
+    assert "503" in history["responses"]
+    assert any(parameter["name"] == "org_id" for parameter in history["parameters"])
+    for path, method in (
+        ("/analysis/{instance_id}/review", "get"),
+        ("/analysis/{instance_id}/parcel/{aoi_index}/review", "post"),
+    ):
+        description = spec["paths"][path][method]["description"]
+        assert "originating org" in description
+        assert "Creator identity never bypasses membership" in description
+        assert "run owner or an org member" not in description
+    for path, method in (
+        ("/analysis/notes", "post"),
+        ("/analysis/override", "post"),
+        ("/analysis/{instance_id}/review", "get"),
+        ("/analysis/{instance_id}/parcel/{aoi_index}/review", "post"),
+    ):
+        response = spec["paths"][path][method]["responses"]["503"]
+        assert response["content"]["application/json"]["schema"]["$ref"] == "#/components/schemas/Error"
+
+
+@pytest.mark.parametrize(
+    "path,method",
+    [
+        ("/timelapse-analysis-save", "post"),
+        ("/timelapse-analysis-load/{instance_id}", "get"),
+    ],
+)
+def test_saved_analysis_openapi_uses_origin_membership_and_selector(path, method):
+    operation = yaml.safe_load(OPENAPI.read_text())["paths"][path][method]
+    assert "originating org" in operation["responses"]["403"]["description"]
+    selector = next(parameter for parameter in operation["parameters"] if parameter.get("name") == "org_id")
+    assert selector["in"] == "query"
+    assert selector["schema"]["type"] == "string"
+
+
+def test_successful_history_org_id_is_not_nullable():
+    schema = yaml.safe_load(OPENAPI.read_text())["paths"]["/analysis/history"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]["properties"]["orgId"]
+    assert schema["type"] == "string"
+    assert not schema.get("nullable", False)
+
+
 def test_no_legacy_module_names_in_docs():
     """Docs must not reference the old kml_satellite package name."""
     legacy_pattern = re.compile(r"kml_satellite/")

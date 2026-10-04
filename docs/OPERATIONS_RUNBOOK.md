@@ -256,6 +256,11 @@ Reference: .github/workflows/deploy.yml and infra/tofu/README.md.
 
 - Bearer-only is the only supported mode (JWT in `Authorization: Bearer …`).
 - Required app settings: `CIAM_AUTHORITY`, `CIAM_TENANT_ID`, `CIAM_API_AUDIENCE`.
+- API-managed history/review/saved-analysis access requires the run's persisted
+   originating org to match the selected auth snapshot and contain the current
+   caller as a member. Creators have no membership bypass. Unknown legacy origin
+   records are inaccessible through these paths; do not infer/backfill custody
+   without an explicitly reviewed data policy. Membership outages fail closed.
 
 Anonymous operator endpoints:
 

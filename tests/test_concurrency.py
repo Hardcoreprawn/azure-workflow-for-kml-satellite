@@ -315,7 +315,10 @@ class TestSubmissionConcurrencyCap:
         req = _make_submit_req()
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission.check_auth",
+                return_value=({}, "user-123", {"org_id": "org-123", "members": [{"user_id": "user-123"}]}),
+            ),
             patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=False),
         ):
             resp = asyncio.run(_submit_analysis_request(req))
@@ -332,7 +335,10 @@ class TestSubmissionConcurrencyCap:
         req = _make_submit_req()
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission.check_auth",
+                return_value=({}, "user-123", {"org_id": "org-123", "members": [{"user_id": "user-123"}]}),
+            ),
             patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
             patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
             patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
@@ -351,7 +357,10 @@ class TestSubmissionConcurrencyCap:
         req = _make_submit_req()
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission.check_auth",
+                return_value=({}, "user-123", {"org_id": "org-123", "members": [{"user_id": "user-123"}]}),
+            ),
             patch(
                 "blueprints.pipeline.submission.reserve_admission_slot",
                 side_effect=AdmissionUnavailableError("cosmos unavailable"),
@@ -372,7 +381,10 @@ class TestSubmissionConcurrencyCap:
         )
 
         with (
-            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission.check_auth",
+                return_value=({}, "user-123", {"org_id": "org-123", "members": [{"user_id": "user-123"}]}),
+            ),
             patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
             patch("blueprints.pipeline.submission._resolve_quota", return_value=(False, "", quota_resp)),
             patch("blueprints.pipeline.submission.release_admission_slot") as release_mock,

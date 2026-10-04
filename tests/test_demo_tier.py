@@ -247,7 +247,10 @@ class TestSignedInLowCostSubmission:
     @patch("blueprints.pipeline.submission.get_effective_subscription")
     @patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"})
     @patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1})
-    @patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123"))
+    @patch(
+        "blueprints.pipeline.submission.check_auth",
+        return_value=({}, "user-123", {"org_id": "org-123", "members": [{"user_id": "user-123"}]}),
+    )
     @patch("treesight.storage.client.BlobStorageClient")
     @pytest.mark.anyio
     async def test_free_tier_submission_returns_202(
@@ -286,7 +289,10 @@ class TestSignedInLowCostSubmission:
     @patch("blueprints.pipeline.submission.get_effective_subscription")
     @patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"})
     @patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1})
-    @patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123"))
+    @patch(
+        "blueprints.pipeline.submission.check_auth",
+        return_value=({}, "user-123", {"org_id": "org-123", "members": [{"user_id": "user-123"}]}),
+    )
     @patch("treesight.storage.client.BlobStorageClient")
     @pytest.mark.anyio
     async def test_demo_emulation_uses_demo_controls(

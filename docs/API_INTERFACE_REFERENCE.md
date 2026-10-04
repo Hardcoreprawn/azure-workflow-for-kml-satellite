@@ -74,6 +74,16 @@ requiring reconciliation; it does not authorize publishing the submission.
 Analysis history and EUDR usage/export queries return `503` when the authoritative
 Cosmos history store is unavailable or the query fails. An empty `200` history
 means the query completed successfully and found no runs.
+Run records and tickets preserve the authenticated reservation's originating
+`org_id`. History (`scope=user` and `scope=org`), parcel reviews/notes and saved
+analysis require the same selected org and current caller membership. Use the
+existing `org_id` query selector to choose an authorized workspace. Creator
+identity grants no bypass after leaving an org; unknown-origin records are
+excluded/denied. Origin filtering occurs before pagination, output and statistics.
+Absent/mismatched membership returns `403`; membership storage failures return
+`503`. Same-ID ticket reuse also verifies stored origin, never rebinds it to the
+caller's current default org, and preserves reviews. Raw export sharing and
+anonymous diagnostics remain separate restrictions (#1210/#1527).
 Upload-token records remain `Pending` until KML is submitted; a retryable follow-up
 failure preserves the ticket's quota reservation for a same-ID retry.
 Upload-token history is persisted before creating its ticket or SAS URL. A SAS

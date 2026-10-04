@@ -29,6 +29,7 @@ class RunRecord(BaseModel):
     submission_id: str
     instance_id: str
     user_id: str
+    org_id: str | None = None
     submitted_at: str
     kml_blob_name: str = ""
     kml_size_bytes: int = 0
