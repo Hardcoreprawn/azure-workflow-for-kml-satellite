@@ -374,6 +374,17 @@ placeholders are not substitutes.
 The required `Pipeline e2e (local gate)` also runs after lint and test for
 every supported CI event. Website-only changes do not bypass this gate.
 
+`make test` writes workspace-wide runtime Python coverage to `coverage.xml`,
+including `treesight`, HTTP blueprints, operational scripts and root entrypoints.
+Namespace discovery includes never-imported runtime modules as uncovered.
+Tests, typings, native sources and docs are omitted, as are `.venv`, `.tools`,
+packaging artifacts (`build`, `dist`, `.eggs`, `*.egg-info`) and Azure Functions
+artifacts (`.python_packages`, `.func`). These explicit `pyproject.toml` exclusions
+do not omit runtime Python to improve
+the result. The PR `make coverage-check` gate still requires 80% coverage of
+changed executable lines, not 80% aggregate coverage. Readiness regressions prove
+uncovered changes fail and covered changes pass across each runtime surface.
+
 Missing, skipped or approval-blocked checks are not green. Inspect the
 workflow run and approval state, then validate the current PR revision
 after resolving the blocker. Do not weaken branch protection or the PR
