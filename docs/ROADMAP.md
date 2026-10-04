@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. The project board holds the live queue.
 
-Last updated: 2026-08-14
+Last updated: 2026-10-04
 
 ---
 
@@ -108,13 +108,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #1561 | Coordinated PyJWT 2.15.0 and urllib3 2.8.0 security lock update (closes #1560). Full local checks, fresh vulnerability scan, and required CI passed; merged as b34a243. Deployment remains paused. |
 | #1462 | Representative serial/parallel local E2E harness, synthetic weather/provider isolation, and stricter result/artifact validation (closes #1453, #1488, #1491). Fresh isolated matrices passed 3/3 in both modes; broader recovery, capacity, and scientific validation remain separate. |
 | #1505 | Reviewed pre-customer infrastructure exceptions through 2026-12-12 and removed obsolete IaC and patched MessagePack CVE waivers (closes #1500). Full CI and fresh local base-image scan/smoke passed; image publication and deployment are not implied. |
 | #1507 | Bounded worker-loss handling with actionable failed child status, original-cause preservation, correlated Durable/worker evidence, and no blanket AOI replay (closes #1498). Real isolated control and worker-kill evidence passed the selected terminal-failure policy; immutable replay recovery remains #1506. |
 | #1458 | Disposable pipeline gate with durable result proof, explicit Azurite isolation, restricted local CORS, and retryable relay delivery (closes #1457). Clean entrypoint restored; bootstrap invalidates stale proof and cleanup reports failures. |
 | #1451 | Backlog priority normalization (closes #939): priority-only API writes preserve unrelated labels, reject blank input, and verify concurrent update outcomes before dispatch. |
-| #1449 | Canonical v2 AOI enrichment manifests, direct/split SAFE_MODE parity, and nested EUDR export evidence (closes #1448 and #1450). Merge review added unavailable-weather regressions for both multi-AOI paths. |
-| #1473 | SHA-pinned CodeQL action patch update to v4.37.8; local checks and all required CI checks passed. |
 | —  | **MILESTONE (2026-07-12): Domain-model overhaul begun — Organisation as the single ownership root** (epic #1057; model documented in `docs/DATA_MODEL.md` — conceptual/logical/physical + D1–D5 divergences). **D3 landed**: per-user quota retired, org pool is the sole accounting unit. D1 (auth active-org resolution) in progress; D2 (org-partitioning) sequenced after D1. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 
