@@ -394,6 +394,37 @@ def test_persist_failure_returns_service_error_and_releases_reservation():
     assert finalize_calls[0]["status"] == "failed"
 
 
+def test_committed_token_history_failure_is_marked_failed_after_refund():
+    records = []
+    tickets = []
+    refunds = []
+
+    def persist_then_recover(_submission_id, record, _user_id):
+        records.append(record)
+        if len(records) == 1:
+            raise TimeoutError("committed write could not be verified")
+
+    handler = _make_handler(
+        persist_submission_record_fn=persist_then_recover,
+        build_run_record_fn=lambda **kwargs: {
+            "submission_id": kwargs["submission_id"],
+            "user_id": kwargs["user_id"],
+            "status": "Pending",
+        },
+        write_ticket_and_mint_sas_fn=lambda *_args, **_kwargs: tickets.append("published"),
+        finalize_run_fn=lambda **kwargs: refunds.append(kwargs),
+    )
+    payload, error = handler.mint()
+
+    assert payload is None
+    assert error.status_code == 503
+    assert [record["status"] for record in records] == ["Pending", "failed"]
+    assert len(refunds) == 1
+    assert refunds[0]["status"] == "failed"
+    assert refunds[0]["instance_id"] == records[-1]["submission_id"]
+    assert tickets == []
+
+
 def test_persist_failure_still_returns_service_error_when_refund_fails():
     def _fail_persist(*_args):
         raise RuntimeError("Cosmos unavailable")

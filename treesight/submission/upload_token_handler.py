@@ -192,15 +192,18 @@ class UploadTokenHandler:
                     self._org_id,
                     self._submission_id,
                 )
-            try:
-                self._persist_submission_record(
-                    self._submission_id, self._submission_record | {"status": "failed"}, self.user_id
-                )
-            except Exception:
-                logger.exception("Unable to mark failed upload history instance=%s", self._submission_id)
+            self._mark_history_failed()
             return error
         self._sas_url = sas_url
         return None
+
+    def _mark_history_failed(self) -> None:
+        try:
+            self._persist_submission_record(
+                self._submission_id, self._submission_record | {"status": "failed"}, self.user_id
+            )
+        except Exception:
+            logger.exception("Unable to mark failed upload history instance=%s", self._submission_id)
 
     def _step_persist_record(self) -> Any | None:
         record = self._build_run_record(
@@ -228,6 +231,7 @@ class UploadTokenHandler:
                     self._org_id,
                     self._submission_id,
                 )
+            self._mark_history_failed()
             return self._error_response(
                 503,
                 "Unable to save submission history right now. Please retry.",

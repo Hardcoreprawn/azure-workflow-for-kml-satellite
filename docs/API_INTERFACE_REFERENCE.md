@@ -77,7 +77,9 @@ failure preserves the ticket's quota reservation for a same-ID retry.
 Upload-token history is persisted before creating its ticket or SAS URL. A SAS
 failure revokes any partially written ticket before refunding quota; if revocation
 cannot be confirmed, the reservation is retained and the failure is logged for
-reconciliation. Same-ID fallbacks verify and reuse existing authoritative history
+reconciliation. A rejected token-history write also attempts to mark any committed
+record `failed` after refund, without creating a ticket; this compensation remains
+best-effort if storage is unavailable. Same-ID fallbacks verify and reuse existing authoritative history
 without replacing metadata or reviews. Missing, failed or canceled history cannot
 authorize a fallback publication.
 
