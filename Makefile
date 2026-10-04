@@ -79,7 +79,7 @@ test-fast: ## Run targeted tests for the edit loop (requires TESTS="path-or-node
 	uv run python scripts/run_targeted_tests.py
 
 test: ## Run unit tests (canonical — CI runs this exact command)
-	uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml
+	uv run pytest tests/ -v -m "not integration" --tb=short --cov=. --cov-report=xml
 
 BASE_REF ?= main
 

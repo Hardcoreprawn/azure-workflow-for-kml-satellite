@@ -72,6 +72,19 @@ filterwarnings = [
     "ignore:Support for class-based `config`:DeprecationWarning:planetary_computer",
 ]
 
+[tool.coverage.run]
+omit = [
+    "tests/*",
+    "typings/*",
+    "rust/*",
+    "docs/*",
+    ".venv/*",
+    ".tools/*",
+]
+
+[tool.coverage.report]
+include_namespace_packages = true
+
 [tool.ruff]
 target-version = "py311"
 line-length = 120

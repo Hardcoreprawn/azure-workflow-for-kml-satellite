@@ -21,16 +21,22 @@ accidentally removed or misconfigured.  They cover:
 from __future__ import annotations
 
 import json
+import os
 import re
+import shlex
 import shutil
 import subprocess
+import sys
+import tomllib
 import typing
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
+from xml.etree import ElementTree
 
 import pytest
 import yaml
+from coverage import CoverageData
 
 from scripts.backlog_autopilot import IssueCandidate, select_issues
 from scripts.backlog_autopilot import main as backlog_autopilot_main
@@ -1745,7 +1751,7 @@ class TestFastTestLoop:
         makefile = MAKEFILE.read_text()
 
         assert "test: ## Run unit tests (canonical — CI runs this exact command)" in makefile
-        assert 'uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml' in makefile
+        assert 'uv run pytest tests/ -v -m "not integration" --tb=short --cov=. --cov-report=xml' in makefile
         assert "check: lint test test-js coverage-check ## Full local gate, including CI's coverage gate" in makefile
 
 
@@ -2250,6 +2256,142 @@ class TestCIFeedbackHygiene:
 class TestDiffCoverRequiredGate:
     """Changed-lines coverage is a required, blocking gate (closes #1042)."""
 
+    @staticmethod
+    def _coverage_sources() -> list[str]:
+        command = re.search(r"^test: ##.*?\n\t([^\n]+)", MAKEFILE.read_text(), re.MULTILINE)
+        assert command is not None
+        return [
+            argument.partition("=")[2] for argument in shlex.split(command.group(1)) if argument.startswith("--cov=")
+        ]
+
+    @staticmethod
+    def _probe_command(
+        repo: Path, arguments: list[str], environment: dict[str, str]
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            arguments, cwd=repo, env=environment, capture_output=True, text=True, timeout=30, check=False
+        )
+
+    @pytest.mark.parametrize(
+        "runtime_path",
+        [
+            "treesight/probe.py",
+            "blueprints/probe.py",
+            "scripts/probe.py",
+            "function_app.py",
+            "function_app_orch.py",
+            "function_registration.py",
+        ],
+    )
+    def test_runtime_change_fails_uncovered_and_passes_covered(self, tmp_path: Path, runtime_path: str) -> None:
+        environment = {
+            key: value for key, value in os.environ.items() if not key.startswith(("COV_CORE_", "COVERAGE_"))
+        }
+        environment["COVERAGE_FILE"] = str(tmp_path / ".coverage")
+        environment["PYTHONPATH"] = str(tmp_path)
+        environment["GIT_CONFIG_GLOBAL"] = str(tmp_path / "isolated-git-config")
+        environment["GIT_CONFIG_NOSYSTEM"] = "1"
+        omitted = [
+            "tests/unexecuted.py",
+            "typings/stub.py",
+            "rust/artifact.py",
+            "docs/example.py",
+            ".venv/generated.py",
+            ".tools/generated.py",
+        ]
+        driver = (
+            "import runpy\nimport sys\nfrom treesight.seed import value\n"
+            f"for path in {omitted!r}:\n    runpy.run_path(path)\n"
+            "if len(sys.argv) > 1:\n    runpy.run_path(sys.argv[1])['probe']()\n"
+        )
+        fixtures = {
+            "treesight/__init__.py": "",
+            "treesight/seed.py": "value = 1\n",
+            "tests/driver.py": driver,
+            **dict.fromkeys(omitted, "unused = 1\n"),
+        }
+        for relative_path, content in fixtures.items():
+            destination = tmp_path / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(content, encoding="utf-8")
+        for arguments in (
+            ["git", "init", "--initial-branch=main"],
+            ["git", "config", "user.name", "Coverage Probe"],
+            ["git", "config", "user.email", "coverage@example.invalid"],
+            ["git", "add", "."],
+            ["git", "commit", "-m", "baseline"],
+            ["git", "tag", "baseline"],
+        ):
+            result = self._probe_command(tmp_path, arguments, environment)
+            assert result.returncode == 0, result.stdout + result.stderr
+        target = tmp_path / runtime_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("def probe():\n    return 42\n", encoding="utf-8")
+        for arguments in (["git", "add", runtime_path], ["git", "commit", "-m", "runtime change"]):
+            result = self._probe_command(tmp_path, arguments, environment)
+            assert result.returncode == 0, result.stdout + result.stderr
+
+        configuration = f"--rcfile={ROOT / 'pyproject.toml'}"
+        for covered in (False, True):
+            run = self._probe_command(
+                tmp_path,
+                [
+                    sys.executable,
+                    "-m",
+                    "coverage",
+                    "run",
+                    configuration,
+                    f"--source={','.join(self._coverage_sources())}",
+                    "tests/driver.py",
+                    *([runtime_path] if covered else []),
+                ],
+                environment,
+            )
+            assert run.returncode == 0, run.stdout + run.stderr
+            report = self._probe_command(
+                tmp_path, [sys.executable, "-m", "coverage", "xml", configuration, "-o", "coverage.xml"], environment
+            )
+            assert report.returncode == 0, report.stdout + report.stderr
+            tree = ElementTree.parse(tmp_path / "coverage.xml")
+            sources = [Path(source.text or "") for source in tree.findall("./sources/source")]
+            classes = {}
+            for entry in tree.findall(".//class"):
+                for source in sources:
+                    filename = source / entry.attrib["filename"]
+                    if filename.is_file():
+                        classes[filename.relative_to(tmp_path).as_posix()] = entry
+            assert runtime_path in classes, f"Runtime source missing from coverage XML: {runtime_path}"
+            hits = {
+                int(line.attrib["number"]): int(line.attrib["hits"])
+                for line in classes[runtime_path].findall("./lines/line")
+            }
+            assert hits[2] > 0 if covered else hits[2] == 0
+            assert not {"tests/driver.py", *omitted}.intersection(classes)
+            data = CoverageData(basename=str(tmp_path / ".coverage"))
+            data.read()
+            measured = {Path(filename).relative_to(tmp_path).as_posix() for filename in data.measured_files()}
+            assert not {"tests/driver.py", *omitted}.intersection(measured)
+            if covered:
+                assert runtime_path in measured
+            gate = self._probe_command(
+                tmp_path,
+                [
+                    sys.executable,
+                    "-m",
+                    "diff_cover.diff_cover_tool",
+                    "coverage.xml",
+                    "--compare-branch",
+                    "baseline",
+                    "--fail-under",
+                    "80",
+                ],
+                environment,
+            )
+            assert "No lines with coverage information" not in gate.stdout
+            total = re.search(r"^Total:\s+(\d+) lines", gate.stdout, re.MULTILINE)
+            assert total is not None and int(total.group(1)) > 0, gate.stdout + gate.stderr
+            assert gate.returncode == (0 if covered else 1), gate.stdout + gate.stderr
+
     def test_diff_cover_step_does_not_suppress_failures(self):
         """The step must not swallow a below-threshold diff-cover exit code —
         `|| true` (or similar) would silently defeat the required gate."""
@@ -2258,6 +2400,15 @@ class TestDiffCoverRequiredGate:
         assert coverage_target is not None
         assert "--fail-under 80" in coverage_target.group(0), "diff-cover must enforce --fail-under 80"
         assert "|| true" not in coverage_target.group(0), "the required coverage gate must not swallow failures"
+
+    def test_ci_runs_canonical_measurement_before_pr_gate(self) -> None:
+        workflow = yaml.safe_load(CI_YML.read_text())
+        steps = next(job["steps"] for job in workflow["jobs"].values() if job.get("name") == "Test")
+        measurement = next(index for index, step in enumerate(steps) if step.get("run", "").strip() == "make test")
+        gate = next(index for index, step in enumerate(steps) if "make coverage-check" in step.get("run", ""))
+        assert measurement < gate
+        assert steps[gate]["if"] == "github.event_name == 'pull_request'"
+        assert steps[gate]["env"]["BASE_REF"] == "${{ github.base_ref }}"
 
     def test_diff_cover_step_sets_safe_directory(self):
         """The Test job runs in a container (different UID than the checkout),
@@ -2283,6 +2434,14 @@ class TestDiffCoverRequiredGate:
             "this breaks merge-base resolution once main has moved on from "
             "the PR's branch point"
         )
+
+
+def test_coverage_includes_runtime_surfaces() -> None:
+    assert TestDiffCoverRequiredGate._coverage_sources() == ["."]
+    with (ROOT / "pyproject.toml").open("rb") as configuration:
+        coverage = tomllib.load(configuration)["tool"]["coverage"]
+    assert coverage["report"]["include_namespace_packages"] is True
+    assert {"tests/*", "typings/*", "rust/*", "docs/*", ".venv/*", ".tools/*"}.issubset(coverage["run"]["omit"])
 
 
 class TestInfracostCostGate:
