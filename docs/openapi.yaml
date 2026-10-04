@@ -942,7 +942,7 @@ paths:
       description: |
         Saves a text note against a specific parcel (identified by parcel_key) within a
         completed run. Passing an empty string for `note` deletes the existing note.
-        The caller must be the run owner or an org member.
+        The caller must be a current member of the run's originating org, selected at authentication. Creator identity never bypasses membership; unknown origin is denied.
         Notes are stored in Cosmos and included in EUDR PDF exports.
       tags: [analysis]
       security:
@@ -976,7 +976,13 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Forbidden — caller is not the owner or an org member
+          description: Forbidden — caller is not a current member of the selected originating org
+        "503":
+          description: Current organisation membership lookup is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Run not found
 
@@ -989,7 +995,7 @@ paths:
         with a mandatory audit-trail reason (min 20 characters).
         Set `revert: true` to remove an existing override and restore the original
         algorithmic determination.
-        The caller must be the run owner or an org member.
+        The caller must be a current member of the run's originating org, selected at authentication. Creator identity never bypasses membership; unknown origin is denied.
       tags: [analysis]
       security:
         - bearerAuth: []
@@ -1029,7 +1035,13 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Forbidden — caller is not the owner or an org member
+          description: Forbidden — caller is not a current member of the selected originating org
+        "503":
+          description: Current organisation membership lookup is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Run not found
 
@@ -1042,7 +1054,7 @@ paths:
         append-only revision history.  Both structures are keyed by string AOI
         index (e.g. `"0"`, `"1"`).
 
-        The caller must be the run owner or an org member.
+        The caller must be a current member of the run's originating org, selected at authentication. Creator identity never bypasses membership; unknown origin is denied.
       tags: [analysis]
       security:
         - bearerAuth: []
@@ -1077,7 +1089,13 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Forbidden — caller is not the owner or an org member
+          description: Forbidden — caller is not a current member of the selected originating org
+        "503":
+          description: Current organisation membership lookup is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Run not found
 
@@ -1099,7 +1117,7 @@ paths:
         revision is appended to the history and the latest-state entry is cleared.
         No `note` or `override` is required for a revert.
 
-        The caller must be the run owner or an org member.
+        The caller must be a current member of the run's originating org, selected at authentication. Creator identity never bypasses membership; unknown origin is denied.
         `aoi_index` must be a non-negative integer within the run's parcel count.
       tags: [analysis]
       security:
@@ -1160,7 +1178,13 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Forbidden — caller is not the owner or an org member
+          description: Forbidden — caller is not a current member of the selected originating org
+        "503":
+          description: Current organisation membership lookup is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Run not found
 
@@ -1175,10 +1199,16 @@ paths:
         - name: scope
           in: query
           required: false
-          description: History scope (`user` default, `org` aggregates org member runs)
+          description: Selected-origin scope; user returns caller-submitted runs, org returns all origin-owned runs including departed creators.
           schema:
             type: string
             enum: [user, org]
+        - name: org_id
+          in: query
+          required: false
+          description: Authorized active organisation selector; origin and current membership must match. Defaults to the auth-selected org.
+          schema:
+            type: string
         - name: limit
           in: query
           required: false
@@ -1217,6 +1247,7 @@ paths:
                   orgId:
                     type: string
                     nullable: true
+                    description: Selected originating organisation for both scopes; org-less history is denied.
                   memberCount:
                     type: integer
                   stats:
@@ -1236,6 +1267,8 @@ paths:
                         type: string
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: No current membership in the selected originating org; unknown or mismatched origin is denied even for creators.
         "503":
           description: Authoritative run history is temporarily unavailable
           content:

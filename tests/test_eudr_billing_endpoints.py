@@ -22,6 +22,13 @@ from tests.conftest import TEST_ORIGIN, make_test_request
 
 _ALLOWED_ORIGIN = TEST_ORIGIN
 _REQUIRE_AUTH = patch.dict("os.environ", {"REQUIRE_AUTH": "1"})
+_TEST_ORG = {"org_id": "org-1", "members": [{"user_id": "test-user"}, {"user_id": "user-123"}]}
+
+
+@pytest.fixture(autouse=True)
+def _auth_org_boundary():
+    with patch("blueprints._helpers._resolve_active_org", return_value=None):
+        yield
 
 
 def _make_req(method="GET", url="/api/eudr/billing", body=None, headers=None, params=None):
@@ -142,8 +149,9 @@ class TestEudrUsage:
             principal_user_id="user-123",
         )
         with (
-            patch("treesight.security.orgs.get_user_org_strict", return_value=None),
+            patch("blueprints._helpers._resolve_active_org", return_value=_TEST_ORG),
             patch("blueprints.eudr._fetch_org_run_records_for_org", return_value=[]),
+            patch("treesight.security.eudr_billing.get_eudr_billing_status", return_value={"plan": "free_trial"}),
         ):
             resp = eudr_usage_status(req)
 
@@ -159,7 +167,7 @@ class TestEudrUsage:
         req = _make_req(url="/api/eudr/usage")
         with (
             patch("blueprints.eudr._fetch_org_run_records_for_org", return_value=[]),
-            patch("treesight.security.orgs.get_user_org_strict", return_value=org),
+            patch("blueprints._helpers._resolve_active_org", return_value=org) as resolve_org,
             patch("treesight.security.orgs.get_user_org", return_value=None) as get_user_org,
             patch(
                 "treesight.security.eudr_billing.get_eudr_billing_status",
@@ -170,6 +178,7 @@ class TestEudrUsage:
             resp = eudr_usage_status(req)
 
         assert resp.status_code == 200
+        resolve_org.assert_called_once()
         get_user_org.assert_not_called()
         get_billing.assert_called_once_with("org-1", user_id="test-user", org=org)
 
@@ -190,14 +199,15 @@ class TestEudrUsage:
         assert resp.status_code == 503
 
     def test_org_run_history_fails_when_membership_lookup_fails(self):
-        from blueprints.eudr import _fetch_org_run_records
-        from blueprints.pipeline.history import AnalysisHistoryUnavailableError
+        from blueprints.eudr import eudr_usage_status
 
         with (
-            patch("treesight.security.orgs.list_orgs_for_user_strict", side_effect=RuntimeError("Cosmos down")),
-            pytest.raises(AnalysisHistoryUnavailableError, match="Org history lookup failed"),
+            patch("blueprints._helpers._resolve_active_org", side_effect=RuntimeError("Cosmos down")),
+            patch("blueprints.eudr._fetch_org_run_records_for_org") as history,
         ):
-            _fetch_org_run_records("user-123")
+            response = eudr_usage_status(_make_req(url="/api/eudr/usage"))
+        assert response.status_code == 503
+        history.assert_not_called()
 
     @_REQUIRE_AUTH
     def test_unauthenticated_returns_401(self):
@@ -591,7 +601,10 @@ class TestEudrSummaryExport:
             {"instance_id": "inst-001", "submitted_at": "2026-01-10T12:00:00Z"},
         ],
     )
-    @patch("blueprints.eudr.check_auth", return_value=({"sub": "u1"}, "u1"))
+    @patch(
+        "blueprints.eudr.check_auth",
+        return_value=({"sub": "u1"}, "u1", {"org_id": "org-1", "members": [{"user_id": "u1"}]}),
+    )
     def test_returns_csv_with_header_and_rows(self, _auth, _runs):
         from blueprints.eudr import _eudr_summary_export
 
@@ -631,7 +644,10 @@ class TestEudrSummaryExport:
         "blueprints.eudr._fetch_org_run_records",
         return_value=[],
     )
-    @patch("blueprints.eudr.check_auth", return_value=({"sub": "u1"}, "u1"))
+    @patch(
+        "blueprints.eudr.check_auth",
+        return_value=({"sub": "u1"}, "u1", {"org_id": "org-1", "members": [{"user_id": "u1"}]}),
+    )
     def test_no_runs_returns_404(self, _auth, _runs):
         from blueprints.eudr import _eudr_summary_export
 
@@ -647,7 +663,7 @@ class TestEudrSummaryExport:
         client = AsyncMock()
         req = make_test_request(url="/api/eudr/summary-export")
         with (
-            patch("blueprints.eudr.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.eudr.check_auth", return_value=({}, "user-123", _TEST_ORG)),
             patch(
                 "blueprints.eudr._fetch_org_run_records",
                 side_effect=AnalysisHistoryUnavailableError("Cosmos unavailable"),

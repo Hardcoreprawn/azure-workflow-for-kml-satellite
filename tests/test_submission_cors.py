@@ -88,7 +88,7 @@ class TestAnalysisSubmitCORS:
     @patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"})
     @patch(
         "blueprints.pipeline.submission.check_auth",
-        return_value=({"sub": "user-1"}, "user-1"),
+        return_value=({"sub": "user-1"}, "user-1", {"org_id": "org-123", "members": [{"user_id": "user-1"}]}),
     )
     @patch("treesight.storage.client.BlobStorageClient")
     @pytest.mark.anyio
@@ -131,7 +131,7 @@ class TestAnalysisSubmitCORS:
 
     @patch(
         "blueprints.pipeline.submission.check_auth",
-        return_value=({"sub": "user-1"}, "user-1"),
+        return_value=({"sub": "user-1"}, "user-1", {"org_id": "org-123", "members": [{"user_id": "user-1"}]}),
     )
     @patch(
         "blueprints.pipeline.submission.get_user_org",
@@ -160,7 +160,7 @@ class TestAnalysisSubmitCORS:
 
     @patch(
         "blueprints.pipeline.submission.check_auth",
-        return_value=({"sub": "user-1"}, "user-1"),
+        return_value=({"sub": "user-1"}, "user-1", {"org_id": "org-123", "members": [{"user_id": "user-1"}]}),
     )
     @patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"})
     @patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1})
@@ -177,7 +177,7 @@ class TestAnalysisSubmitCORS:
 
     @patch(
         "blueprints.pipeline.submission.check_auth",
-        return_value=({"sub": "user-1"}, "user-1"),
+        return_value=({"sub": "user-1"}, "user-1", {"org_id": "org-123", "members": [{"user_id": "user-1"}]}),
     )
     @patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"})
     @patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1})
@@ -224,7 +224,7 @@ class TestSubmissionResilience:
     )
     @patch(
         "blueprints.pipeline.submission.check_auth",
-        return_value=({"sub": "user-1"}, "user-1"),
+        return_value=({"sub": "user-1"}, "user-1", {"org_id": "org-123", "members": [{"user_id": "user-1"}]}),
     )
     @patch("treesight.storage.client.BlobStorageClient")
     @patch(
@@ -262,7 +262,7 @@ class TestSubmissionResilience:
     )
     @patch(
         "blueprints.pipeline.submission.check_auth",
-        return_value=({"sub": "user-1"}, "user-1"),
+        return_value=({"sub": "user-1"}, "user-1", {"org_id": "org-123", "members": [{"user_id": "user-1"}]}),
     )
     @patch(
         "treesight.storage.client.BlobStorageClient",

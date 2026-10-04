@@ -134,12 +134,15 @@ class TestDiagnostics:
             resp = asyncio.run(_build_analysis_history_route_response(req, SimpleNamespace()))
             assert resp.status_code == 401
 
-        with patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "anonymous")):
+        with patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "anonymous", None)):
             resp = asyncio.run(_build_analysis_history_route_response(req, SimpleNamespace()))
             assert resp.status_code == 401
 
         with (
-            patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-1")),
+            patch(
+                "blueprints.pipeline.diagnostics.check_auth",
+                return_value=({}, "user-1", {"org_id": "org-1", "members": [{"user_id": "user-1"}]}),
+            ),
             patch("blueprints.pipeline.diagnostics.get_pipeline_limiter") as limiter,
         ):
             limiter.return_value.is_allowed.return_value = False
@@ -151,7 +154,10 @@ class TestDiagnostics:
 
         fake_resp = func.HttpResponse(json.dumps({"ok": True}), status_code=200, mimetype="application/json")
         with (
-            patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-1")),
+            patch(
+                "blueprints.pipeline.diagnostics.check_auth",
+                return_value=({}, "user-1", {"org_id": "org-1", "members": [{"user_id": "user-1"}]}),
+            ),
             patch("blueprints.pipeline.diagnostics.get_pipeline_limiter") as limiter,
             patch(
                 "blueprints.pipeline.diagnostics._build_analysis_history_response",

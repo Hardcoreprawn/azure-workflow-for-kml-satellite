@@ -58,7 +58,7 @@ def _make_handler(
     req = req or _make_req(body)
 
     def _default_ensure_user_org(req, user_id, active_org):
-        return {"org_id": "org-1"}, None
+        return {"org_id": "org-1", "members": [{"user_id": user_id}]}, None
 
     def _default_reserve(org_id, user_id, parcel_count, is_eudr, submission_id, req):
         return None
@@ -174,7 +174,7 @@ def test_org_id_is_captured_from_ensure_user_org():
         return None
 
     handler = _make_handler(
-        ensure_user_org_fn=lambda req, uid, org: ({"org_id": "my-org-42"}, None),
+        ensure_user_org_fn=lambda req, uid, org: ({"org_id": "my-org-42", "members": [{"user_id": uid}]}, None),
         reserve_run_or_error_fn=_capture_org_id,
     )
     handler.mint()

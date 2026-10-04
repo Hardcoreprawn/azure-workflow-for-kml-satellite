@@ -138,6 +138,11 @@ class UploadTokenHandler:
                 "Unable to set up your organisation. Please try again or contact support.",
                 req=self.req,
             )
+        members = user_org.get("members", [])
+        if not isinstance(members, list) or not any(
+            isinstance(member, dict) and member.get("user_id") == self.user_id for member in members
+        ):
+            return self._error_response(403, "Organisation membership required", req=self.req)
         self._org_id = user_org["org_id"]
         self._submission_id = str(uuid.uuid4())
         return None
@@ -209,6 +214,7 @@ class UploadTokenHandler:
         record = self._build_run_record(
             submission_id=self._submission_id,
             user_id=self.user_id,
+            org_id=self._org_id,
             blob_name=self._blob_name,
             effective_provider=self._effective_provider,
             submission_context=self._submission_context,

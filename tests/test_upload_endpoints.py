@@ -24,6 +24,12 @@ from tests.conftest import TEST_ORIGIN, encode_test_principal
 _REQUIRE_AUTH = patch.dict("os.environ", {"REQUIRE_AUTH": "1"})
 
 
+@pytest.fixture(autouse=True)
+def _auth_org_resolution():
+    with patch("blueprints._helpers._resolve_active_org", return_value=None):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -103,6 +109,7 @@ def test_upload_token_record_starts_pending_until_kml_is_submitted():
     record = _build_run_record(
         submission_id="submission-1",
         user_id="user-1",
+        org_id="org-1",
         blob_name="analysis/submission-1.kml",
         effective_provider="planetary_computer",
         submission_context={},
@@ -129,7 +136,11 @@ class TestUploadToken:
         self.mock_reserve_run = self._reserve_patcher.start()
 
         # Set up default returns for new mocks
-        self.mock_get_user_org.return_value = {"org_id": "org-1", "name": "Test Org"}
+        self.mock_get_user_org.return_value = {
+            "org_id": "org-1",
+            "name": "Test Org",
+            "members": [{"user_id": "test-user"}],
+        }
         self.mock_reserve_run.return_value = {"reserved_parcels": 1}  # MagicMock accepts any call
 
     def teardown_method(self):
@@ -372,7 +383,7 @@ class TestUploadToken:
         """Users without an org get a personal org auto-created on first submission."""
         from blueprints.upload import upload_token
 
-        auto_org = {"org_id": "auto-org-1", "name": "Test User's Organisation"}
+        auto_org = {"org_id": "auto-org-1", "name": "Test User's Organisation", "members": [{"user_id": "test-user"}]}
         # First call returns None (no org yet); second call (post-creation verification)
         # returns the newly created org.
         self.mock_get_user_org.side_effect = [None, auto_org]
@@ -405,7 +416,7 @@ class TestUploadToken:
         the org returned by create_org is used as a fallback so the request succeeds."""
         from blueprints.upload import upload_token
 
-        new_org = {"org_id": "new-org-1", "name": "Test User's Organisation"}
+        new_org = {"org_id": "new-org-1", "name": "Test User's Organisation", "members": [{"user_id": "test-user"}]}
         # Both get_user_org calls return None (simulates cross-partition query lag).
         # The fallback to create_org's return value should carry the request through.
         self.mock_get_user_org.side_effect = [None, None]
@@ -450,14 +461,18 @@ class TestUploadToken:
                 # lookups. Return None to simulate eventual-consistency lag.
                 if get_user_org_calls["count"] <= 4:
                     return None
-            return {"org_id": "personal-test-user", "name": "Test User's Organisation"}
+            return {
+                "org_id": "personal-test-user",
+                "name": "Test User's Organisation",
+                "members": [{"user_id": "test-user"}],
+            }
 
         self.mock_get_user_org.side_effect = _get_user_org_side_effect
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
         mock_gen_sas.return_value = "sv=2024&sig=fakesig"
 
         def _create_org_side_effect(user_id, *, name, email, org_id):
-            return {"org_id": org_id, "name": name}
+            return {"org_id": org_id, "name": name, "members": [{"user_id": "test-user"}]}
 
         with (
             patch("blueprints.upload.create_org", side_effect=_create_org_side_effect) as mock_create,
@@ -567,7 +582,10 @@ class TestUploadToken:
         assert record["feature_count"] == 3
         assert record["aoi_count"] == 2
 
-    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
+    @patch(
+        "blueprints.upload.get_user_org",
+        return_value={"org_id": "org-1", "name": "Test Org", "members": [{"user_id": "test-user"}]},
+    )
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
     def test_eudr_mode_true_in_ticket(self, mock_bsc, mock_gen_sas, mock_org):
@@ -626,7 +644,10 @@ class TestUploadToken:
         ticket_data = json.loads(mock_blob_client.upload_blob.call_args[0][0])
         assert "eudr_mode" not in ticket_data
 
-    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
+    @patch(
+        "blueprints.upload.get_user_org",
+        return_value={"org_id": "org-1", "name": "Test Org", "members": [{"user_id": "test-user"}]},
+    )
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
     def test_eudr_mode_stored_in_run_record(self, mock_bsc, mock_gen_sas, mock_org):
@@ -805,7 +826,11 @@ class TestUploadTokenSingleGate:
         self.mock_persist = self._persist_patcher.start()
 
         # Default return values
-        self.mock_get_user_org.return_value = {"org_id": "org-1", "name": "Test Org"}
+        self.mock_get_user_org.return_value = {
+            "org_id": "org-1",
+            "name": "Test Org",
+            "members": [{"user_id": "test-user"}],
+        }
         self.mock_reserve_run.return_value = {"reserved_parcels": 1}
 
     def teardown_method(self):
@@ -817,7 +842,7 @@ class TestUploadTokenSingleGate:
         """Users without an org get one auto-created; submission then succeeds."""
         from blueprints.upload import upload_token
 
-        auto_org = {"org_id": "new-org-1", "name": "Test User's Organisation"}
+        auto_org = {"org_id": "new-org-1", "name": "Test User's Organisation", "members": [{"user_id": "test-user"}]}
         # First call: no org. Second call (post-creation verification): org exists.
         self.mock_get_user_org.side_effect = [None, auto_org]
         req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
@@ -854,7 +879,10 @@ class TestUploadTokenSingleGate:
         assert resp.status_code == 503
         self.mock_reserve_run.assert_not_called()
 
-    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
+    @patch(
+        "blueprints.upload.get_user_org",
+        return_value={"org_id": "org-1", "name": "Test Org", "members": [{"user_id": "test-user"}]},
+    )
     def test_eudr_mode_marks_reservation_as_eudr(self, mock_org):
         from blueprints.upload import upload_token
 
@@ -872,7 +900,10 @@ class TestUploadTokenSingleGate:
         assert self.mock_reserve_run.call_args.kwargs["is_eudr"] is True
 
     @patch("treesight.security.eudr_billing.consume_eudr_trial")
-    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
+    @patch(
+        "blueprints.upload.get_user_org",
+        return_value={"org_id": "org-1", "name": "Test Org", "members": [{"user_id": "test-user"}]},
+    )
     def test_eudr_mode_does_not_use_legacy_quota_writers(self, mock_org, mock_consume_trial):
         """EUDR upload reservation must be org-pooled and avoid legacy double-debit paths."""
         from blueprints.upload import upload_token
@@ -896,7 +927,10 @@ class TestUploadTokenSingleGate:
         assert self.mock_reserve_run.call_args.kwargs["parcel_count"] == 2
         mock_consume_trial.assert_not_called()
 
-    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
+    @patch(
+        "blueprints.upload.get_user_org",
+        return_value={"org_id": "org-1", "name": "Test Org", "members": [{"user_id": "test-user"}]},
+    )
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
     def test_non_eudr_mode_marks_reservation_as_non_eudr(self, mock_bsc, mock_gen_sas, mock_org):
@@ -913,7 +947,10 @@ class TestUploadTokenSingleGate:
         self.mock_reserve_run.assert_called_once()
         assert self.mock_reserve_run.call_args.kwargs["is_eudr"] is False
 
-    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
+    @patch(
+        "blueprints.upload.get_user_org",
+        return_value={"org_id": "org-1", "name": "Test Org", "members": [{"user_id": "test-user"}]},
+    )
     def test_eudr_mode_rejected_when_parcel_pool_rejects(self, mock_org):
         from blueprints.upload import upload_token
         from treesight.billing.accounting import MemberCapExceededError

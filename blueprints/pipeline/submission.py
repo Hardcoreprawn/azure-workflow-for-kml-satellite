@@ -42,6 +42,7 @@ from .history import (
     RunRecordPersistenceError,
     _extract_submission_context,
     _persist_submission_record,
+    assert_run_write_access,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,7 @@ def _build_submission_history_record(
     blob_prefix: str,
     submission_id: str,
     user_id: str,
+    org_id: str,
     submission_context: dict[str, Any],
     effective_provider: str,
     eudr_mode: Any,
@@ -98,6 +100,7 @@ def _build_submission_history_record(
         submission_id=submission_id,
         instance_id=submission_id,
         user_id=user_id,
+        org_id=org_id,
         submitted_at=datetime.now(UTC).isoformat(),
         kml_blob_name=f"{blob_prefix.strip('/') or 'analysis'}/{submission_id}.kml",
         kml_size_bytes=len(kml_content.encode("utf-8")) if isinstance(kml_content, str) else 0,
@@ -150,6 +153,23 @@ def _normalize_auth_result(
         return claims, user_id, active_org
     claims, user_id = auth_result
     return claims, user_id, None
+
+
+def _submission_auth_context(req: func.HttpRequest) -> tuple[str, dict[str, Any] | None, func.HttpResponse | None]:
+    try:
+        result = check_auth(req, include_active_org=True)
+    except ValueError as exc:
+        return "", None, error_response(401, str(exc), req=req)
+    except Exception:
+        return "", None, error_response(503, "Organisation lookup unavailable", req=req)
+    _claims, user_id, active_org = _normalize_auth_result(result)
+    try:
+        assert_run_write_access(
+            {"org_id": active_org.get("org_id") if active_org else None}, user_id, active_org=active_org
+        )
+    except ValueError as exc:
+        return "", None, error_response(403, str(exc), req=req)
+    return user_id, active_org, None
 
 
 _PRIOR_SUBMISSION_ID_RE = __import__("re").compile(
@@ -374,7 +394,7 @@ def _resolve_quota(
         # A supplied org selector must match the ticket's org — never silently
         # ignore a mismatched selector on the prior-ticket path.
         requested_org_id = _requested_org_id(req) or ""
-        if requested_org_id and requested_org_id != org_id:
+        if (requested_org_id and requested_org_id != org_id) or not active_org or active_org.get("org_id") != org_id:
             return (
                 False,
                 "",
@@ -431,17 +451,29 @@ def _resolve_quota(
         return False, org_id, error_response(503, "Unable to reserve runs right now.", req=req)
 
 
+def _prior_submission_error(
+    ticket: dict[str, Any] | None, body: Any, active_org: dict[str, Any] | None, req: func.HttpRequest
+) -> func.HttpResponse | None:
+    if not ticket:
+        return None
+    org_id = ticket.get("org_id")
+    requested = _requested_org_id(req)
+    if not active_org or active_org.get("org_id") != org_id or (requested and requested != org_id):
+        return error_response(403, "Selected organisation is not accessible", req=req)
+    if not _prior_ticket_matches_request(ticket, body):
+        return error_response(409, "prior_submission_id does not match the requested submission context", req=req)
+    return None
+
+
 async def _submit_analysis_request(
     req: func.HttpRequest,
     *,
     blob_prefix: str = "analysis",
 ) -> func.HttpResponse:
     """Validate, persist, and enqueue a signed-in KML analysis submission."""
-    try:
-        auth_result = check_auth(req, include_active_org=True)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-    _claims, user_id, active_org = _normalize_auth_result(auth_result)
+    user_id, active_org, auth_error = _submission_auth_context(req)
+    if auth_error:
+        return auth_error
 
     # Parse body early so we can check for a prior_submission_id before
     # deciding whether to reserve (avoids double-billing on fallback,
@@ -460,12 +492,9 @@ async def _submit_analysis_request(
         prior_ticket = _load_prior_ticket_for_user(user_id, prior_submission_id)
     except PriorSubmissionTicketLookupError:
         return error_response(503, "Unable to verify the previous submission right now. Please retry.", req=req)
-    if prior_ticket and not _prior_ticket_matches_request(prior_ticket, body):
-        return error_response(
-            409,
-            "prior_submission_id does not match the requested submission context",
-            req=req,
-        )
+    prior_error = _prior_submission_error(prior_ticket, body, active_org, req)
+    if prior_error:
+        return prior_error
 
     submission_id = prior_submission_id if prior_ticket else str(uuid.uuid4())
 
@@ -496,6 +525,7 @@ async def _submit_analysis_request(
         blob_prefix,
         submission_id,
         user_id,
+        org_id,
         submission_context,
         effective_provider,
         eudr_mode,

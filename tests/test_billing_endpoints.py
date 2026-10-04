@@ -16,6 +16,7 @@ import json
 from unittest.mock import patch
 
 import azure.functions as func
+import pytest
 
 from tests.conftest import TEST_LOCAL_ORIGIN, TEST_ORIGIN, make_test_request
 
@@ -588,6 +589,11 @@ class TestBillingStatusResilience:
 
 
 class TestBillingPoolStatus:
+    @pytest.fixture(autouse=True)
+    def _auth_org_boundary(self):
+        with patch("blueprints._helpers._resolve_active_org", return_value=None):
+            yield
+
     def test_anonymous_user_returns_no_org(self):
         """Anonymous user (no org) should return no_org error."""
         from blueprints.billing import billing_pool_status

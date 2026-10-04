@@ -27,16 +27,9 @@ _MAX_BODY_BYTES = 65_536  # 64 KiB
 logger = logging.getLogger(__name__)
 
 
-def _fetch_org_run_records(user_id: str, limit: int = 250) -> list[dict]:
-    """Fetch and merge run records for all members of the user's org."""
-    from blueprints.pipeline.history import AnalysisHistoryUnavailableError
-    from treesight.security.orgs import get_user_org_strict
-
-    try:
-        org = get_user_org_strict(user_id)
-    except Exception as exc:
-        raise AnalysisHistoryUnavailableError("Org history lookup failed") from exc
-    return _fetch_org_run_records_for_org(user_id, org, limit)
+def _fetch_org_run_records(user_id: str, limit: int = 250, *, active_org: dict | None = None) -> list[dict]:
+    """Fetch origin-owned runs using the already-verified auth snapshot."""
+    return _fetch_org_run_records_for_org(user_id, active_org, limit)
 
 
 def _fetch_org_run_records_for_org(
@@ -45,14 +38,11 @@ def _fetch_org_run_records_for_org(
     limit: int,
 ) -> list[dict]:
     """Fetch and merge run records using one already-resolved org snapshot."""
-    from blueprints.pipeline.history import _fetch_submission_records  # type: ignore[reportPrivateUsage]
-    from treesight.eudr.usage import org_member_ids
+    from blueprints.pipeline.history import _fetch_submission_records, assert_run_write_access
 
-    all_records: list[dict] = []
-    for member_id in org_member_ids(org, user_id):
-        all_records.extend(_fetch_submission_records(member_id, limit, offset=0))
-    all_records.sort(key=lambda r: str(r.get("submitted_at", "")), reverse=True)
-    return all_records[:limit]
+    org_id = org.get("org_id") if org else None
+    assert_run_write_access({"org_id": org_id}, user_id, active_org=org)
+    return _fetch_submission_records(None, limit, org_id=org_id)
 
 
 def _resolve_manifest_path(output: object) -> str | None:
@@ -150,15 +140,18 @@ def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
-def eudr_usage_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
+def eudr_usage_status(
+    req: func.HttpRequest, *, auth_claims: dict, user_id: str, active_org: dict | None = None
+) -> func.HttpResponse:
     """GET /api/eudr/usage — org-scoped usage and billing summary for dashboard."""
     from treesight.eudr.usage import eudr_usage_payload
     from treesight.security.eudr_billing import get_eudr_billing_status
-    from treesight.security.orgs import get_user_org_strict
 
     try:
-        org = get_user_org_strict(user_id)
+        org = active_org
         records = _fetch_org_run_records_for_org(user_id, org, limit=400)
+    except ValueError as exc:
+        return error_response(403, str(exc), req=req)
     except Exception:
         logger.warning("Unable to resolve EUDR org history for user=%s", user_id, exc_info=True)
         return error_response(503, "Analysis history is temporarily unavailable. Please retry.", req=req)
@@ -298,6 +291,19 @@ async def eudr_summary_export(
     return await _eudr_summary_export(req, client)
 
 
+def _summary_history(
+    req: func.HttpRequest, user_id: str, active_org: dict | None
+) -> tuple[list[dict], func.HttpResponse | None]:
+    from blueprints.pipeline.history import AnalysisHistoryUnavailableError
+
+    try:
+        return _fetch_org_run_records(user_id, limit=20, active_org=active_org), None
+    except ValueError as exc:
+        return [], error_response(403, str(exc), req=req)
+    except AnalysisHistoryUnavailableError:
+        return [], error_response(503, "Analysis history is temporarily unavailable. Please retry.", req=req)
+
+
 async def _eudr_summary_export(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
@@ -307,21 +313,20 @@ async def _eudr_summary_export(
         return cors_preflight(req)
 
     try:
-        _, user_id = check_auth(req)
+        _, user_id, active_org = check_auth(req, include_active_org=True)
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
+    except Exception:
+        return error_response(503, "Organisation lookup unavailable", req=req)
 
     from treesight.constants import DEFAULT_OUTPUT_CONTAINER
     from treesight.eudr.export import build_summary_csv, summary_rows_from_manifest
     from treesight.storage.client import BlobStorageClient
 
+    run_records, history_error = _summary_history(req, user_id, active_org)
+    if history_error:
+        return history_error
     storage = BlobStorageClient()
-    from blueprints.pipeline.history import AnalysisHistoryUnavailableError
-
-    try:
-        run_records = _fetch_org_run_records(user_id, limit=20)
-    except AnalysisHistoryUnavailableError:
-        return error_response(503, "Analysis history is temporarily unavailable. Please retry.", req=req)
 
     all_rows: list[dict[str, Any]] = []
     for record in run_records:

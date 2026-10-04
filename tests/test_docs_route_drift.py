@@ -133,6 +133,30 @@ def test_owning_docs_describe_authoritative_history() -> None:
     assert "revocation" in architecture
 
 
+def test_openapi_binds_history_and_reviews_to_originating_org() -> None:
+    spec = yaml.safe_load(OPENAPI.read_text())
+    history = spec["paths"]["/analysis/history"]["get"]
+    assert "403" in history["responses"]
+    assert "503" in history["responses"]
+    assert any(parameter["name"] == "org_id" for parameter in history["parameters"])
+    for path, method in (
+        ("/analysis/{instance_id}/review", "get"),
+        ("/analysis/{instance_id}/parcel/{aoi_index}/review", "post"),
+    ):
+        description = spec["paths"][path][method]["description"]
+        assert "originating org" in description
+        assert "Creator identity never bypasses membership" in description
+        assert "run owner or an org member" not in description
+    for path, method in (
+        ("/analysis/notes", "post"),
+        ("/analysis/override", "post"),
+        ("/analysis/{instance_id}/review", "get"),
+        ("/analysis/{instance_id}/parcel/{aoi_index}/review", "post"),
+    ):
+        response = spec["paths"][path][method]["responses"]["503"]
+        assert response["content"]["application/json"]["schema"]["$ref"] == "#/components/schemas/Error"
+
+
 def test_no_legacy_module_names_in_docs():
     """Docs must not reference the old kml_satellite package name."""
     legacy_pattern = re.compile(r"kml_satellite/")
