@@ -20,6 +20,7 @@ from treesight.config import (
     CIAM_JWT_LEEWAY_SECONDS,
     CIAM_TENANT_ID,
 )
+from treesight.constants import API_DELEGATED_PERMISSION
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,10 @@ def verify_bearer_token(token: str) -> dict[str, Any]:
 
     if not get_user_id_from_bearer_claims(claims):
         raise ValueError("Bearer token missing subject")
+
+    scopes = claims.get("scp")
+    if claims.get("idtyp") == "app" or not isinstance(scopes, str) or API_DELEGATED_PERMISSION not in scopes.split():
+        raise ValueError("Bearer token missing approved delegated API permission")
 
     return claims
 

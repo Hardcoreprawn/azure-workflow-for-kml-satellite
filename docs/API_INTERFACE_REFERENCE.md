@@ -46,6 +46,15 @@ routes validate bearer tokens server-side; Functions `AuthLevel.ANONYMOUS` alone
 does not describe application authentication. Explicit test-principal configuration
 is not a production authentication method.
 
+Protected APIs accept delegated access tokens carrying the exact `User.Read`
+permission in the space-delimited `scp` claim, matching the first-party browser's
+`<apiAudience>/User.Read` request. Same-audience ID tokens, absent/wrong/malformed
+scopes and app-only tokens are rejected. Signature, issuer, audience, time and
+identity checks remain mandatory. Service-principal API access is not enabled by
+roles alone. Before relight, verify the exposed/consented grant in the live CIAM
+registration and obtain a real delegated token; local signed tests do not certify
+that live configuration. No new permission or app registration is provisioned here.
+
 Diagnostics currently have no authentication or ownership check and may disclose
 filenames, artifact paths and failure details to a caller with an instance ID.
 Owner decision (2026-09-16): require authentication and run-access authorization

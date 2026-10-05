@@ -11,6 +11,8 @@ this convention.
 
 import os
 
+API_DELEGATED_PERMISSION = "User.Read"
+
 # --- Size limits ---
 MAX_KML_FILE_SIZE_BYTES = 10_485_760  # 10 MiB
 MAX_FEATURES_PER_KML = 500
