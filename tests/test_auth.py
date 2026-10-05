@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import json
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -58,6 +60,71 @@ class TestParseBearerToken:
             parse_bearer_token("Bearer   ")
 
 
+@pytest.mark.parametrize(
+    "permission",
+    [
+        {},
+        {"scp": "Other.Read"},
+        {"scp": "User.Read.All"},
+        {"scp": ["User.Read"]},
+        {"roles": ["User.Read"], "idtyp": "app"},
+        {"scp": "User.Read", "idtyp": "app"},
+        {"scp": "User.Read"},
+        {"scp": "Other.Read User.Read"},
+        {"scp": "Other.Read\tUser.Read"},
+        {"scp": "Other.Read\nUser.Read"},
+        {"scp": "Other.Read\u00a0User.Read"},
+        {"scp": "Other.Read  User.Read"},
+        {"scp": 'Bad"Scope User.Read'},
+        {"scp": "User.Read", "aud": "other-api"},
+        {"scp": "User.Read", "iss": "https://other-issuer.example"},
+        {"scp": "User.Read", "exp": datetime.now(UTC) - timedelta(days=1)},
+        {"scp": "User.Read", "nbf": datetime.now(UTC) + timedelta(days=1)},
+        {"scp": "User.Read", "invalid_signature": True},
+    ],
+)
+def test_rejects_token_without_api_permission(permission):
+    import jwt
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from treesight.security.auth import verify_bearer_token
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    now = datetime.now(UTC)
+    claims = {
+        "tid": "tenant",
+        "oid": "user",
+        "ver": "2.0",
+        "iss": "https://issuer.example",
+        "aud": "api",
+        "nbf": now,
+        "exp": now + timedelta(minutes=5),
+        **permission,
+    }
+    token = jwt.encode(claims, key, algorithm="RS256")
+    if permission.get("invalid_signature"):
+        parts = token.split(".")
+        signature = parts[-1]
+        parts[-1] = ("A" if signature[0] != "A" else "B") + signature[1:]
+        token = ".".join(parts)
+    with (
+        patch("treesight.security.auth.CIAM_AUTHORITY", "https://issuer.example"),
+        patch("treesight.security.auth.CIAM_TENANT_ID", "tenant"),
+        patch("treesight.security.auth.CIAM_API_AUDIENCE", "api"),
+        patch(
+            "treesight.security.auth._oidc_metadata",
+            return_value={"issuer": "https://issuer.example", "jwks_uri": "https://issuer.example/keys"},
+        ),
+        patch("treesight.security.auth._jwks_client") as jwks,
+    ):
+        jwks.return_value.get_signing_key_from_jwt.return_value = SimpleNamespace(key=key.public_key())
+        if set(permission) == {"scp"} and permission.get("scp") in ("User.Read", "Other.Read User.Read"):
+            assert verify_bearer_token(token)["oid"] == "user"
+        else:
+            with pytest.raises(ValueError, match=r"permission|Invalid bearer token"):
+                verify_bearer_token(token)
+
+
 class TestVerifyBearerToken:
     def test_rejects_when_config_missing(self):
         from treesight.security.auth import verify_bearer_token
@@ -95,6 +162,7 @@ class TestVerifyBearerToken:
                                         "exp": 2,
                                         "iss": "https://issuer.example",
                                         "aud": "audience-id",
+                                        "scp": "User.Read",
                                     }
 
                                     claims = verify_bearer_token("abc.def.ghi")
