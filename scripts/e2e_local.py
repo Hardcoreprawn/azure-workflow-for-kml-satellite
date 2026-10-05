@@ -36,6 +36,8 @@ from typing import Any, Literal
 
 import httpx
 from _azurite import AZURITE_CONN_STR
+from local_durable import fetch_poll_status as _fetch_poll_status
+from local_durable import validate_local_host
 from pydantic import BaseModel, ConfigDict, Field
 from simulate_upload import DEFAULT_CONTAINER, fire_event_grid, upload_kml
 
@@ -181,31 +183,6 @@ def wait_for_func_host(*, timeout: float, interval: float = 2.0, progress_interv
     raise TimeoutError(f"func host did not become ready within {timeout}s")
 
 
-def _fetch_poll_status(url: str, *, timeout: float = 10.0) -> tuple[int | None, str, dict[str, Any] | None]:
-    try:
-        response = httpx.get(url, timeout=timeout)
-    except httpx.TransportError:
-        return None, "transport_error", None
-    if response.status_code == 429:
-        return 429, "rate_limited", None
-    if response.status_code == 404:
-        return 404, "not_found", None
-    if response.status_code != 200:
-        return response.status_code, "http_error", None
-    try:
-        payload = response.json()
-    except ValueError:
-        return 200, "invalid_json", None
-    statuses = _TERMINAL_STATUSES | {"Pending", "Running", "ContinuedAsNew", "Suspended"}
-    if (
-        not isinstance(payload, dict)
-        or not isinstance(payload.get("runtimeStatus"), str)
-        or payload["runtimeStatus"] not in statuses
-    ):
-        return 200, "invalid_status", None
-    return 200, "status", payload
-
-
 def poll_orchestration(
     instance_id: str,
     *,
@@ -226,7 +203,8 @@ def poll_orchestration(
     Returns the final status payload. Raises TimeoutError if no terminal
     state is reached within *timeout* — never loops unbounded.
     """
-    url = f"{base}/api/orchestrator/{instance_id}"
+    validate_local_host(base)
+    url = f"{base}/runtime/webhooks/durabletask/instances/{instance_id}"
     started_at = time.monotonic()
     deadline = started_at + timeout
     last_reported_at = started_at

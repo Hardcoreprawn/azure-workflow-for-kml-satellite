@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 from _azurite import AZURITE_BLOB_BASE, AZURITE_CONN_STR
 from azure.storage.blob import BlobServiceClient, ContentSettings
+from local_durable import fetch_poll_status
 
 FUNC_BASE = "http://localhost:7071"
 DEFAULT_KML = "tests/fixtures/sample.kml"
@@ -128,25 +129,20 @@ def fire_event_grid(
 
 def poll_orchestrator(instance_id: str, timeout: int = 120, interval: int = 3) -> None:
     """Poll the orchestrator status until complete or timeout."""
-    url = f"{FUNC_BASE}/api/orchestrator/{instance_id}"
-    print(f"\n  Polling orchestrator status at {url}")
+    url = f"{FUNC_BASE}/runtime/webhooks/durabletask/instances/{instance_id}"
+    print(f"\n  Polling local Durable status at {url}")
 
     start = time.time()
     last_status = ""
     while time.time() - start < timeout:
-        try:
-            resp = httpx.get(url, timeout=10.0)
-        except httpx.ConnectError:
-            print("  ... func host not reachable, retrying")
+        http_status, category, data = fetch_poll_status(url)
+        if http_status in {401, 403}:
+            raise RuntimeError("Local Durable management credentials rejected")
+        if data is None:
+            print(f"  ... local status unavailable ({category}), retrying")
             time.sleep(interval)
             continue
 
-        if resp.status_code == 404:
-            print("  ... orchestration not found yet, retrying")
-            time.sleep(interval)
-            continue
-
-        data = resp.json()
         status = data.get("runtimeStatus", "Unknown")
 
         if status != last_status:

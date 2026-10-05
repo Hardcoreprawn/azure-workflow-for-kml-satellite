@@ -9,7 +9,7 @@ report that captures success/failure thresholds:
 4. massive_polygon - 1 very large polygon
 
 It uploads KML files to Azurite, triggers Event Grid notifications, polls
-`/api/orchestrator/{instance_id}`, and records terminal status + duration.
+the local Durable management endpoint, and records terminal status + duration.
 
 Usage:
   uv run python scripts/load_baseline.py
@@ -32,8 +32,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import httpx
 from generate_monster_kml import generate_kml
+from local_durable import fetch_poll_status
 from simulate_upload import (
     DEFAULT_EVENT_GRID_FUNCTION_NAME,
     FUNC_BASE,
@@ -113,23 +113,19 @@ def _poll_status(
     timeout_s: int,
     poll_interval_s: float,
 ) -> tuple[str, dict[str, Any], bool]:
-    url = f"{FUNC_BASE}/api/orchestrator/{instance_id}"
+    url = f"{FUNC_BASE}/runtime/webhooks/durabletask/instances/{instance_id}"
     start = time.monotonic()
     last_payload: dict[str, Any] = {}
 
     while time.monotonic() - start < timeout_s:
-        try:
-            resp = httpx.get(url, timeout=10.0)
-        except httpx.HTTPError:
+        http_status, _category, payload = fetch_poll_status(url)
+        if http_status in {401, 403}:
+            raise RuntimeError("Local Durable management credentials rejected")
+        if payload is None:
             time.sleep(poll_interval_s)
             continue
 
-        if resp.status_code == 404:
-            time.sleep(poll_interval_s)
-            continue
-
-        payload = resp.json()
-        last_payload = payload if isinstance(payload, dict) else {}
+        last_payload = payload
         status = str(last_payload.get("runtimeStatus") or "Unknown")
         if status in TERMINAL_STATUSES:
             return status, last_payload, False

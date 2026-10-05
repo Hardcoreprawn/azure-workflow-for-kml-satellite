@@ -1,10 +1,30 @@
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
-from scripts import simulate_upload
+from scripts import load_baseline, local_durable, simulate_upload
+
+
+@pytest.mark.parametrize("poller", ["simulate", "load"])
+def test_storage_native_polling_uses_local_management_without_customer_bearer(monkeypatch, poller):
+    module = simulate_upload if poller == "simulate" else load_baseline
+    requests = []
+    monkeypatch.delenv("CANOPEX_API_BEARER_TOKEN", raising=False)
+
+    def get(url, **kwargs):
+        requests.append((url, kwargs))
+        return SimpleNamespace(status_code=200, json=lambda: {"runtimeStatus": "Completed"})
+
+    monkeypatch.setattr(local_durable.httpx, "get", get)
+    if poller == "simulate":
+        module.poll_orchestrator("run", timeout=2, interval=0)
+    else:
+        assert module._poll_status("run", timeout_s=2, poll_interval_s=0)[0] == "Completed"
+    assert requests[0][0] == f"{module.FUNC_BASE}/runtime/webhooks/durabletask/instances/run"
+    assert "Authorization" not in requests[0][1].get("headers", {})
 
 
 class _DummyResponse:

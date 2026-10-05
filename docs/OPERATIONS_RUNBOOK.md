@@ -266,16 +266,17 @@ Reference: .github/workflows/deploy.yml and infra/tofu/README.md.
    records are inaccessible through these paths; do not infer/backfill custody
    without an explicitly reviewed data policy. Membership outages fail closed.
 
-Anonymous operator endpoints:
+Anonymous operational probes:
 
 - `GET /api/health`
 - `GET /api/readiness`
-- `GET /api/orchestrator/{instance_id}`
 
-Diagnostics currently expose run state by instance ID without bearer or ownership
-validation. The owner requires authentication and run-access authorization before
-leaving local development. This is an implementation gap, not approved public
-access policy. Health/readiness may remain operational probes.
+`GET /api/orchestrator/{instance_id}` requires a verified delegated API bearer
+and current selected-origin membership, with authoritative run lookup before
+Durable/telemetry. Missing and denied runs share a non-disclosing `404`; lookup
+outages return `503`. Local storage-native fixtures use the separate Durable
+management endpoint with local extension keys where authentication is enabled;
+they do not exercise customer admission or authorize public endpoint bypasses.
 
 Protected endpoints (function/admin/ARM auth required):
 

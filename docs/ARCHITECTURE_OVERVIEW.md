@@ -33,8 +33,9 @@ Owner decisions, 2026-09-16:
 - Prefer scale-to-zero where wake-up latency is acceptable. If admission must stay
   warm, keep it low-cost; expensive workers should sleep when idle. Cost should
   follow usage. Containers and VM/Batch capacity are workload-dependent options.
-- Require authenticated, authorized run diagnostics before leaving local
-  development. This requirement is not yet implemented (#1527).
+- Require authenticated, origin-authorized run diagnostics before leaving local
+  development. The boundary is implemented; deployed CIAM/settings and authenticated
+  smoke evidence still need verification (#1527).
 
 No latency SLO, warm-instance budget, WASM hosting choice or KEDA configuration was
 approved by this audit. Select these from measured admission/wake-up behavior,
@@ -70,7 +71,8 @@ blueprints on both roles and the monitoring scheduler on compute only.
 Browsers use the API-facing hostname from `/api-config.json`, obtained operationally
 with `tofu output -raw function_app_orch_default_hostname`. SWA serves static files;
 CIAM/MSAL supplies bearer tokens verified by protected backend routes. Current
-diagnostics are anonymous by instance ID. Registration, intended browser ingress
+diagnostics enforce bearer identity and originating-org access before status/telemetry.
+Registration, intended browser ingress
 and actual network access are different facts: compute isolation must be verified.
 
 Cosmos stores application records; Blob Storage holds uploaded source, claims,

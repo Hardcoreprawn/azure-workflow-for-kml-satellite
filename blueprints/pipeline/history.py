@@ -110,6 +110,15 @@ def assert_run_write_access(
     raise ValueError("Run not found or you do not have permission to modify it")
 
 
+def get_authorized_run_record(instance_id: str, user_id: str, *, active_org: dict[str, Any] | None) -> dict[str, Any]:
+    """Load authoritative origin ownership and require current selected-org membership."""
+    record = get_run_record_by_instance_id(instance_id, raise_on_error=True)
+    if not record:
+        raise ValueError("Run not found")
+    assert_run_write_access(record, user_id, active_org=active_org)
+    return record
+
+
 def _extract_submission_context(body: Any) -> dict[str, Any]:
     if not isinstance(body, dict):
         return {}

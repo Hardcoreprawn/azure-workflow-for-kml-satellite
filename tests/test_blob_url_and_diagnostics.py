@@ -88,6 +88,15 @@ class _Client:
 
 
 class TestDiagnostics:
+    @pytest.fixture(autouse=True)
+    def _authorized_run(self):
+        org = {"org_id": "org-1", "members": [{"user_id": "user-1"}]}
+        with (
+            patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-1", org)),
+            patch("blueprints.pipeline.history.get_run_record_by_instance_id", return_value={"org_id": "org-1"}),
+        ):
+            yield
+
     def _req(self, *, method="GET", route_params=None, url="/api/orchestrator/x"):
         return func.HttpRequest(
             method=method,
