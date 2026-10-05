@@ -32,7 +32,7 @@ Production API base URL: `https://{productionHost}/api`
 | POST | /api/billing/portal | CIAM bearer | 401 | Stripe portal redirect |
 | POST | /api/billing/webhook | Stripe signature | 400 without valid signature | Stripe webhook |
 | POST | /api/contact-form | anonymous | — | Contact form |
-| GET | /api/orchestrator/{id} | anonymous | 200/404 | Durable diagnostics (with telemetry-backed phase recovery when Durable status is stale) |
+| GET | /api/orchestrator/{id} | CIAM bearer | 401 | Origin-authorized diagnostics; missing/denied 404 before status or telemetry reads |
 | GET | /api/analysis/history | CIAM bearer | 401 | Analysis history (`scope=user` default, `scope=org` for portfolio summary) |
 | POST | /api/analysis/notes | CIAM bearer | 401 | Save/delete a parcel note; run-access authorization also required |
 | POST | /api/analysis/override | CIAM bearer | 401 | Record/revert a human override; creation reasons require at least 20 characters |
@@ -46,11 +46,14 @@ routes validate bearer tokens server-side; Functions `AuthLevel.ANONYMOUS` alone
 does not describe application authentication. Explicit test-principal configuration
 is not a production authentication method.
 
-Diagnostics currently have no authentication or ownership check and may disclose
-filenames, artifact paths and failure details to a caller with an instance ID.
-Owner decision (2026-09-16): require authentication and run-access authorization
-before leaving local development (#1527). The current anonymous contract remains until
-that change is implemented and tested; it is not approved for public promotion.
+Diagnostics require verified bearer identity, authoritative stored origin and
+current selected-org membership before Durable or telemetry reads. Anonymous
+requests return `401`; missing/denied/unknown-origin runs return the same `404`;
+membership/run-store outages return `503`. Health/readiness remain probes.
+Internal storage-native local fixtures poll the Durable management interface
+separately, using local extension keys in headers where auth is enabled; this is
+not a customer API or a diagnostics bypass. Public operator polls require a
+delegated bearer.
 
 A submission `202` means the authoritative run record was persisted to Cosmos and
 the ticket and KML were accepted into blob storage, not that Durable execution

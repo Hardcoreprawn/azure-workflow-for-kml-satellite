@@ -21,7 +21,53 @@ import pytest
 import scripts.e2e_local as runner
 
 
+def test_local_management_polling_rejects_remote_host(monkeypatch):
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("must not read or send local keys")
+
+    monkeypatch.setattr(runner.BlobServiceClient, "from_connection_string", unexpected)
+    with pytest.raises(ValueError, match="local Functions host"):
+        runner._local_durable_keys("https://production.example")
+
+
+def test_local_management_polling_tries_keys_in_headers_without_url_secret(monkeypatch):
+    requests = []
+
+    def get(url, *, timeout, headers):
+        requests.append((url, headers))
+        return SimpleNamespace(
+            status_code=401 if len(requests) == 1 else 200,
+            json=lambda: {"runtimeStatus": "Completed", "output": {"status": "completed"}},
+        )
+
+    monkeypatch.setattr(runner.httpx, "get", get)
+    result = runner._fetch_poll_status(
+        "http://func/runtime/webhooks/durabletask/instances/run", management_keys=["old-test-key", "current-test-key"]
+    )
+    assert result[:2] == (200, "status")
+    assert [headers["x-functions-key"] for _, headers in requests] == ["old-test-key", "current-test-key"]
+    assert all("key" not in url and "code=" not in url for url, _ in requests)
+
+
 class TestBuildFuncHostEnv:
+    @pytest.mark.parametrize("available", [False, True])
+    def test_local_container_polling_reads_only_durable_system_key(self, monkeypatch, available):
+        service = MagicMock()
+        container = service.get_container_client.return_value
+        container.list_blobs.return_value = [SimpleNamespace(name="host.json")]
+        payload = {"systemKeys": [{"name": "eventgrid_extension", "value": "eventgrid-test"}]}
+        if available:
+            payload["systemKeys"].append({"name": "durabletask_extension", "value": "durable-test"})
+        container.get_blob_client.return_value.download_blob.return_value.readall.return_value = json.dumps(
+            payload
+        ).encode()
+        monkeypatch.setattr(runner.BlobServiceClient, "from_connection_string", lambda _connection: service)
+        if available:
+            assert runner._local_durable_keys("http://func:80") == ["durable-test"]
+        else:
+            with pytest.raises(RuntimeError, match="extension key unavailable"):
+                runner._local_durable_keys("http://func:80")
+
     def test_always_enables_test_mode(self):
         env = runner.build_func_host_env({})
         assert env["CANOPEX_TEST_MODE"] == "1"

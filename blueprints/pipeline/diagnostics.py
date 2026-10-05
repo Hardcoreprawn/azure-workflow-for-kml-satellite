@@ -19,7 +19,7 @@ from ._status import (
     _fetch_instance_telemetry_hint,
     _needs_telemetry_recovery,
 )
-from .history import _build_analysis_history_response
+from .history import RunRecordLookupError, _build_analysis_history_response, get_authorized_run_record
 
 
 @bp.route(
@@ -40,9 +40,18 @@ async def _build_orchestrator_status_response(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
-    """Build the anonymous orchestration status response after bindings resolve."""
+    """Build diagnostics only after verified identity and originating-org access."""
     if req.method == "OPTIONS":
         return cors_preflight(req)
+
+    try:
+        _claims, user_id, active_org = check_auth(req, include_active_org=True)
+    except ValueError as exc:
+        return error_response(401, str(exc), req=req)
+    except Exception:
+        return error_response(503, "Organisation lookup unavailable", req=req)
+    if user_id == "anonymous":
+        return error_response(401, "Authentication required", req=req)
 
     if not get_pipeline_limiter().is_allowed(get_client_ip(req)):
         return error_response(429, "Rate limit exceeded — try again later", req=req)
@@ -55,13 +64,20 @@ async def _build_orchestrator_status_response(
             mimetype="application/json",
         )
 
+    try:
+        get_authorized_run_record(instance_id, user_id, active_org=active_org)
+    except RunRecordLookupError:
+        return error_response(503, "Run history unavailable", req=req)
+    except ValueError:
+        return error_response(404, "Run not found", req=req)
+
     # This endpoint is polled every ~3s by the frontend. Fetching full
     # execution history on each poll is expensive and grows with run length.
     # Stall detection relies on lastUpdatedTime + customStatus, which
     # get_status returns without history, so omit show_history.
     status = await client.get_status(instance_id)
     if not status:
-        return func.HttpResponse(json.dumps({"error": "not found"}), status_code=404, mimetype="application/json")
+        return error_response(404, "Run not found", req=req)
 
     telemetry_hint = None
     if _needs_telemetry_recovery(status):

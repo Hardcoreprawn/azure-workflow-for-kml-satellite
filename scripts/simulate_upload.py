@@ -129,13 +129,18 @@ def fire_event_grid(
 def poll_orchestrator(instance_id: str, timeout: int = 120, interval: int = 3) -> None:
     """Poll the orchestrator status until complete or timeout."""
     url = f"{FUNC_BASE}/api/orchestrator/{instance_id}"
+    token = os.environ.get("CANOPEX_API_BEARER_TOKEN", "").strip()
+    if not token:
+        raise ValueError(
+            "Public diagnostics require CANOPEX_API_BEARER_TOKEN; native fixtures use e2e_local management polling"
+        )
     print(f"\n  Polling orchestrator status at {url}")
 
     start = time.time()
     last_status = ""
     while time.time() - start < timeout:
         try:
-            resp = httpx.get(url, timeout=10.0)
+            resp = httpx.get(url, timeout=10.0, headers={"Authorization": f"Bearer {token}"})
         except httpx.ConnectError:
             print("  ... func host not reachable, retrying")
             time.sleep(interval)
@@ -145,6 +150,8 @@ def poll_orchestrator(instance_id: str, timeout: int = 120, interval: int = 3) -
             print("  ... orchestration not found yet, retrying")
             time.sleep(interval)
             continue
+        if resp.status_code in {401, 403}:
+            raise RuntimeError("Diagnostics bearer credentials rejected")
 
         data = resp.json()
         status = data.get("runtimeStatus", "Unknown")

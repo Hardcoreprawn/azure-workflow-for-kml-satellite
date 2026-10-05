@@ -247,14 +247,20 @@ paths:
       description: |
         Returns the current status of a Durable Functions orchestration,
         including progress updates and final output when complete.
-        Currently anonymous for a caller with an instance ID. Authentication
-        and run-access authorization are required before leaving local development
-        but are not yet enforced here. Filenames, artifact paths and failure
-        details may be returned. An initial 404 can precede Event Grid admission.
+        Requires verified bearer identity and current membership in the stored
+        originating organisation selected at authentication. Missing and denied
+        records both return 404 before Durable/telemetry access; unknown origin is
+        denied. An authorized run can return 404 before Event Grid admission.
       tags: [pipeline]
-      security: []
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/instanceId"
+        - name: org_id
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Orchestration status
@@ -283,14 +289,22 @@ paths:
                       - $ref: "#/components/schemas/PipelineSummary"
                       - type: "null"
                 required: [instanceId, name, runtimeStatus, createdTime, lastUpdatedTime, customStatus, output]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: Instance not found
+          description: Run not found or caller is not authorized in the selected originating org
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+        "503":
+          description: Membership or authoritative run history lookup unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /timelapse-data/{instance_id}:
     get:

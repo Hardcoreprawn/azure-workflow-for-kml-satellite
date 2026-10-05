@@ -114,12 +114,15 @@ def _poll_status(
     poll_interval_s: float,
 ) -> tuple[str, dict[str, Any], bool]:
     url = f"{FUNC_BASE}/api/orchestrator/{instance_id}"
+    token = os.environ.get("CANOPEX_API_BEARER_TOKEN", "").strip()
+    if not token:
+        raise ValueError("Public diagnostics require CANOPEX_API_BEARER_TOKEN")
     start = time.monotonic()
     last_payload: dict[str, Any] = {}
 
     while time.monotonic() - start < timeout_s:
         try:
-            resp = httpx.get(url, timeout=10.0)
+            resp = httpx.get(url, timeout=10.0, headers={"Authorization": f"Bearer {token}"})
         except httpx.HTTPError:
             time.sleep(poll_interval_s)
             continue
@@ -127,6 +130,8 @@ def _poll_status(
         if resp.status_code == 404:
             time.sleep(poll_interval_s)
             continue
+        if resp.status_code in {401, 403}:
+            raise RuntimeError("Diagnostics bearer credentials rejected")
 
         payload = resp.json()
         last_payload = payload if isinstance(payload, dict) else {}

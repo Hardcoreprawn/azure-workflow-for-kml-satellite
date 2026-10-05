@@ -17,6 +17,90 @@ PIPELINE_PKG = Path(__file__).resolve().parent.parent / "blueprints" / "pipeline
 _ORG_123 = {"org_id": "org-123", "members": [{"user_id": "user-123"}]}
 
 
+def test_diagnostics_anonymous_denied_before_status_or_telemetry():
+    from blueprints.pipeline.diagnostics import _build_orchestrator_status_response
+
+    req = func.HttpRequest(
+        method="GET",
+        url="/api/orchestrator/private",
+        headers={},
+        params={},
+        route_params={"instance_id": "private"},
+        body=b"",
+    )
+    client = MagicMock()
+    client.get_status = AsyncMock()
+    with (
+        patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "anonymous", None)),
+        patch("blueprints.pipeline.diagnostics._fetch_instance_telemetry_hint") as telemetry,
+        patch("treesight.storage.cosmos.query_items") as records,
+    ):
+        response = asyncio.run(_build_orchestrator_status_response(req, client))
+    assert response.status_code == 401
+    client.get_status.assert_not_awaited()
+    telemetry.assert_not_called()
+    records.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["membership", "records"])
+def test_diagnostics_outage_stops_before_durable_and_telemetry(failure):
+    from blueprints.pipeline.diagnostics import _build_orchestrator_status_response
+    from blueprints.pipeline.history import RunRecordLookupError
+
+    req = func.HttpRequest(
+        method="GET",
+        url="/api/orchestrator/private",
+        headers={},
+        params={},
+        route_params={"instance_id": "private"},
+        body=b"",
+    )
+    client = MagicMock()
+    client.get_status = AsyncMock()
+    with (
+        patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-123", _ORG_123)) as auth,
+        patch("blueprints.pipeline.diagnostics.get_pipeline_limiter") as limiter,
+        patch(
+            "blueprints.pipeline.history.get_run_record_by_instance_id", side_effect=RunRecordLookupError("unavailable")
+        ),
+        patch("blueprints.pipeline.diagnostics._fetch_instance_telemetry_hint") as telemetry,
+    ):
+        if failure == "membership":
+            auth.side_effect = OSError("membership unavailable")
+        limiter.return_value.is_allowed.return_value = True
+        response = asyncio.run(_build_orchestrator_status_response(req, client))
+    assert response.status_code == 503
+    client.get_status.assert_not_awaited()
+    telemetry.assert_not_called()
+
+
+@pytest.mark.parametrize("record", [None, {"org_id": "other-org"}, {"user_id": "user-123"}])
+def test_diagnostics_unauthorized_origin_hidden_before_durable(record):
+    from blueprints.pipeline.diagnostics import _build_orchestrator_status_response
+
+    req = func.HttpRequest(
+        method="GET",
+        url="/api/orchestrator/private",
+        headers={},
+        params={},
+        route_params={"instance_id": "private"},
+        body=b"",
+    )
+    client = MagicMock()
+    client.get_status = AsyncMock()
+    with (
+        patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-123", _ORG_123)),
+        patch("blueprints.pipeline.diagnostics.get_pipeline_limiter") as limiter,
+        patch("blueprints.pipeline.history.get_run_record_by_instance_id", return_value=record),
+        patch("blueprints.pipeline.diagnostics._fetch_instance_telemetry_hint") as telemetry,
+    ):
+        limiter.return_value.is_allowed.return_value = True
+        response = asyncio.run(_build_orchestrator_status_response(req, client))
+    assert response.status_code == 404
+    client.get_status.assert_not_awaited()
+    telemetry.assert_not_called()
+
+
 def _make_req(
     url: str,
     body: dict[str, object] | None = None,
@@ -113,6 +197,11 @@ class TestAnalysisSubmissionRoutes:
             ),
             patch("blueprints.pipeline.submission.reserve_admission_slot", return_value=True),
             patch("blueprints.upload._revoke_upload_ticket"),
+            patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-123", _ORG_123)),
+            patch(
+                "blueprints.pipeline.history.get_run_record_by_instance_id",
+                return_value={"org_id": "org-123", "user_id": "creator"},
+            ),
         ):
             yield
 
@@ -462,7 +551,7 @@ class TestAnalysisSubmissionRoutes:
         assert mock_reserve.call_args.kwargs["parcel_count"] == 2
         mock_consume_trial.assert_not_called()
 
-    def test_orchestrator_status_allows_anonymous_access(self):
+    def test_orchestrator_status_permits_authorized_origin_peer(self):
         from blueprints.pipeline.diagnostics import _build_orchestrator_status_response
 
         client = _HistoryDurableClient(
