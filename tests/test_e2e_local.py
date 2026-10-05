@@ -61,7 +61,7 @@ def test_loopback_management_polling_discovers_keys_only_after_unauthorized(monk
     container.get_blob_client.return_value.download_blob.return_value.readall.return_value = json.dumps(
         {"systemKeys": [{"name": "durabletask_extension", "value": "durable-test"}]}
     ).encode()
-    monkeypatch.setattr(runner.BlobServiceClient, "from_connection_string", lambda _connection: service)
+    monkeypatch.setattr(management.BlobServiceClient, "from_connection_string", lambda _connection: service)
     requests = []
 
     def get(url, *, timeout, headers=None):
@@ -103,7 +103,7 @@ class TestBuildFuncHostEnv:
         container.get_blob_client.return_value.download_blob.return_value.readall.return_value = json.dumps(
             payload
         ).encode()
-        monkeypatch.setattr(runner.BlobServiceClient, "from_connection_string", lambda _connection: service)
+        monkeypatch.setattr(management.BlobServiceClient, "from_connection_string", lambda _connection: service)
         if available:
             assert management.local_durable_keys("http://func:80") == ["durable-test"]
         else:

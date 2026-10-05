@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts import load_baseline, simulate_upload
+from scripts import load_baseline, local_durable, simulate_upload
 
 
 @pytest.mark.parametrize("poller", ["simulate", "load"])
@@ -18,7 +18,7 @@ def test_storage_native_polling_uses_local_management_without_customer_bearer(mo
         requests.append((url, kwargs))
         return SimpleNamespace(status_code=200, json=lambda: {"runtimeStatus": "Completed"})
 
-    monkeypatch.setattr(module.httpx, "get", get)
+    monkeypatch.setattr(local_durable.httpx, "get", get)
     if poller == "simulate":
         module.poll_orchestrator("run", timeout=2, interval=0)
     else:
