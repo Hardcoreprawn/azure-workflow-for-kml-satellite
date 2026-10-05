@@ -329,6 +329,18 @@ class TestSafeBlobPath:
 # ---------------------------------------------------------------------------
 
 
+def test_manifest_access_policy_has_no_pipeline_import_cycle():
+    import ast
+    import inspect
+
+    from blueprints._helpers import _manifest_run_access_error
+
+    source = ast.parse(inspect.getsource(_manifest_run_access_error))
+    imports = [node.module for node in ast.walk(source) if isinstance(node, ast.ImportFrom)]
+    assert imports
+    assert all(module and not module.startswith("blueprints") for module in imports)
+
+
 class TestFetchEnrichmentManifest:
     """Regression tests for ``fetch_enrichment_manifest``."""
 
@@ -339,7 +351,7 @@ class TestFetchEnrichmentManifest:
         from unittest.mock import patch
 
         with patch(
-            "blueprints.pipeline.history.get_run_record_by_instance_id",
+            "treesight.pipeline.run_access.get_run_record_by_instance_id",
             return_value={"org_id": "org-b", "user_id": "former-creator"},
         ):
             yield
@@ -404,7 +416,7 @@ class TestFetchEnrichmentManifest:
 
         with (
             patch("blueprints._helpers.check_auth", return_value=({}, "user-123", self.ORG)),
-            patch("blueprints.pipeline.history.get_run_record_by_instance_id", return_value={"org_id": "other-org"}),
+            patch("treesight.pipeline.run_access.get_run_record_by_instance_id", return_value={"org_id": "other-org"}),
         ):
             manifest, err = await fetch_enrichment_manifest(req, client)
 

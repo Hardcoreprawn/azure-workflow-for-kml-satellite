@@ -118,7 +118,7 @@ def test_manifest_access_requires_current_origin_membership_before_durable(allow
         patch("blueprints._helpers._resolve_bearer_claims", return_value={"tid": "tenant", "oid": "peer"}),
         patch("blueprints._helpers._resolve_active_org", return_value=org),
         patch(
-            "blueprints.pipeline.history.get_run_record_by_instance_id",
+            "treesight.pipeline.run_access.get_run_record_by_instance_id",
             return_value={"id": "run", "org_id": "org-b", "user_id": "tenant:former-creator"},
         ),
         patch("treesight.storage.client.BlobStorageClient") as storage,
@@ -151,7 +151,7 @@ def test_manifest_unknown_or_denied_origin_never_reads_evidence(record):
             "blueprints._helpers.check_auth",
             return_value=({}, "tenant:peer", {"org_id": "org-b", "members": [{"user_id": "tenant:peer"}]}),
         ),
-        patch("blueprints.pipeline.history.get_run_record_by_instance_id", return_value=record),
+        patch("treesight.pipeline.run_access.get_run_record_by_instance_id", return_value=record),
         patch("treesight.storage.client.BlobStorageClient") as storage,
     ):
         manifest, error = asyncio.run(fetch_enrichment_manifest(req, client))
@@ -185,7 +185,7 @@ def test_export_and_timelapse_requests_share_origin_authorization(endpoint, allo
         patch("blueprints._helpers._resolve_bearer_claims", return_value={"tid": "tenant", "oid": "peer"}),
         patch("blueprints._helpers._resolve_active_org", return_value=org),
         patch(
-            "blueprints.pipeline.history.get_run_record_by_instance_id",
+            "treesight.pipeline.run_access.get_run_record_by_instance_id",
             return_value={"org_id": "org-b", "user_id": "former-creator"},
         ),
         patch("treesight.storage.client.BlobStorageClient") as storage,
@@ -218,7 +218,7 @@ def test_manifest_denials_and_outages_stop_before_evidence(failure, expected):
             return_value=({}, "peer", {"org_id": "org-b", "members": [{"user_id": "peer"}]}),
         ) as auth,
         patch(
-            "blueprints.pipeline.history.get_run_record_by_instance_id",
+            "treesight.pipeline.run_access.get_run_record_by_instance_id",
             side_effect=RunRecordLookupError("records unavailable"),
         ) as records,
         patch("treesight.storage.client.BlobStorageClient") as storage,

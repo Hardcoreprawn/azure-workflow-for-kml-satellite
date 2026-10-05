@@ -391,7 +391,11 @@ def _parse_json_field(value: Any) -> Any:
 def _manifest_run_access_error(
     req: func.HttpRequest, instance_id: str, user_id: str, active_org: dict[str, Any] | None
 ) -> func.HttpResponse | None:
-    from blueprints.pipeline.history import RunRecordLookupError, assert_run_write_access, get_run_record_by_instance_id
+    from treesight.pipeline.run_access import (
+        RunRecordLookupError,
+        assert_run_write_access,
+        get_run_record_by_instance_id,
+    )
 
     try:
         record = get_run_record_by_instance_id(instance_id, raise_on_error=True)

@@ -15,6 +15,9 @@ import azure.functions as func
 
 from blueprints._helpers import cors_headers, error_response
 from treesight.constants import DEFAULT_PROVIDER
+from treesight.pipeline.run_access import RunRecordLookupError as RunRecordLookupError
+from treesight.pipeline.run_access import assert_run_write_access as assert_run_write_access
+from treesight.pipeline.run_access import get_run_record_by_instance_id as get_run_record_by_instance_id
 from treesight.storage import cosmos as _cosmos_mod
 
 from ._status import (
@@ -48,66 +51,8 @@ class RunRecordPersistenceError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 
-class RunRecordLookupError(RuntimeError):
-    """Raised when a run record lookup fails due to backend availability/errors."""
-
-
 class AnalysisHistoryUnavailableError(RuntimeError):
     """Raised when history cannot be read authoritatively from Cosmos."""
-
-
-def get_run_record_by_instance_id(
-    instance_id: str,
-    *,
-    raise_on_error: bool = False,
-) -> dict[str, Any] | None:
-    """Fetch a single run record by instance ID using a cross-partition Cosmos query.
-
-    Returns None when the record is not found.
-
-    When ``raise_on_error`` is False (default), returns None when Cosmos is
-    unavailable or the query fails. When True, raises RunRecordLookupError in
-    those cases so callers can distinguish backend failures from true not-found.
-
-    Blob fallback is not supported for cross-user lookups (owner unknown).
-    """
-    if not _cosmos_mod.cosmos_available():
-        if raise_on_error:
-            raise RunRecordLookupError("Cosmos unavailable")
-        return None
-    try:
-        from treesight.storage import cosmos
-
-        results = cosmos.query_items(
-            "runs",
-            "SELECT * FROM c WHERE c.id = @id",
-            parameters=[{"name": "@id", "value": instance_id}],
-        )
-        return results[0] if results else None
-    except Exception as exc:
-        logger.warning("Cosmos run lookup failed for instance=%s", instance_id, exc_info=True)
-        if raise_on_error:
-            raise RunRecordLookupError("Run lookup failed") from exc
-        return None
-
-
-def assert_run_write_access(
-    run_record: dict[str, Any], requesting_user_id: str, *, active_org: dict[str, Any] | None = None
-) -> None:
-    """Raise ValueError if *requesting_user_id* is not permitted to write to *run_record*.
-
-    Requires current membership in the run's immutable originating organisation.
-    Raises ValueError with a generic message to avoid leaking run ownership
-    to unauthorised callers.
-    """
-    org_id = run_record.get("org_id")
-    if isinstance(org_id, str) and org_id.strip() and active_org and active_org.get("org_id") == org_id:
-        members = active_org.get("members", [])
-        if isinstance(members, list) and any(
-            isinstance(member, dict) and member.get("user_id") == requesting_user_id for member in members
-        ):
-            return
-    raise ValueError("Run not found or you do not have permission to modify it")
 
 
 def get_authorized_run_record(instance_id: str, user_id: str, *, active_org: dict[str, Any] | None) -> dict[str, Any]:
@@ -117,7 +62,6 @@ def get_authorized_run_record(instance_id: str, user_id: str, *, active_org: dic
         raise ValueError("Run not found")
     assert_run_write_access(record, user_id, active_org=active_org)
     return record
-
 
 def _extract_submission_context(body: Any) -> dict[str, Any]:
     if not isinstance(body, dict):

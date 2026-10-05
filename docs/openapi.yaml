@@ -313,7 +313,11 @@ paths:
     get:
       operationId: getTimelapseData
       summary: Retrieve timelapse imagery data for a pipeline run
-      description: Requires current selected-origin membership in authoritative run history; creator identity grants no bypass.
+      description: |
+        Requires current selected-origin membership in authoritative run history;
+        creator identity grants no bypass. Omit org_id to use the authenticated
+        active organisation. An explicit org_id selects an organisation only
+        after membership authorization; it does not grant access.
       tags: [pipeline]
       security:
         - bearerAuth: []
@@ -322,6 +326,7 @@ paths:
         - name: org_id
           in: query
           required: false
+          description: Select an organisation after membership authorization; omission uses the authenticated active organisation.
           schema:
             type: string
       responses:
@@ -504,8 +509,10 @@ paths:
         structured to Regulation (EU) 2023/1115 Annex II — it is not a submission
         to EU TRACES NT; the operator must review and submit it themselves.
         Current members of the selected originating organisation may retrieve
-        evidence even after its creator leaves. Unknown/missing/denied run origin
-        returns the same 404 before Durable or blob access.
+        evidence even after its creator leaves. Omit org_id to use the authenticated
+        active organisation. An explicit org_id selects an organisation only after
+        membership authorization; it does not grant access. Unknown/missing/denied
+        run origin returns the same 404 before Durable or blob access.
       tags: [export]
       security:
         - bearerAuth: []
@@ -514,6 +521,7 @@ paths:
         - name: org_id
           in: query
           required: false
+          description: Select an organisation after membership authorization; omission uses the authenticated active organisation.
           schema:
             type: string
         - name: format
