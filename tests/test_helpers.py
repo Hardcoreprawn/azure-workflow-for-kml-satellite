@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import ClassVar
 
 import azure.functions as func
 import pytest
@@ -328,12 +329,36 @@ class TestSafeBlobPath:
 # ---------------------------------------------------------------------------
 
 
+def test_manifest_access_policy_has_no_pipeline_import_cycle():
+    import ast
+    import inspect
+
+    from blueprints._helpers import _manifest_run_access_error
+
+    source = ast.parse(inspect.getsource(_manifest_run_access_error))
+    imports = [node.module for node in ast.walk(source) if isinstance(node, ast.ImportFrom)]
+    assert imports
+    assert all(module and not module.startswith("blueprints") for module in imports)
+
+
 class TestFetchEnrichmentManifest:
     """Regression tests for ``fetch_enrichment_manifest``."""
 
+    ORG: ClassVar[dict] = {"org_id": "org-b", "members": [{"user_id": "user-123"}]}
+
+    @pytest.fixture(autouse=True)
+    def _stored_origin(self):
+        from unittest.mock import patch
+
+        with patch(
+            "treesight.pipeline.run_access.get_run_record_by_instance_id",
+            return_value={"org_id": "org-b", "user_id": "former-creator"},
+        ):
+            yield
+
     @pytest.mark.anyio
-    async def test_get_status_called_with_show_input(self) -> None:
-        """get_status must pass show_input=True so the ownership check works."""
+    async def test_get_status_does_not_request_sensitive_input(self) -> None:
+        """Permission derives from the stored origin, not execution inputs."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from blueprints._helpers import fetch_enrichment_manifest
@@ -355,7 +380,7 @@ class TestFetchEnrichmentManifest:
         )
 
         with (
-            patch("blueprints._helpers.check_auth", return_value=({}, "user-123")),
+            patch("blueprints._helpers.check_auth", return_value=({}, "user-123", self.ORG)),
             patch(
                 "treesight.storage.client.BlobStorageClient.download_json",
                 return_value={"frames": []},
@@ -363,14 +388,13 @@ class TestFetchEnrichmentManifest:
         ):
             manifest, err = await fetch_enrichment_manifest(req, client)
 
-        # The critical assertion: show_input MUST be True
-        client.get_status.assert_called_once_with("abc", show_input=True)
+        client.get_status.assert_called_once_with("abc")
         assert err is None
         assert manifest == {"frames": []}
 
     @pytest.mark.anyio
-    async def test_ownership_mismatch_returns_404(self) -> None:
-        """Different user_id in input vs caller returns 404."""
+    async def test_stored_origin_mismatch_returns_404_before_durable(self) -> None:
+        """An unrelated stored org denies before execution reads."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from blueprints._helpers import fetch_enrichment_manifest
@@ -390,12 +414,16 @@ class TestFetchEnrichmentManifest:
             body=b"",
         )
 
-        with patch("blueprints._helpers.check_auth", return_value=({}, "user-123")):
+        with (
+            patch("blueprints._helpers.check_auth", return_value=({}, "user-123", self.ORG)),
+            patch("treesight.pipeline.run_access.get_run_record_by_instance_id", return_value={"org_id": "other-org"}),
+        ):
             manifest, err = await fetch_enrichment_manifest(req, client)
 
         assert manifest is None
         assert err is not None
         assert err.status_code == 404
+        client.get_status.assert_not_awaited()
 
     @pytest.mark.anyio
     async def test_input_as_json_string(self) -> None:
@@ -420,7 +448,7 @@ class TestFetchEnrichmentManifest:
         )
 
         with (
-            patch("blueprints._helpers.check_auth", return_value=({}, "user-123")),
+            patch("blueprints._helpers.check_auth", return_value=({}, "user-123", self.ORG)),
             patch(
                 "treesight.storage.client.BlobStorageClient.download_json",
                 return_value={"frames": []},
