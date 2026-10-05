@@ -13,8 +13,11 @@ info:
 
     ## Authentication
 
-    Most endpoints require CIAM bearer-token authentication.
-    Clients obtain a JWT and send `Authorization: Bearer <token>` on API requests.
+    Most endpoints require a CIAM delegated API access token with `User.Read`
+    in the ASCII-space-delimited `scp` claim, sent as
+    `Authorization: Bearer <token>`. ID tokens, app-only/roles-only tokens,
+    and malformed scopes are rejected with 401. The token must also satisfy
+    the configured API audience, issuer, signature, identity, and time checks.
 
     Health and contract endpoints are unauthenticated.
 
@@ -1417,8 +1420,12 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        CIAM-issued bearer JWT sent in `Authorization: Bearer <token>`.
-        The API verifies token signature and claims via OIDC/JWKS.
+        CIAM-issued delegated API access token sent in `Authorization: Bearer <token>`.
+        Requires `User.Read` in an OAuth ASCII-space-delimited `scp` claim.
+        ID tokens, app-only/roles-only tokens, and malformed scopes return 401.
+        Signature, issuer, API audience, identity, and time claims are verified
+        via OIDC/JWKS. Live exposed-scope registration and consent must be
+        verified before production release.
     functionKey:
       type: apiKey
       in: header

@@ -256,6 +256,10 @@ Reference: .github/workflows/deploy.yml and infra/tofu/README.md.
 
 - Bearer-only is the only supported mode (JWT in `Authorization: Bearer …`).
 - Required app settings: `CIAM_AUTHORITY`, `CIAM_TENANT_ID`, `CIAM_API_AUDIENCE`.
+- Require the exact delegated `User.Read` API scope in verified token `scp`;
+   ID tokens and app-only/roles-only grants are not API credentials. Validate the
+   browser's `<apiAudience>/User.Read` grant against the live CIAM exposed scopes
+   and consent before relight. No app-only identity/roles rollout is approved.
 - API-managed history/review/saved-analysis access requires the run's persisted
    originating org to match the selected auth snapshot and contain the current
    caller as a member. Creators have no membership bypass. Unknown legacy origin
