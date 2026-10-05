@@ -139,7 +139,7 @@ def test_manifest_access_requires_current_origin_membership_before_durable(allow
 
 @pytest.mark.parametrize("record", [None, {"user_id": "tenant:peer"}, {"org_id": "other-org"}])
 def test_manifest_unknown_or_denied_origin_never_reads_evidence(record):
-    from blueprints._helpers import fetch_enrichment_manifest
+    from blueprints._helpers import error_response, fetch_enrichment_manifest
 
     req = func.HttpRequest(
         method="GET", url="/api/export/run/csv", headers={}, params={}, route_params={"instance_id": "run"}, body=b""
@@ -157,6 +157,9 @@ def test_manifest_unknown_or_denied_origin_never_reads_evidence(record):
         manifest, error = asyncio.run(fetch_enrichment_manifest(req, client))
     assert manifest is None
     assert error.status_code == 404
+    expected = error_response(404, "Pipeline not found or not complete", req=req)
+    assert error.get_body() == expected.get_body()
+    assert dict(error.headers) == dict(expected.headers)
     client.get_status.assert_not_awaited()
     storage.assert_not_called()
 
@@ -233,6 +236,8 @@ def test_manifest_denials_and_outages_stop_before_evidence(failure, expected):
     storage.assert_not_called()
     if failure != "records":
         records.assert_not_called()
+    else:
+        records.assert_called_once_with("run", raise_on_error=True)
 
 
 class TestBuildGeoJSON:
