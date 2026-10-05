@@ -313,9 +313,17 @@ paths:
     get:
       operationId: getTimelapseData
       summary: Retrieve timelapse imagery data for a pipeline run
+      description: Requires current selected-origin membership in authoritative run history; creator identity grants no bypass.
       tags: [pipeline]
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/instanceId"
+        - name: org_id
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Timelapse data with imagery URLs and metadata
@@ -326,7 +334,13 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          description: Instance not found
+          description: Run or evidence not found, or caller not authorized; no existence disclosure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Membership or authoritative run lookup unavailable
           content:
             application/json:
               schema:
@@ -489,9 +503,19 @@ paths:
         are per-parcel EUDR due-diligence exports. `eudr-dds` is a DRAFT export
         structured to Regulation (EU) 2023/1115 Annex II — it is not a submission
         to EU TRACES NT; the operator must review and submit it themselves.
+        Current members of the selected originating organisation may retrieve
+        evidence even after its creator leaves. Unknown/missing/denied run origin
+        returns the same 404 before Durable or blob access.
       tags: [export]
+      security:
+        - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/instanceId"
+        - name: org_id
+          in: query
+          required: false
+          schema:
+            type: string
         - name: format
           in: path
           required: true
@@ -532,6 +556,12 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           description: Instance or data not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Membership or authoritative run lookup unavailable
           content:
             application/json:
               schema:

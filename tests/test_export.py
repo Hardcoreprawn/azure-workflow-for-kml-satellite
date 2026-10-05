@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import csv
 import io
 import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import azure.functions as func
 import pytest
 
 from blueprints.export.audit_pdf import build_eudr_audit_pdf
@@ -89,6 +93,146 @@ def enrichment_manifest():
         "enriched_at": "2025-01-15T10:30:00Z",
         "enrichment_duration_seconds": 42.5,
     }
+
+
+@pytest.mark.parametrize("allowed", [True, False])
+def test_manifest_access_requires_current_origin_membership_before_durable(allowed):
+    from blueprints._helpers import fetch_enrichment_manifest
+
+    req = func.HttpRequest(
+        method="GET",
+        url="/api/export/run/csv",
+        headers={"Authorization": "Bearer test"},
+        params={},
+        route_params={"instance_id": "run"},
+        body=b"",
+    )
+    org = {"org_id": "org-b" if allowed else "org-a", "members": [{"user_id": "tenant:peer"}]}
+    client = MagicMock()
+    client.get_status = AsyncMock(
+        return_value=SimpleNamespace(
+            output={"enrichment_manifest": "manifest.json"}, input_={"user_id": "tenant:former-creator"}
+        )
+    )
+    with (
+        patch("blueprints._helpers._resolve_bearer_claims", return_value={"tid": "tenant", "oid": "peer"}),
+        patch("blueprints._helpers._resolve_active_org", return_value=org),
+        patch(
+            "blueprints.pipeline.history.get_run_record_by_instance_id",
+            return_value={"id": "run", "org_id": "org-b", "user_id": "tenant:former-creator"},
+        ),
+        patch("treesight.storage.client.BlobStorageClient") as storage,
+    ):
+        storage.return_value.download_json.return_value = {"evidence": "org-b"}
+        manifest, error = asyncio.run(fetch_enrichment_manifest(req, client))
+    if allowed:
+        assert manifest == {"evidence": "org-b"}
+        assert error is None
+        client.get_status.assert_awaited_once()
+        storage.return_value.download_json.assert_called_once()
+    else:
+        assert manifest is None
+        assert error.status_code == 404
+        client.get_status.assert_not_awaited()
+        storage.assert_not_called()
+
+
+@pytest.mark.parametrize("record", [None, {"user_id": "tenant:peer"}, {"org_id": "other-org"}])
+def test_manifest_unknown_or_denied_origin_never_reads_evidence(record):
+    from blueprints._helpers import fetch_enrichment_manifest
+
+    req = func.HttpRequest(
+        method="GET", url="/api/export/run/csv", headers={}, params={}, route_params={"instance_id": "run"}, body=b""
+    )
+    client = MagicMock()
+    client.get_status = AsyncMock()
+    with (
+        patch(
+            "blueprints._helpers.check_auth",
+            return_value=({}, "tenant:peer", {"org_id": "org-b", "members": [{"user_id": "tenant:peer"}]}),
+        ),
+        patch("blueprints.pipeline.history.get_run_record_by_instance_id", return_value=record),
+        patch("treesight.storage.client.BlobStorageClient") as storage,
+    ):
+        manifest, error = asyncio.run(fetch_enrichment_manifest(req, client))
+    assert manifest is None
+    assert error.status_code == 404
+    client.get_status.assert_not_awaited()
+    storage.assert_not_called()
+
+
+@pytest.mark.parametrize("endpoint", ["csv", "eudr-pdf", "timelapse"])
+@pytest.mark.parametrize("allowed", [False, True])
+def test_export_and_timelapse_requests_share_origin_authorization(endpoint, allowed, enrichment_manifest):
+    from blueprints.export import export_data
+    from blueprints.pipeline.enrichment import timelapse_data
+
+    org = {"org_id": "org-b" if allowed else "org-a", "members": [{"user_id": "tenant:peer"}]}
+    req = func.HttpRequest(
+        method="GET",
+        url="/api/export/run/csv",
+        headers={},
+        params={},
+        route_params={"instance_id": "run", "format": endpoint},
+        body=b"",
+    )
+    client = MagicMock()
+    client.get_status = AsyncMock(return_value=SimpleNamespace(output={"enrichment_manifest": "manifest.json"}))
+    with (
+        patch("blueprints._helpers._resolve_bearer_claims", return_value={"tid": "tenant", "oid": "peer"}),
+        patch("blueprints._helpers._resolve_active_org", return_value=org),
+        patch(
+            "blueprints.pipeline.history.get_run_record_by_instance_id",
+            return_value={"org_id": "org-b", "user_id": "former-creator"},
+        ),
+        patch("treesight.storage.client.BlobStorageClient") as storage,
+    ):
+        storage.return_value.download_json.return_value = enrichment_manifest
+        route = timelapse_data if endpoint == "timelapse" else export_data
+        handler = route.build().get_user_function().__wrapped__
+        response = asyncio.run(handler(req, client))
+    assert response.status_code == (200 if allowed else 404)
+    if allowed:
+        assert len(response.get_body()) > 0
+    else:
+        client.get_status.assert_not_awaited()
+        storage.assert_not_called()
+
+
+@pytest.mark.parametrize("failure,expected", [("anonymous", 401), ("auth", 401), ("membership", 503), ("records", 503)])
+def test_manifest_denials_and_outages_stop_before_evidence(failure, expected):
+    from blueprints._helpers import fetch_enrichment_manifest
+    from blueprints.pipeline.history import RunRecordLookupError
+
+    req = func.HttpRequest(
+        method="GET", url="/api/export/run/csv", headers={}, params={}, route_params={"instance_id": "run"}, body=b""
+    )
+    client = MagicMock()
+    client.get_status = AsyncMock()
+    with (
+        patch(
+            "blueprints._helpers.check_auth",
+            return_value=({}, "peer", {"org_id": "org-b", "members": [{"user_id": "peer"}]}),
+        ) as auth,
+        patch(
+            "blueprints.pipeline.history.get_run_record_by_instance_id",
+            side_effect=RunRecordLookupError("records unavailable"),
+        ) as records,
+        patch("treesight.storage.client.BlobStorageClient") as storage,
+    ):
+        if failure == "anonymous":
+            auth.return_value = ({}, "anonymous", None)
+        elif failure == "auth":
+            auth.side_effect = ValueError("Invalid bearer token")
+        elif failure == "membership":
+            auth.side_effect = OSError("membership unavailable")
+        manifest, error = asyncio.run(fetch_enrichment_manifest(req, client))
+    assert manifest is None
+    assert error.status_code == expected
+    client.get_status.assert_not_awaited()
+    storage.assert_not_called()
+    if failure != "records":
+        records.assert_not_called()
 
 
 class TestBuildGeoJSON:

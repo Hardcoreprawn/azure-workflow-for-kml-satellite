@@ -94,8 +94,13 @@ identity grants no bypass after leaving an org; unknown-origin records are
 excluded/denied. Origin filtering occurs before pagination, output and statistics.
 Absent/mismatched membership returns `403`; membership storage failures return
 `503`. Same-ID ticket reuse also verifies stored origin, never rebinds it to the
-caller's current default org, and preserves reviews. Raw export sharing and
-anonymous diagnostics remain separate restrictions (#1210/#1527).
+caller's current default org, and preserves reviews. Export/timelapse manifest
+reads apply the same stored-origin membership guard before Durable or blob access.
+Creators have no bypass after removal; current org peers can retrieve evidence
+even after the creator leaves. Missing/denied/unknown-origin runs return the same
+`404`, invalid/anonymous identity `401`, and membership/run-store outage `503`.
+Durable inputs and artifact paths do not grant permission. Diagnostics protection
+is tracked separately in #1527; this manifest boundary does not make it anonymous-safe.
 Upload-token records remain `Pending` until KML is submitted; a retryable follow-up
 failure preserves the ticket's quota reservation for a same-ID retry.
 Upload-token history is persisted before creating its ticket or SAS URL. A SAS

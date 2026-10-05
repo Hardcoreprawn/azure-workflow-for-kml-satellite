@@ -180,6 +180,14 @@ def test_successful_history_org_id_is_not_nullable():
     assert not schema.get("nullable", False)
 
 
+@pytest.mark.parametrize("path", ["/export/{instance_id}/{format}", "/timelapse-data/{instance_id}"])
+def test_shared_evidence_contract_requires_org_access_and_explicit_outages(path):
+    operation = yaml.safe_load(OPENAPI.read_text())["paths"][path]["get"]
+    assert operation["security"] == [{"bearerAuth": []}]
+    assert {"401", "404", "503"} <= set(operation["responses"])
+    assert any(parameter.get("name") == "org_id" for parameter in operation["parameters"])
+
+
 def test_no_legacy_module_names_in_docs():
     """Docs must not reference the old kml_satellite package name."""
     legacy_pattern = re.compile(r"kml_satellite/")

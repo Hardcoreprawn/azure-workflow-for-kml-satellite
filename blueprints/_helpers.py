@@ -388,6 +388,23 @@ def _parse_json_field(value: Any) -> Any:
     return value
 
 
+def _manifest_run_access_error(
+    req: func.HttpRequest, instance_id: str, user_id: str, active_org: dict[str, Any] | None
+) -> func.HttpResponse | None:
+    from blueprints.pipeline.history import RunRecordLookupError, assert_run_write_access, get_run_record_by_instance_id
+
+    try:
+        record = get_run_record_by_instance_id(instance_id, raise_on_error=True)
+        if not record:
+            return error_response(404, "Pipeline not found or not complete", req=req)
+        assert_run_write_access(record, user_id, active_org=active_org)
+    except RunRecordLookupError:
+        return error_response(503, "Run history unavailable", req=req)
+    except ValueError:
+        return error_response(404, "Pipeline not found or not complete", req=req)
+    return None
+
+
 async def fetch_enrichment_manifest(
     req: func.HttpRequest,
     client: Any,
@@ -401,23 +418,24 @@ async def fetch_enrichment_manifest(
     extracting the manifest path.
     """
     try:
-        _, caller_user_id = check_auth(req)
+        _, caller_user_id, active_org = check_auth(req, include_active_org=True)
     except ValueError as exc:
         return None, error_response(401, str(exc), req=req)
+    except Exception:
+        return None, error_response(503, "Organisation lookup unavailable", req=req)
+    if caller_user_id == "anonymous":
+        return None, error_response(401, "Authentication required", req=req)
 
     instance_id = req.route_params.get("instance_id", "")
     if not instance_id:
         return None, error_response(400, "instance_id required", req=req)
 
-    status = await client.get_status(instance_id, show_input=True)
-    if not status or not status.output:
-        return None, error_response(404, "Pipeline not found or not complete", req=req)
+    access_error = _manifest_run_access_error(req, instance_id, caller_user_id, active_org)
+    if access_error:
+        return None, access_error
 
-    # Verify the authenticated user owns this orchestration
-    inp = getattr(status, "input_", None)
-    inp = _parse_json_field(inp)
-    owner_id = inp.get("user_id", "") if isinstance(inp, dict) else ""
-    if not owner_id or owner_id != caller_user_id:
+    status = await client.get_status(instance_id)
+    if not status or not status.output:
         return None, error_response(404, "Pipeline not found or not complete", req=req)
 
     output = _parse_json_field(status.output)
