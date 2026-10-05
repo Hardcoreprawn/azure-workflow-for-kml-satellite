@@ -15,9 +15,7 @@ import azure.functions as func
 
 from blueprints._helpers import cors_headers, error_response
 from treesight.constants import DEFAULT_PROVIDER
-from treesight.pipeline.run_access import RunRecordLookupError as RunRecordLookupError
-from treesight.pipeline.run_access import assert_run_write_access as assert_run_write_access
-from treesight.pipeline.run_access import get_run_record_by_instance_id as get_run_record_by_instance_id
+from treesight.pipeline import run_access as _run_access
 from treesight.storage import cosmos as _cosmos_mod
 
 from ._status import (
@@ -25,6 +23,10 @@ from ._status import (
     _fetch_instance_telemetry_hint,
     _needs_telemetry_recovery,
 )
+
+RunRecordLookupError = _run_access.RunRecordLookupError
+assert_run_write_access = _run_access.assert_run_write_access
+get_run_record_by_instance_id = _run_access.get_run_record_by_instance_id
 
 logger = logging.getLogger(__name__)
 
