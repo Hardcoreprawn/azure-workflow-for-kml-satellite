@@ -9,35 +9,22 @@ from scripts import load_baseline, simulate_upload
 
 
 @pytest.mark.parametrize("poller", ["simulate", "load"])
-@pytest.mark.parametrize("status", [None, 401, 200])
-def test_public_polling_requires_and_forwards_delegated_bearer(monkeypatch, poller, status):
+def test_storage_native_polling_uses_local_management_without_customer_bearer(monkeypatch, poller):
     module = simulate_upload if poller == "simulate" else load_baseline
     requests = []
     monkeypatch.delenv("CANOPEX_API_BEARER_TOKEN", raising=False)
-    if status is not None:
-        monkeypatch.setenv("CANOPEX_API_BEARER_TOKEN", "delegated-test-token")
 
     def get(url, **kwargs):
         requests.append((url, kwargs))
-        return SimpleNamespace(status_code=status, json=lambda: {"runtimeStatus": "Completed"})
+        return SimpleNamespace(status_code=200, json=lambda: {"runtimeStatus": "Completed"})
 
     monkeypatch.setattr(module.httpx, "get", get)
-
-    def invoke():
-        if poller == "simulate":
-            return module.poll_orchestrator("run", timeout=2, interval=0)
-        return module._poll_status("run", timeout_s=2, poll_interval_s=0)
-
-    if status is None:
-        with pytest.raises(ValueError, match="CANOPEX_API_BEARER_TOKEN"):
-            invoke()
-        assert requests == []
-    elif status == 401:
-        with pytest.raises(RuntimeError, match="credentials rejected"):
-            invoke()
+    if poller == "simulate":
+        module.poll_orchestrator("run", timeout=2, interval=0)
     else:
-        invoke()
-        assert requests[0][1]["headers"] == {"Authorization": "Bearer delegated-test-token"}
+        assert module._poll_status("run", timeout_s=2, poll_interval_s=0)[0] == "Completed"
+    assert requests[0][0] == f"{module.FUNC_BASE}/runtime/webhooks/durabletask/instances/run"
+    assert "Authorization" not in requests[0][1].get("headers", {})
 
 
 class _DummyResponse:

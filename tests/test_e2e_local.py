@@ -19,15 +19,19 @@ from unittest.mock import MagicMock
 import pytest
 
 import scripts.e2e_local as runner
+import scripts.local_durable as management
 
 
 def test_local_management_polling_rejects_remote_host(monkeypatch):
     def unexpected(*_args, **_kwargs):
         raise AssertionError("must not read or send local keys")
 
-    monkeypatch.setattr(runner.BlobServiceClient, "from_connection_string", unexpected)
+    monkeypatch.setattr(management.BlobServiceClient, "from_connection_string", unexpected)
+    monkeypatch.setattr(management.httpx, "get", unexpected)
     with pytest.raises(ValueError, match="local Functions host"):
-        runner._local_durable_keys("https://production.example")
+        management.local_durable_keys("https://production.example")
+    with pytest.raises(ValueError, match="local Functions host"):
+        management.fetch_poll_status("https://production.example/status", management_keys=["local-test-key"])
 
 
 def test_local_management_polling_tries_keys_in_headers_without_url_secret(monkeypatch):
@@ -49,6 +53,44 @@ def test_local_management_polling_tries_keys_in_headers_without_url_secret(monke
     assert all("key" not in url and "code=" not in url for url, _ in requests)
 
 
+@pytest.mark.parametrize("host", ["localhost:7071", "127.0.0.1:7072"])
+def test_loopback_management_polling_discovers_keys_only_after_unauthorized(monkeypatch, host):
+    service = MagicMock()
+    container = service.get_container_client.return_value
+    container.list_blobs.return_value = [SimpleNamespace(name="host.json")]
+    container.get_blob_client.return_value.download_blob.return_value.readall.return_value = json.dumps(
+        {"systemKeys": [{"name": "durabletask_extension", "value": "durable-test"}]}
+    ).encode()
+    monkeypatch.setattr(runner.BlobServiceClient, "from_connection_string", lambda _connection: service)
+    requests = []
+
+    def get(url, *, timeout, headers=None):
+        requests.append((url, headers))
+        return SimpleNamespace(status_code=401 if headers is None else 200, json=lambda: {"runtimeStatus": "Completed"})
+
+    monkeypatch.setattr(runner.httpx, "get", get)
+    result = runner._fetch_poll_status(f"http://{host}/runtime/webhooks/durabletask/instances/run")
+    assert result[:2] == (200, "status")
+    assert requests[0][1] is None
+    assert requests[1][1] == {"x-functions-key": "durable-test"}
+
+
+def test_auth_disabled_management_polling_does_not_read_secrets(monkeypatch):
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("auth-disabled host must not need key discovery")
+
+    monkeypatch.setattr(management.BlobServiceClient, "from_connection_string", unexpected)
+    monkeypatch.setattr(
+        management.httpx,
+        "get",
+        lambda *_args, **_kwargs: SimpleNamespace(status_code=200, json=lambda: {"runtimeStatus": "Completed"}),
+    )
+    assert management.fetch_poll_status("http://localhost/runtime/webhooks/durabletask/instances/run")[:2] == (
+        200,
+        "status",
+    )
+
+
 class TestBuildFuncHostEnv:
     @pytest.mark.parametrize("available", [False, True])
     def test_local_container_polling_reads_only_durable_system_key(self, monkeypatch, available):
@@ -63,10 +105,10 @@ class TestBuildFuncHostEnv:
         ).encode()
         monkeypatch.setattr(runner.BlobServiceClient, "from_connection_string", lambda _connection: service)
         if available:
-            assert runner._local_durable_keys("http://func:80") == ["durable-test"]
+            assert management.local_durable_keys("http://func:80") == ["durable-test"]
         else:
             with pytest.raises(RuntimeError, match="extension key unavailable"):
-                runner._local_durable_keys("http://func:80")
+                management.local_durable_keys("http://func:80")
 
     def test_always_enables_test_mode(self):
         env = runner.build_func_host_env({})

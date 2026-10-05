@@ -33,11 +33,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import urlsplit
 
 import httpx
 from _azurite import AZURITE_CONN_STR
-from azure.storage.blob import BlobServiceClient
+from local_durable import fetch_poll_status as _fetch_poll_status
+from local_durable import validate_local_host
 from pydantic import BaseModel, ConfigDict, Field
 from simulate_upload import DEFAULT_CONTAINER, fire_event_grid, upload_kml
 
@@ -183,62 +183,6 @@ def wait_for_func_host(*, timeout: float, interval: float = 2.0, progress_interv
     raise TimeoutError(f"func host did not become ready within {timeout}s")
 
 
-def _local_durable_keys(base: str) -> list[str]:
-    hostname = urlsplit(base).hostname
-    if hostname not in {"localhost", "127.0.0.1", "func", "orch"}:
-        raise ValueError("Local fixture management polling requires a local Functions host")
-    if hostname in {"localhost", "127.0.0.1"}:
-        return []
-    service = BlobServiceClient.from_connection_string(AZURITE_CONN_STR)
-    container = service.get_container_client("azure-webjobs-secrets")
-    keys = []
-    for blob in container.list_blobs():
-        payload = json.loads(container.get_blob_client(blob.name).download_blob().readall())
-        for key in payload.get("systemKeys", []):
-            if key.get("name") == "durabletask_extension" and isinstance(key.get("value"), str):
-                keys.append(key["value"])
-    if not keys:
-        raise RuntimeError("Local Durable extension key unavailable")
-    return keys
-
-
-def _fetch_poll_status(
-    url: str, *, timeout: float = 10.0, management_keys: list[str] | None = None
-) -> tuple[int | None, str, dict[str, Any] | None]:
-    try:
-        if management_keys:
-            for key in management_keys:
-                response = httpx.get(url, timeout=timeout, headers={"x-functions-key": key})
-                if response.status_code != 401:
-                    break
-        else:
-            response = httpx.get(url, timeout=timeout)
-    except httpx.TransportError:
-        return None, "transport_error", None
-    if response.status_code == 429:
-        return 429, "rate_limited", None
-    if response.status_code == 404:
-        return 404, "not_found", None
-    if response.status_code != 200:
-        return response.status_code, "http_error", None
-    try:
-        payload = response.json()
-    except ValueError:
-        return 200, "invalid_json", None
-    statuses = _TERMINAL_STATUSES | {"Pending", "Running", "ContinuedAsNew", "Suspended"}
-    if (
-        not isinstance(payload, dict)
-        or not isinstance(payload.get("runtimeStatus"), str)
-        or payload["runtimeStatus"] not in statuses
-    ):
-        return 200, "invalid_status", None
-    from blueprints.pipeline._status import _reshape_output
-
-    if isinstance(payload.get("output"), dict):
-        payload = {**payload, "output": _reshape_output(payload["output"])}
-    return 200, "status", payload
-
-
 def poll_orchestration(
     instance_id: str,
     *,
@@ -259,7 +203,7 @@ def poll_orchestration(
     Returns the final status payload. Raises TimeoutError if no terminal
     state is reached within *timeout* — never loops unbounded.
     """
-    management_keys = _local_durable_keys(base)
+    validate_local_host(base)
     url = f"{base}/runtime/webhooks/durabletask/instances/{instance_id}"
     started_at = time.monotonic()
     deadline = started_at + timeout
@@ -278,7 +222,7 @@ def poll_orchestration(
             last_reported_at = now
         request_started = time.monotonic()
         request_timeout = max(0.001, min(10.0, deadline - time.monotonic()))
-        http_status, category, data = _fetch_poll_status(url, timeout=request_timeout, management_keys=management_keys)
+        http_status, category, data = _fetch_poll_status(url, timeout=request_timeout)
         sample = {
             "time": datetime.now(UTC).isoformat(),
             "monotonic": time.monotonic(),
