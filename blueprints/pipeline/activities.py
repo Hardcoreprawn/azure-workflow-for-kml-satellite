@@ -106,10 +106,7 @@ def parse_kml(payload: _Payload) -> list[dict[str, Any]] | dict[str, Any]:
     feature_dicts = [f.model_dump() for f in features]
 
     offloader = PayloadOffloader(storage)
-    if offloader.should_offload(feature_dicts):
-        return offloader.offload(blob_event.correlation_id, feature_dicts)
-
-    return feature_dicts
+    return offloader.offload(blob_event.correlation_id, feature_dicts)
 
 
 @bp.activity_trigger(input_name="payload")
@@ -127,10 +124,37 @@ def load_offloaded_features(payload: _Payload) -> list[dict[str, Any]]:
 def prepare_aoi(payload: _Payload) -> dict[str, Any]:
     from treesight.geo import prepare_aoi as _prepare
     from treesight.models.feature import Feature
+    from treesight.storage.client import BlobStorageClient
+    from treesight.storage.offload import PayloadOffloader
 
-    feature = Feature.model_validate(payload["feature"])
+    storage = BlobStorageClient()
+    offloader = PayloadOffloader(storage)
+    if "features_ref" in payload:
+        feature_dict = offloader.load_single(payload["features_ref"], payload["feature_index"])
+    else:
+        feature_dict = payload["feature"]
+    feature = Feature.model_validate(feature_dict)
     aoi = _prepare(feature, buffer_m=payload.get("buffer_m"))
-    return aoi.model_dump()
+    aoi_data = aoi.model_dump()
+    aoi_ref = offloader.store_claim(
+        payload["instance_id"],
+        f"aoi_{payload.get('feature_index', aoi.feature_index)}",
+        aoi_data,
+    )
+    return {
+        "aoi_ref": aoi_ref,
+        "feature_name": aoi.feature_name,
+        "source_file": aoi.source_file,
+        "feature_index": aoi.feature_index,
+        "bbox": aoi.bbox,
+        "buffered_bbox": aoi.buffered_bbox,
+        "area_ha": aoi.area_ha,
+        "perimeter_km": aoi.perimeter_km,
+        "centroid": aoi.centroid,
+        "buffer_m": aoi.buffer_m,
+        "crs": aoi.crs,
+        "area_warning": aoi.area_warning,
+    }
 
 
 @bp.activity_trigger(input_name="payload")
@@ -360,14 +384,33 @@ def enrich_data_sources(payload: _Payload) -> dict[str, Any]:
         return {"safe_mode": True, "skipped": ["weather", "flood_fire", "eudr_datasets"]}
 
     from treesight.pipeline.enrichment import enrich_data_sources as _enrich_ds
+    from treesight.storage.client import BlobStorageClient
 
-    return _enrich_ds(
-        payload["coords"],
+    from ._payloads import (
+        _collect_per_aoi_enrichment_coords,
+        _hydrate_per_aoi_enrichment_coords,
+        _store_enrichment_activity_result,
+    )
+
+    storage = BlobStorageClient()
+    per_aoi_coords = _hydrate_per_aoi_enrichment_coords(payload.get("per_aoi_coords", []), storage)
+    coords = _collect_per_aoi_enrichment_coords(per_aoi_coords)
+
+    results = _enrich_ds(
+        coords,
+        per_aoi_coords=per_aoi_coords,
         eudr_mode=payload.get("eudr_mode", False),
         date_start=payload.get("date_start"),
         date_end=payload.get("date_end"),
         cadence=payload.get("cadence", "maximum"),
         max_history_years=payload.get("max_history_years"),
+    )
+    results.pop("coords", None)
+    return _store_enrichment_activity_result(
+        results,
+        storage,
+        payload["instance_id"],
+        "enrichment_data_sources",
     )
 
 
@@ -377,9 +420,18 @@ def enrich_imagery(payload: _Payload) -> dict[str, Any]:
     from treesight.pipeline.enrichment import enrich_imagery as _enrich_img
     from treesight.storage.client import BlobStorageClient
 
+    from ._payloads import (
+        _collect_per_aoi_enrichment_coords,
+        _hydrate_per_aoi_enrichment_coords,
+        _store_enrichment_activity_result,
+    )
+
     storage = BlobStorageClient()
-    return _enrich_img(
-        payload["coords"],
+    per_aoi_coords = _hydrate_per_aoi_enrichment_coords(payload.get("per_aoi_coords", []), storage)
+    coords = _collect_per_aoi_enrichment_coords(per_aoi_coords)
+    result = _enrich_img(
+        coords,
+        per_aoi_coords=per_aoi_coords,
         eudr_mode=payload.get("eudr_mode", False),
         date_start=payload.get("date_start"),
         date_end=payload.get("date_end"),
@@ -390,6 +442,7 @@ def enrich_imagery(payload: _Payload) -> dict[str, Any]:
         output_container=payload.get("output_container", DEFAULT_OUTPUT_CONTAINER),
         storage=storage,
     )
+    return _store_enrichment_activity_result(result, storage, payload["instance_id"], "enrichment_imagery")
 
 
 @bp.activity_trigger(input_name="payload")
@@ -398,9 +451,19 @@ def enrich_single_aoi(payload: _Payload) -> dict[str, Any]:
     from treesight.pipeline.enrichment import enrich_single_aoi_step as _enrich_aoi
     from treesight.storage.client import BlobStorageClient
 
+    from ._payloads import _store_enrichment_activity_result
+
     storage = BlobStorageClient()
-    return _enrich_aoi(
-        payload["aoi_entry"],
+    aoi_entry = payload["aoi_entry"]
+    aoi = _load_aoi({"aoi_ref": aoi_entry["aoi_ref"]}, storage)
+    source_coords = aoi.exterior_coords
+    hydrated_aoi_entry = {
+        **aoi_entry,
+        "coords": source_coords or aoi_entry.get("coords", []),
+        "interior_coords": aoi.interior_coords if source_coords else None,
+    }
+    result = _enrich_aoi(
+        hydrated_aoi_entry,
         date_start=payload.get("date_start"),
         date_end=payload.get("date_end"),
         cadence=payload.get("cadence", "maximum"),
@@ -412,20 +475,34 @@ def enrich_single_aoi(payload: _Payload) -> dict[str, Any]:
         storage=storage,
         aoi_index=payload.get("aoi_index"),
     )
+    return _store_enrichment_activity_result(
+        result,
+        storage,
+        payload["instance_id"],
+        f"enrichment_aoi_{payload.get('aoi_index', 0)}",
+    )
 
 
 @bp.activity_trigger(input_name="payload")
 def enrich_finalize(payload: _Payload) -> dict[str, Any]:
-    """Enrichment sub-step 4: merge parallel results + store manifest."""
+    """Enrichment sub-step 4: store the manifest and return a compact summary."""
     from treesight.pipeline.enrichment import enrich_finalize as _finalize
     from treesight.storage.client import BlobStorageClient
 
+    from ._payloads import _hydrate_per_aoi_enrichment_coords, _load_enrichment_activity_result
+
     storage = BlobStorageClient()
-    return _finalize(
-        payload["data_sources"],
-        payload["imagery"],
-        payload.get("per_aoi_results", []),
-        per_aoi_coords=payload.get("per_aoi_coords"),
+    per_aoi_coords = _hydrate_per_aoi_enrichment_coords(payload.get("per_aoi_coords", []), storage)
+    data_sources = _load_enrichment_activity_result(payload["data_sources"], storage)
+    imagery = _load_enrichment_activity_result(payload["imagery"], storage)
+    per_aoi_results = [
+        _load_enrichment_activity_result(result, storage) for result in payload.get("per_aoi_results", [])
+    ]
+    manifest = _finalize(
+        data_sources,
+        imagery,
+        per_aoi_results,
+        per_aoi_coords=per_aoi_coords,
         eudr_mode=payload.get("eudr_mode", False),
         date_start=payload.get("date_start"),
         project_name=payload["project_name"],
@@ -433,6 +510,26 @@ def enrich_finalize(payload: _Payload) -> dict[str, Any]:
         output_container=payload.get("output_container", DEFAULT_OUTPUT_CONTAINER),
         storage=storage,
     )
+    summary_keys = ("manifest_path", "resource_usage", "estimated_cost_pence", "enrichment_duration_seconds")
+    summary = {key: manifest[key] for key in summary_keys if key in manifest}
+    telemetry_keys = (
+        "ndvi_stats",
+        "ndvi_raster_paths",
+        "ndvi_search_ids",
+        "weather_daily",
+        "weather_monthly",
+        "search_ids",
+        "display_collections",
+        "change_detection",
+        "flood_events",
+        "fire_hotspots",
+    )
+    for key in telemetry_keys:
+        value = manifest.get(key)
+        has_data = any(value) if isinstance(value, list) else bool(value)
+        if has_data:
+            summary[key] = True
+    return summary
 
 
 # ---------------------------------------------------------------------------

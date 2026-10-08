@@ -629,11 +629,18 @@ class TestMonitoringScheduler:
             patch(
                 "treesight.pipeline.enrichment.run_enrichment",
                 return_value=mock_enrichment,
-            ),
+            ) as mock_run_enrichment,
             patch("treesight.storage.client.BlobStorageClient"),
             patch("treesight.email.send_email", return_value=True),
         ):
             _process_monitor(m)
+
+        run_kwargs = mock_run_enrichment.call_args.kwargs
+        assert run_kwargs["coords"] == _SAMPLE_GEOMETRY["exterior_coords"]
+        assert run_kwargs["geometry"] == {
+            "type": "Polygon",
+            "coordinates": [_SAMPLE_GEOMETRY["exterior_coords"]],
+        }
 
     def test_process_monitor_uses_latest_change_comparison_by_year(self, _mock_cosmos):
         from treesight.monitoring import create_monitor

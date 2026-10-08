@@ -1378,7 +1378,9 @@ class TestOffloadedFeaturesPath:
         # parse_kml returns a list (inline, not offloaded)
         one_feature = [{"feature_name": "farm", "exterior_coords": [[36.8, -1.3]]}]
         ctx.call_activity.return_value = "sentinel"
-        ctx.task_all.return_value = [{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}]
+        ctx.task_all.return_value = [
+            {"feature_name": "farm", "aoi_ref": "claims/inst-1/aoi_0.json", "bbox": [36.8, -1.3, 36.81, -1.31]}
+        ]
 
         gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-1", {})
         gen.send(None)  # first yield: parse_kml
@@ -1388,9 +1390,12 @@ class TestOffloadedFeaturesPath:
 
         activity_names = [c[0][0] for c in ctx.call_activity.call_args_list]
         assert "load_offloaded_features" not in activity_names
+        assert "store_aoi_claims" not in activity_names
+        prepare_payload = next(c[0][1] for c in ctx.call_activity.call_args_list if c[0][0] == "prepare_aoi")
+        assert prepare_payload["instance_id"] == "inst-1"
 
-    def test_phase_ingestion_offloaded_features_branch(self):
-        """When parse_kml returns a dict (ref), load_offloaded_features is called next."""
+    def test_phase_ingestion_offloaded_features_stays_offloaded(self):
+        """When parse_kml returns a ref, prep activities load indexed features directly."""
         from blueprints.pipeline.orchestrator import _phase_ingestion
 
         ctx = MagicMock()
@@ -1400,11 +1405,14 @@ class TestOffloadedFeaturesPath:
         gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-2", {})
         gen.send(None)  # first yield: parse_kml
 
-        # Resume with a dict (offload ref) — must call load_offloaded_features
+        # Resume with a dict (offload ref) — must not load the full list into history.
         gen.send({"ref": "payloads/inst-2/abc.json", "count": 1})
 
         activity_names = [c[0][0] for c in ctx.call_activity.call_args_list]
-        assert "load_offloaded_features" in activity_names
+        assert "load_offloaded_features" not in activity_names
+        prepare_payload = next(c[0][1] for c in ctx.call_activity.call_args_list if c[0][0] == "prepare_aoi")
+        assert prepare_payload["features_ref"] == "payloads/inst-2/abc.json"
+        assert prepare_payload["feature_index"] == 0
 
 
 class TestOrchestratorActivityOutputContracts:
@@ -1425,11 +1433,11 @@ class TestOrchestratorActivityOutputContracts:
 
         with pytest.raises(
             TypeError,
-            match=r"parse_kml activity output must be list\[dict\] or dict with required keys: ref",
+            match=r"parse_kml activity output must be list\[dict\] or dict with required keys: ref, count",
         ):
             gen.send("malformed")
 
-    def test_phase_ingestion_rejects_claim_refs_without_ref_key(self):
+    def test_phase_ingestion_rejects_prepare_results_without_claim_ref(self):
         from unittest.mock import MagicMock
 
         import pytest
@@ -1445,12 +1453,17 @@ class TestOrchestratorActivityOutputContracts:
         gen.send(
             [{"feature_name": "farm", "exterior_coords": [[36.8, -1.3]]}]
         )  # resolve parse_kml; yield prepare_aoi fan-out
-        gen.send(
-            [{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}]
-        )  # resolve prepare_aoi; yield store_aoi_claims
-
-        with pytest.raises(ValueError, match=r"store_aoi_claims activity output item 0 missing required keys: ref"):
-            gen.send([{"key": "farm"}])  # resolve store_aoi_claims
+        with pytest.raises(ValueError, match=r"prepare_aoi activity output item 0 missing required keys: aoi_ref"):
+            gen.send(
+                [
+                    {
+                        "feature_name": "farm",
+                        "bbox": [36.8, -1.3, 36.81, -1.31],
+                        "area_ha": 1.0,
+                        "centroid": [36.805, -1.305],
+                    }
+                ]
+            )
 
 
 class TestPhaseIngestionCentroidTelemetry:
@@ -1479,16 +1492,22 @@ class TestPhaseIngestionCentroidTelemetry:
         )  # resolve parse_kml; yield prepare_aoi fan-out
         gen.send(
             [
-                {"feature_name": "farm", "centroid": [36.8, -1.3]},
-                {"feature_name": "empty", "centroid": [0.0, 0.0]},
+                {
+                    "feature_name": "farm",
+                    "aoi_ref": "claims/inst-6/aoi_0.json",
+                    "bbox": [36.8, -1.3, 36.81, -1.31],
+                    "area_ha": 1.0,
+                    "centroid": [36.8, -1.3],
+                },
+                {
+                    "feature_name": "empty",
+                    "aoi_ref": "claims/inst-6/aoi_1.json",
+                    "bbox": [0.0, 0.0, 0.0, 0.0],
+                    "area_ha": 0.0,
+                    "centroid": [0.0, 0.0],
+                },
             ]
-        )  # resolve prepare_aoi; yield store_aoi_claims
-        gen.send(
-            [
-                {"ref": "r1", "key": "farm"},
-                {"ref": "r2", "key": "empty"},
-            ]
-        )  # resolve store_aoi_claims; yield write_metadata fan-out
+        )  # resolve prepare_aoi claim checks; yield metadata writes
         with pytest.raises(StopIteration) as exc_info:
             gen.send([{"status": "ok"}, {"status": "ok"}])  # resolve write_metadata
 

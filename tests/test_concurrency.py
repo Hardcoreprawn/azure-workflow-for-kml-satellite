@@ -418,6 +418,11 @@ class TestSafeMode:
 
         with (
             patch("treesight.config.SAFE_MODE", False),
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch(
+                "treesight.storage.offload.PayloadOffloader.store_claim",
+                return_value="claims/test-id/enrichment_data_sources.json",
+            ),
             patch(
                 "treesight.pipeline.enrichment.enrich_data_sources",
                 return_value={"enriched": True},
@@ -427,10 +432,9 @@ class TestSafeMode:
                 {
                     "instance_id": "test-id",
                     "user_id": "u1",
-                    "coords": [],
+                    "per_aoi_coords": [],
                     "eudr_mode": False,
                 }
             )
 
-        assert result == {"enriched": True}
-        assert "safe_mode" not in result
+        assert result == {"result_ref": "claims/test-id/enrichment_data_sources.json"}

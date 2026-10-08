@@ -56,13 +56,18 @@ class TestPhaseIngestion:
         """When parse_kml returns a claim-check ref, load_offloaded_features is used."""
         context = MagicMock()
 
-        # Yields, in order: parse_kml, load_offloaded_features, prepare_aoi
-        # (task_all), store_aoi_claims, write_metadata (task_all).
+        # Yields: parse_kml, prepare_aoi (task_all), then write_metadata (task_all).
         responses = [
-            {"ref": "claims/kml-ref.json"},  # parse_kml — offloaded (dict, not list)
-            [{"feature_name": "A"}],  # load_offloaded_features
-            [{"feature_name": "A", "area_ha": 1.0, "exterior_coords": [[0.0, 0.0]]}],
-            [{"ref": "claims/aoi-0.json", "key": "A"}],  # store_aoi_claims
+            {"ref": "claims/kml-ref.json", "count": 1},  # parse_kml — offloaded
+            [
+                {
+                    "feature_name": "A",
+                    "aoi_ref": "claims/aoi-0.json",
+                    "area_ha": 1.0,
+                    "bbox": [0.0, 0.0, 1.0, 1.0],
+                    "centroid": [0.5, 0.5],
+                }
+            ],
             [{"status": "ok"}],  # write_metadata
         ]
 
@@ -190,6 +195,10 @@ class TestPhaseEnrichment:
         context = MagicMock()
         data_sources_and_imagery = [{"weather": {}}, {"imagery": []}]
         per_aoi_results = [{"aoi": "A"}, {"aoi": "B"}]
+        per_aoi_refs = [
+            {"name": "A", "aoi_ref": "claims/run/aoi-0.json"},
+            {"name": "B", "aoi_ref": "claims/run/aoi-1.json"},
+        ]
         enrichment_manifest = {"manifest": True}
         context.task_all.side_effect = [data_sources_and_imagery, per_aoi_results]
 
@@ -198,12 +207,16 @@ class TestPhaseEnrichment:
             {},
             CTX,
             [[0.0, 0.0]],
-            [{"name": "A"}, {"name": "B"}],
+            per_aoi_refs,
             "output",
         )
         result = _drain(gen, [data_sources_and_imagery, per_aoi_results, enrichment_manifest])
 
         assert result == enrichment_manifest
+        for activity_call in context.call_activity_with_retry.call_args_list[:2]:
+            payload = activity_call.args[2]
+            assert "coords" not in payload
+            assert payload["per_aoi_coords"] == per_aoi_refs
 
 
 class TestSafeFinalizeRun:

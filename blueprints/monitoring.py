@@ -94,6 +94,27 @@ def monitoring_scheduler(timer: func.TimerRequest) -> None:
             )
 
 
+def _monitor_geometry_and_coords(
+    stored_geometry: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[list[float]]]:
+    geometry_type = stored_geometry.get("type")
+    coordinates = stored_geometry.get("coordinates")
+    if geometry_type == "Polygon" and isinstance(coordinates, list) and coordinates:
+        return {"type": "Polygon", "coordinates": coordinates}, coordinates[0]
+    if geometry_type == "MultiPolygon" and isinstance(coordinates, list) and coordinates:
+        exterior_rings = [polygon[0] for polygon in coordinates if polygon]
+        coords = [coordinate for ring in exterior_rings for coordinate in ring]
+        return {"type": "MultiPolygon", "coordinates": coordinates}, coords
+
+    exterior_coords = stored_geometry.get("exterior_coords")
+    if isinstance(exterior_coords, list) and exterior_coords:
+        return {
+            "type": "Polygon",
+            "coordinates": [exterior_coords, *stored_geometry.get("interior_coords", [])],
+        }, exterior_coords
+    return None, []
+
+
 def _process_monitor(monitor: Any) -> None:
     """Run enrichment for a single monitor and evaluate alerts.
 
@@ -109,16 +130,17 @@ def _process_monitor(monitor: Any) -> None:
     from treesight.pipeline.enrichment import run_enrichment
     from treesight.storage.client import BlobStorageClient
 
-    geometry = monitor.aoi_geometry
-    centroid = geometry.get("centroid", [0.0, 0.0])
+    stored_geometry = monitor.aoi_geometry
+    polygon_geometry, coords = _monitor_geometry_and_coords(stored_geometry)
+    centroid = stored_geometry.get("centroid", [0.0, 0.0])
 
     if not centroid or centroid == [0.0, 0.0]:
         logger.warning("Monitor %s has no valid centroid — skipping", monitor.id)
         advance_schedule(monitor, run_id="skipped-no-centroid")
         return
 
-    # run_enrichment expects coords as [[lon, lat], ...]
-    coords = [centroid]
+    if not coords:
+        coords = [centroid]
     storage = BlobStorageClient()
 
     now = datetime.now(UTC)
@@ -145,6 +167,7 @@ def _process_monitor(monitor: Any) -> None:
         cadence="monthly",
         date_start=date_start,
         date_end=date_end,
+        geometry=polygon_geometry,
     )
 
     # Extract the latest change metrics from the enrichment payload.

@@ -49,7 +49,8 @@ def _phase_enrichment(
     )
 
     enrichment_common = {
-        "coords": all_coords,
+        "instance_id": context.instance_id,
+        "per_aoi_coords": per_aoi_coords,
         "eudr_mode": inp.get("eudr_mode", False),
         "date_start": inp.get("date_start"),
         "date_end": inp.get("date_end"),
@@ -82,7 +83,7 @@ def _phase_enrichment(
                 {
                     "aoi_entry": entry,
                     "aoi_index": idx,
-                    **{k: v for k, v in enrichment_common.items() if k != "coords"},
+                    **{k: v for k, v in enrichment_common.items() if k not in {"coords", "per_aoi_coords"}},
                 },
             )
             for idx, entry in enumerate(per_aoi_coords)

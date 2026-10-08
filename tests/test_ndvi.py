@@ -192,8 +192,15 @@ def _band_profile(rows: int = 10, cols: int = 10) -> dict[str, Any]:
 
     return {
         "driver": "GTiff",
-        "crs": "EPSG:32632",
+        "crs": "EPSG:4326",
         "transform": from_bounds(0, 0, cols * 10, rows * 10, cols, rows),
+    }
+
+
+def _test_geometry() -> dict[str, Any]:
+    return {
+        "type": "Polygon",
+        "coordinates": [[[-1, -1], [1000, -1], [1000, 1000], [-1, 1000], [-1, -1]]],
     }
 
 
@@ -203,7 +210,7 @@ class TestComputeNdvi:
         from treesight.pipeline.enrichment.ndvi import compute_ndvi
 
         mock_find.return_value = None
-        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
         assert result is None
 
     @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
@@ -222,7 +229,7 @@ class TestComputeNdvi:
 
         mock_read.side_effect = [(b04, profile), (b08, profile)]
 
-        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
 
         assert result is not None
         assert result["scene_id"] == "S2A_test"
@@ -247,7 +254,7 @@ class TestComputeNdvi:
         profile = _band_profile(2, 2)
         mock_read.side_effect = [(b04, profile), (b08, profile)]
 
-        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
 
         assert result is not None
         assert result["valid_pixels"] == 2  # only 2 non-zero pixels
@@ -269,7 +276,7 @@ class TestComputeNdvi:
             (b08, _band_profile(11, 10)),
         ]
 
-        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
 
         assert result is not None
         # Should still compute correctly with trimmed arrays
@@ -288,7 +295,7 @@ class TestComputeNdvi:
         b08 = np.zeros((5, 5), dtype=np.uint16)
         mock_read.side_effect = [(b04, _band_profile(5, 5)), (b08, _band_profile(5, 5))]
 
-        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
         assert result is None
 
     @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
@@ -299,7 +306,7 @@ class TestComputeNdvi:
         mock_find.return_value = _s2_scene_fixture("S2A_err")
         mock_read.side_effect = Exception("COG read timeout")
 
-        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
         assert result is None
 
 
@@ -383,7 +390,7 @@ class TestComputeNdviWithScl:
 
         mock_read.side_effect = [(b04, profile), (b08, profile), (scl, scl_profile)]
 
-        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
 
         assert result is not None
         assert result["scl_applied"] is True
@@ -406,7 +413,7 @@ class TestComputeNdviWithScl:
 
         mock_read.side_effect = [(b04, profile), (b08, profile)]
 
-        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
 
         assert result is not None
         assert result["scl_applied"] is False
@@ -429,7 +436,7 @@ class TestComputeNdviWithScl:
         # B04 and B08 succeed, SCL read raises an error
         mock_read.side_effect = [(b04, profile), (b08, profile), Exception("SCL read failed")]
 
-        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
 
         assert result is not None
         # Fallback: SCL not applied, all pixels valid
@@ -455,7 +462,7 @@ class TestComputeNdviWithScl:
 
         mock_read.side_effect = [(b04, profile), (b08, profile), (scl, scl_profile)]
 
-        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
 
         assert result is None  # no valid pixels after masking
 
@@ -479,7 +486,7 @@ class TestComputeNdviWithScl:
         scl_profile = _band_profile(2, 2)
         mock_read.side_effect = [(b04, profile), (b08, profile), (scl, scl_profile)]
 
-        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
         assert result is not None
 
         with rasterio.open(io.BytesIO(result["geotiff_bytes"])) as src:
@@ -492,3 +499,167 @@ class TestComputeNdviWithScl:
             # Valid pixels should have NDVI = 0.5
             valid_vals = data[np.isfinite(data)]
             assert np.allclose(valid_vals, 0.5, atol=0.01)
+
+
+class TestComputeNdviPolygonMask:
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
+    def test_missing_geometry_returns_unavailable_without_scene_lookup(self, mock_find):
+        from treesight.pipeline.enrichment.ndvi import compute_ndvi
+
+        result = compute_ndvi([0, 0, 4, 4], "2024-06-01", "2024-08-31")
+
+        assert result is None
+        mock_find.assert_not_called()
+
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
+    def test_zero_in_plot_pixels_returns_unavailable(self, mock_find, mock_read):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import compute_ndvi
+
+        mock_find.return_value = _s2_scene_fixture()
+        red = np.full((4, 4), 1000, dtype=np.uint16)
+        nir = np.full((4, 4), 3000, dtype=np.uint16)
+        profile = _band_profile(4, 4)
+        mock_read.side_effect = [(red, profile), (nir, profile)]
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [[[100, 100], [101, 100], [101, 101], [100, 101], [100, 100]]],
+        }
+
+        result = compute_ndvi([0, 0, 4, 4], "2024-06-01", "2024-08-31", geometry=geometry)
+
+        assert result is None
+
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
+    def test_plot_mask_excludes_outside_and_hole_pixels(self, mock_find, mock_read):
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_bounds
+
+        from treesight.pipeline.enrichment.ndvi import compute_ndvi
+
+        mock_find.return_value = _s2_scene_fixture()
+        red = np.full((4, 4), 1000, dtype=np.uint16)
+        nir = np.full((4, 4), 3000, dtype=np.uint16)
+        red[0, 0], nir[0, 0] = 1000, 19000  # outside the plot
+        red[3, 0], nir[3, 0] = 1000, 19000  # inside a plot hole
+        red[0, 3], nir[0, 3] = 9000, 11000  # clearing inside the plot
+        profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:3857",
+            "transform": from_bounds(0, 0, 445277.96, 445640.11, 4, 4),
+        }
+        mock_read.side_effect = [(red, profile), (nir, profile)]
+        geometry = {
+            "type": "MultiPolygon",
+            "coordinates": [
+                [
+                    [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]],
+                    [[0.25, 0.25], [0.75, 0.25], [0.75, 0.75], [0.25, 0.75], [0.25, 0.25]],
+                ],
+                [[[2, 2], [4, 2], [4, 4], [2, 4], [2, 2]]],
+            ],
+        }
+
+        result = compute_ndvi(
+            [0, 0, 4, 4],
+            "2024-06-01",
+            "2024-08-31",
+            geometry=geometry,
+        )
+
+        assert result is not None
+        assert result["geometry_mask_applied"] is True
+        assert result["mean"] < 0.5
+        assert result["valid_pixels"] == 7
+        with rasterio.open(io.BytesIO(result["geotiff_bytes"])) as raster:
+            ndvi = raster.read(1)
+        assert np.isnan(ndvi[0, 0])
+        assert np.isnan(ndvi[3, 0])
+        assert np.isclose(ndvi[0, 3], 0.1, atol=0.01)
+
+
+class TestComputeLandsatNdviPolygonMask:
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_landsat_scene")
+    def test_landsat_plot_mask_excludes_outside_and_hole_pixels(self, mock_find, mock_read):
+        import numpy as np
+        import rasterio
+        from rasterio.transform import from_bounds
+
+        from treesight.pipeline.enrichment.ndvi import compute_landsat_ndvi
+
+        mock_find.return_value = {
+            "scene_id": "LC08_test",
+            "red": "https://example.com/red.tif",
+            "nir": "https://example.com/nir.tif",
+            "cloud_cover": 5.0,
+            "datetime": "2015-07-15T10:00:00Z",
+        }
+        red = np.full((4, 4), 1000, dtype=np.uint16)
+        nir = np.full((4, 4), 3000, dtype=np.uint16)
+        red[0, 0], nir[0, 0] = 1000, 19000
+        red[2, 1], nir[2, 1] = 1000, 19000
+        red[3, 3], nir[3, 3] = 9000, 11000
+        profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:3857",
+            "transform": from_bounds(0, 0, 445277.96, 445640.11, 4, 4),
+        }
+        mock_read.side_effect = [(red, profile), (nir, profile)]
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [
+                [[0, 0], [4, 0], [4, 4], [2, 4], [0, 2], [0, 0]],
+                [[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]],
+            ],
+        }
+
+        result = compute_landsat_ndvi(
+            [0, 0, 4, 4],
+            "2015-06-01",
+            "2015-08-31",
+            geometry=geometry,
+        )
+
+        assert result is not None
+        assert result["geometry_mask_applied"] is True
+        assert result["mean"] < 0.5
+        assert result["valid_pixels"] < 16
+        with rasterio.open(io.BytesIO(result["geotiff_bytes"])) as raster:
+            ndvi = raster.read(1)
+        assert np.isnan(ndvi[0, 0])
+        assert np.isnan(ndvi[2, 1])
+        assert np.isclose(ndvi[3, 3], 0.1, atol=0.01)
+
+
+def test_cog_band_read_transform_matches_read_window(tmp_path):
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    from treesight.pipeline.enrichment.ndvi import _cog_band_read
+
+    source_path = tmp_path / "fractional-window.tif"
+    with rasterio.open(
+        source_path,
+        "w",
+        driver="GTiff",
+        width=10,
+        height=10,
+        count=1,
+        dtype="uint8",
+        crs="EPSG:4326",
+        transform=from_origin(0, 10, 1, 1),
+    ) as destination:
+        destination.write(np.arange(100, dtype=np.uint8).reshape(10, 10), 1)
+
+    data, profile = _cog_band_read(str(source_path), [0.2, 0.2, 5.6, 5.6])
+
+    assert data.shape == (6, 6)
+    assert data[0, 0] == 40
+    assert data[5, 5] == 95
+    assert profile["transform"] == from_origin(0, 6, 1, 1)

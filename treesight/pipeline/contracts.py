@@ -52,7 +52,9 @@ def ensure_parse_kml_output(value: Any) -> list[dict[str, Any]] | dict[str, Any]
     if isinstance(value, list):
         return ensure_list_of_dicts(value, name="parse_kml")
     if isinstance(value, dict):
-        out = ensure_dict_with_keys(value, name="parse_kml", required=("ref",))
+        out = ensure_dict_with_keys(value, name="parse_kml", required=("ref", "count"))
         ensure_nonempty_str_field(out["ref"], name="parse_kml", field="ref")
+        if type(out["count"]) is not int or out["count"] < 0:
+            raise TypeError("parse_kml activity output key 'count' must be a non-negative int")
         return out
-    raise TypeError("parse_kml activity output must be list[dict] or dict with required keys: ref")
+    raise TypeError("parse_kml activity output must be list[dict] or dict with required keys: ref, count")
