@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-all dev-all-stub dev-logs dev-status dev-rebuild \
-	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check verify-local lint fmt check smoke clean prune-branches \
+	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check verify-local verify-local-api lint fmt check smoke clean prune-branches \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
 .PHONY: test-pipeline-local-clean
@@ -140,6 +140,9 @@ blueprint-parity-check: ## Verify compute and orchestrator serve the identical H
 
 verify-local: ## Full local verification gate: every service/surface/integration in one command (needs make dev-all running) (#1411, surfaces #1414)
 	uv run python scripts/verify_local_stack.py
+
+verify-local-api: ## Authenticated API-only journey without the website or full-stack checks (#1557)
+	uv run python scripts/verify_local_stack.py --api-only
 
 lint: ## Static checks: ruff lint + format check + pyright (canonical — CI runs this)
 	uv run ruff check .
