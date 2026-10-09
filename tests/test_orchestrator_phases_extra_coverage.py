@@ -58,7 +58,7 @@ class TestPhaseIngestion:
 
         # Yields: parse_kml, prepare_aoi (task_all), then write_metadata (task_all).
         responses = [
-            {"ref": "claims/kml-ref.json", "count": 1},  # parse_kml — offloaded
+            {"feature_refs": ["claims/inst-1/feature_0.json"]},
             [
                 {
                     "feature_name": "A",

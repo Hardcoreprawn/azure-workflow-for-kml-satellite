@@ -23,7 +23,7 @@ from typing import Any, cast
 
 import httpx
 
-from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
+from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS, MIN_VALID_NDVI_PIXELS
 from treesight.geo import transform_bbox
 from treesight.log import log_phase
 from treesight.pipeline.enrichment.mosaic import PC_API
@@ -253,8 +253,14 @@ def compute_ndvi(
 
         valid_pixels = ndvi[valid_mask]
 
-        if len(valid_pixels) == 0:
-            log_phase("ndvi", "no_valid_pixels", scene_id=scene["scene_id"])
+        if len(valid_pixels) < MIN_VALID_NDVI_PIXELS:
+            log_phase(
+                "ndvi",
+                "insufficient_in_plot_pixels",
+                scene_id=scene["scene_id"],
+                valid_pixels=len(valid_pixels),
+                minimum_valid_pixels=MIN_VALID_NDVI_PIXELS,
+            )
             return None
 
         stats = {
@@ -461,8 +467,14 @@ def compute_landsat_ndvi(
         valid_mask = valid_mask & plot_mask
 
         valid_pixels = ndvi[valid_mask]
-        if len(valid_pixels) == 0:
-            log_phase("ndvi", "landsat_no_valid_pixels", scene_id=scene["scene_id"])
+        if len(valid_pixels) < MIN_VALID_NDVI_PIXELS:
+            log_phase(
+                "ndvi",
+                "landsat_insufficient_in_plot_pixels",
+                scene_id=scene["scene_id"],
+                valid_pixels=len(valid_pixels),
+                minimum_valid_pixels=MIN_VALID_NDVI_PIXELS,
+            )
             return None
 
         ndvi_masked = np.where(valid_mask, ndvi, np.nan)

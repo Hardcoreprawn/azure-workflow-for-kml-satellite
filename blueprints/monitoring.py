@@ -12,6 +12,7 @@ at import time.  PEP 563 causes FunctionLoadError.
 
 import json
 import logging
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -94,25 +95,45 @@ def monitoring_scheduler(timer: func.TimerRequest) -> None:
             )
 
 
+def _validated_monitor_polygon(stored_geometry: dict[str, Any]) -> dict[str, Any] | None:
+    from shapely.geometry import Polygon, mapping, shape
+
+    geometry_type = stored_geometry.get("type")
+    coordinates = stored_geometry.get("coordinates")
+    try:
+        if geometry_type in {"Polygon", "MultiPolygon"}:
+            geometry = shape({"type": geometry_type, "coordinates": coordinates})
+        else:
+            exterior_coords = stored_geometry.get("exterior_coords")
+            interior_coords = stored_geometry.get("interior_coords", [])
+            if not isinstance(exterior_coords, list) or not exterior_coords:
+                return None
+            geometry = Polygon(exterior_coords, interior_coords)
+        if geometry.geom_type not in {"Polygon", "MultiPolygon"} or geometry.is_empty or not geometry.is_valid:
+            return None
+        mapped = mapping(geometry)
+        return {"type": mapped["type"], "coordinates": _nested_lists(mapped["coordinates"])}
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+
+
+def _nested_lists(value: Any) -> Any:
+    if isinstance(value, (list, tuple)):
+        return [_nested_lists(item) for item in value]
+    return value
+
+
 def _monitor_geometry_and_coords(
     stored_geometry: dict[str, Any],
 ) -> tuple[dict[str, Any] | None, list[list[float]]]:
-    geometry_type = stored_geometry.get("type")
-    coordinates = stored_geometry.get("coordinates")
-    if geometry_type == "Polygon" and isinstance(coordinates, list) and coordinates:
-        return {"type": "Polygon", "coordinates": coordinates}, coordinates[0]
-    if geometry_type == "MultiPolygon" and isinstance(coordinates, list) and coordinates:
-        exterior_rings = [polygon[0] for polygon in coordinates if polygon]
-        coords = [coordinate for ring in exterior_rings for coordinate in ring]
-        return {"type": "MultiPolygon", "coordinates": coordinates}, coords
-
-    exterior_coords = stored_geometry.get("exterior_coords")
-    if isinstance(exterior_coords, list) and exterior_coords:
-        return {
-            "type": "Polygon",
-            "coordinates": [exterior_coords, *stored_geometry.get("interior_coords", [])],
-        }, exterior_coords
-    return None, []
+    geometry = _validated_monitor_polygon(stored_geometry)
+    if geometry is None:
+        return None, []
+    coordinates = geometry["coordinates"]
+    if geometry["type"] == "Polygon":
+        return geometry, [list(point) for point in coordinates[0]]
+    exterior_rings = [polygon[0] for polygon in coordinates]
+    return geometry, [list(point) for ring in exterior_rings for point in ring]
 
 
 def _process_monitor(monitor: Any) -> None:
@@ -249,8 +270,21 @@ def create_monitor_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id
         return error_response(400, "aoi_name is required", req=req)
 
     aoi_geometry = body.get("aoi_geometry")
-    if not isinstance(aoi_geometry, dict) or not aoi_geometry.get("centroid"):
-        return error_response(400, "aoi_geometry with centroid is required", req=req)
+    if not isinstance(aoi_geometry, dict):
+        return error_response(400, "aoi_geometry with a valid polygon and centroid is required", req=req)
+    centroid = aoi_geometry.get("centroid")
+    if not (
+        isinstance(centroid, (list, tuple))
+        and len(centroid) == 2
+        and all(type(value) in {int, float} and math.isfinite(value) for value in centroid)
+        and -180 <= centroid[0] <= 180
+        and -90 <= centroid[1] <= 90
+    ):
+        return error_response(400, "aoi_geometry with a valid polygon and centroid is required", req=req)
+    polygon_geometry = _validated_monitor_polygon(aoi_geometry)
+    if polygon_geometry is None:
+        return error_response(400, "aoi_geometry must contain a valid Polygon or MultiPolygon", req=req)
+    aoi_geometry = {**aoi_geometry, **polygon_geometry}
 
     cadence_days = body.get("cadence_days", 30)
     if not isinstance(cadence_days, int) or cadence_days < 1 or cadence_days > 365:

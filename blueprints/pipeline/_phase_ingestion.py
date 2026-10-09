@@ -35,14 +35,10 @@ def _phase_ingestion(
     context.set_custom_status({"phase": "ingestion", "step": "parsing_kml"})
     features = ensure_parse_kml_output((yield context.call_activity("parse_kml", inp)))
 
-    if isinstance(features, list):
-        feature_count = len(features)
-        prepare_inputs = [{"feature": feature} for feature in features]
-        offloaded = False
-    else:
-        feature_count = features["count"]
-        prepare_inputs = [{"features_ref": features["ref"], "feature_index": index} for index in range(feature_count)]
-        offloaded = True
+    feature_refs = features["feature_refs"]
+    feature_count = len(feature_refs)
+    prepare_inputs = [{"feature_ref": feature_ref} for feature_ref in feature_refs]
+    offloaded = True
 
     # Gate: enforce tier's aoi_limit before expensive fan-out
     from treesight.pipeline.ingestion import enforce_aoi_limit

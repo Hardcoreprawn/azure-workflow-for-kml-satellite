@@ -241,7 +241,7 @@ class TestComputeNdvi:
 
     @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
     @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
-    def test_handles_nodata_pixels(self, mock_find, mock_read):
+    def test_insufficient_valid_pixels_returns_unavailable(self, mock_find, mock_read):
         import numpy as np
 
         from treesight.pipeline.enrichment.ndvi import compute_ndvi
@@ -256,8 +256,7 @@ class TestComputeNdvi:
 
         result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
 
-        assert result is not None
-        assert result["valid_pixels"] == 2  # only 2 non-zero pixels
+        assert result is None
 
     @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
     @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
@@ -534,6 +533,27 @@ class TestComputeNdviPolygonMask:
 
     @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
     @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
+    def test_one_in_plot_pixel_returns_unavailable(self, mock_find, mock_read):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import compute_ndvi
+
+        mock_find.return_value = _s2_scene_fixture()
+        red = np.array([[1000, 0], [0, 0]], dtype=np.uint16)
+        nir = np.array([[3000, 0], [0, 0]], dtype=np.uint16)
+        profile = _band_profile(2, 2)
+        mock_read.side_effect = [(red, profile), (nir, profile)]
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [[[0, 0], [20, 0], [20, 20], [0, 20], [0, 0]]],
+        }
+
+        result = compute_ndvi([0, 0, 20, 20], "2024-06-01", "2024-08-31", geometry=geometry)
+
+        assert result is None
+
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
     def test_plot_mask_excludes_outside_and_hole_pixels(self, mock_find, mock_read):
         import numpy as np
         import rasterio
@@ -583,6 +603,33 @@ class TestComputeNdviPolygonMask:
 
 
 class TestComputeLandsatNdviPolygonMask:
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_landsat_scene")
+    def test_one_valid_pixel_returns_unavailable(self, mock_find, mock_read):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import compute_landsat_ndvi
+
+        mock_find.return_value = {
+            "scene_id": "LC08_one_pixel",
+            "red": "https://example.com/red.tif",
+            "nir": "https://example.com/nir.tif",
+            "cloud_cover": 5.0,
+            "datetime": "2015-07-15T10:00:00Z",
+        }
+        red = np.array([[1000, 0], [0, 0]], dtype=np.uint16)
+        nir = np.array([[3000, 0], [0, 0]], dtype=np.uint16)
+        profile = _band_profile(2, 2)
+        mock_read.side_effect = [(red, profile), (nir, profile)]
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [[[0, 0], [20, 0], [20, 20], [0, 20], [0, 0]]],
+        }
+
+        result = compute_landsat_ndvi([0, 0, 20, 20], "2015-06-01", "2015-08-31", geometry=geometry)
+
+        assert result is None
+
     @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
     @patch("treesight.pipeline.enrichment.ndvi._find_best_landsat_scene")
     def test_landsat_plot_mask_excludes_outside_and_hole_pixels(self, mock_find, mock_read):

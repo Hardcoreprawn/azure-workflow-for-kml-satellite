@@ -103,10 +103,12 @@ def parse_kml(payload: _Payload) -> list[dict[str, Any]] | dict[str, Any]:
     if len(features) > MAX_FEATURES_PER_KML:
         raise ValueError(f"KML contains {len(features)} features, exceeding the limit of {MAX_FEATURES_PER_KML}")
 
-    feature_dicts = [f.model_dump() for f in features]
-
     offloader = PayloadOffloader(storage)
-    return offloader.offload(blob_event.correlation_id, feature_dicts)
+    feature_refs = [
+        offloader.store_claim(blob_event.correlation_id, f"feature_{index}", feature.model_dump())
+        for index, feature in enumerate(features)
+    ]
+    return {"feature_refs": feature_refs}
 
 
 @bp.activity_trigger(input_name="payload")
@@ -129,10 +131,7 @@ def prepare_aoi(payload: _Payload) -> dict[str, Any]:
 
     storage = BlobStorageClient()
     offloader = PayloadOffloader(storage)
-    if "features_ref" in payload:
-        feature_dict = offloader.load_single(payload["features_ref"], payload["feature_index"])
-    else:
-        feature_dict = payload["feature"]
+    feature_dict = offloader.load_claim(payload["feature_ref"]) if "feature_ref" in payload else payload["feature"]
     feature = Feature.model_validate(feature_dict)
     aoi = _prepare(feature, buffer_m=payload.get("buffer_m"))
     aoi_data = aoi.model_dump()

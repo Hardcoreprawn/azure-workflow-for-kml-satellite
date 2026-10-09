@@ -60,27 +60,35 @@ class TestParseKml:
             with pytest.raises(ValueError, match="exceeding the limit"):
                 parse_kml({"container": "c", "blob_name": "b.kml", "correlation_id": "cid-1"})
 
-    def test_returns_claim_ref_for_feature_list(self):
+    def test_stores_features_individually_and_returns_bounded_refs(self):
+        import json
+
         from blueprints.pipeline.activities import parse_kml
+        from treesight.constants import MAX_FEATURES_PER_KML, PAYLOAD_OFFLOAD_THRESHOLD_BYTES
 
         feature = MagicMock()
         feature.model_dump.return_value = {"feature_name": "Block A"}
+        feature_refs = [f"claims/cid-1/feature_{index}.json" for index in range(MAX_FEATURES_PER_KML)]
         with (
             patch("treesight.models.blob_event.BlobEvent") as mock_blob_event,
             patch("treesight.storage.client.BlobStorageClient"),
-            patch("treesight.pipeline.ingestion.parse_kml_from_blob", return_value=[feature]),
+            patch(
+                "treesight.pipeline.ingestion.parse_kml_from_blob",
+                return_value=[feature] * MAX_FEATURES_PER_KML,
+            ),
             patch("treesight.storage.offload.PayloadOffloader") as mock_offloader,
-            patch("treesight.constants.MAX_FEATURES_PER_KML", 100),
         ):
             blob_event = MagicMock()
             blob_event.correlation_id = "cid-1"
             mock_blob_event.model_validate.return_value = blob_event
             offloader = mock_offloader.return_value
-            offloader.offload.return_value = {"ref": "payloads/cid-1/features.json", "count": 1}
+            offloader.store_claim.side_effect = feature_refs
             result = parse_kml({"container": "c", "blob_name": "b.kml", "correlation_id": "cid-1"})
 
-        assert result == {"ref": "payloads/cid-1/features.json", "count": 1}
-        offloader.offload.assert_called_once_with("cid-1", [{"feature_name": "Block A"}])
+        assert result == {"feature_refs": feature_refs}
+        assert len(json.dumps(result).encode("utf-8")) < PAYLOAD_OFFLOAD_THRESHOLD_BYTES
+        assert offloader.store_claim.call_count == MAX_FEATURES_PER_KML
+        offloader.offload.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -182,18 +190,13 @@ class TestPrepareAoi:
             patch("treesight.models.feature.Feature") as mock_feature,
             patch("treesight.geo.prepare_aoi", return_value=aoi),
             patch("treesight.storage.client.BlobStorageClient"),
-            patch(
-                "treesight.storage.offload.PayloadOffloader.load_single",
-                return_value=feature_dict,
-            ) as load_single,
+            patch("treesight.storage.offload.PayloadOffloader.load_claim", return_value=feature_dict) as load_claim,
             patch("treesight.storage.offload.PayloadOffloader.store_claim", return_value="claims/run/aoi_0.json"),
         ):
             mock_feature.model_validate.return_value = MagicMock()
-            result = prepare_aoi(
-                {"instance_id": "run", "features_ref": "payloads/run/features.json", "feature_index": 0}
-            )
+            result = prepare_aoi({"instance_id": "run", "feature_ref": "claims/run/feature_0.json"})
 
-        load_single.assert_called_once_with("payloads/run/features.json", 0)
+        load_claim.assert_called_once_with("claims/run/feature_0.json")
         assert result["aoi_ref"] == "claims/run/aoi_0.json"
 
 

@@ -432,6 +432,21 @@ class TestMonitoringEndpoints:
         resp = monitoring_endpoint(req)
         assert resp.status_code == 400
 
+    def test_create_monitor_rejects_malformed_polygon(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Malformed",
+            "aoi_geometry": {
+                "centroid": [0.5, 0.5],
+                "type": "Polygon",
+                "coordinates": ["bad"],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 400
+
     def test_create_monitor_invalid_cadence(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
         from blueprints.monitoring import monitoring_endpoint
 
@@ -583,6 +598,14 @@ class TestMonitoringScheduler:
         timer = MagicMock(spec=func.TimerRequest)
         timer.past_due = False
         monitoring_scheduler(timer)  # empty store, nothing due
+
+    def test_malformed_legacy_geometry_is_unavailable(self):
+        from blueprints.monitoring import _monitor_geometry_and_coords
+
+        geometry, coords = _monitor_geometry_and_coords({"type": "Polygon", "coordinates": ["bad"]})
+
+        assert geometry is None
+        assert coords == []
 
     def test_process_monitor_no_centroid(self, _mock_cosmos):
         from treesight.monitoring import create_monitor

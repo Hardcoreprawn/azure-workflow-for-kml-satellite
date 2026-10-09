@@ -35,6 +35,9 @@ centres (`all_touched=false`); `geometry_mask_applied`, `geometry_masked_pixels`
 stat result. Missing geometry or zero valid in-plot pixels yields unavailable
 NDVI evidence; bbox tile statistics are not used as a fallback. Source geometry
 type and declared plot area can be retained for downstream review.
+NDVI statistics require at least four valid in-plot pixel centres (a 2×2
+minimum spatial sample); smaller samples are unavailable, not a claim that
+larger samples are scientifically or legally conclusive.
 One-parcel and multi-parcel runs use the same per-AOI contract.
 
 Other fields include frame plans, weather, NDVI statistics/raster references,
