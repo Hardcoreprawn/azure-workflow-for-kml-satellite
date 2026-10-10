@@ -225,6 +225,7 @@ def test_activity_reference_matches_registered_functions() -> None:
     assert documented == registered
     assert "`feature_refs`" in section
     assert "`feature_ref`" in section
+    assert "`aoi_claim_index`" in section
     assert "`result_ref`" in section
     assert "compact summary" in section
 

@@ -137,7 +137,7 @@ def _aoi_coords(aoi: dict[str, Any]) -> list[list[float]]:
 def _build_per_aoi_entry(
     aoi: dict[str, Any],
     aoi_index: int,
-    aoi_refs: list[dict[str, str]] | None,
+    aoi_refs: list[dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
     coords = _aoi_coords(aoi)
     if not coords:
@@ -152,6 +152,7 @@ def _build_per_aoi_entry(
         entry["interior_coords"] = _source_interior_coords(aoi)
     else:
         entry["aoi_ref"] = aoi_refs[aoi_index]["ref"]
+        entry["aoi_claim_index"] = aoi_refs[aoi_index]["aoi_claim_index"]
         entry["bbox"] = aoi.get("bbox", [])
         entry["center"] = aoi.get("centroid", [])
 
@@ -216,7 +217,7 @@ def _collect_per_aoi_coords(
             result.append(entry)
 
     if aoi_refs is not None:
-        return [{"aoi_ref": entry["aoi_ref"]} for entry in result]
+        return [{"aoi_ref": entry["aoi_ref"], "aoi_claim_index": entry["aoi_claim_index"]} for entry in result]
 
     return _assign_spatial_clusters(result)
 

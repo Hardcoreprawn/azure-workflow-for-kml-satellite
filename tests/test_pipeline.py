@@ -819,12 +819,13 @@ class TestEnrichmentParallelFanOut:
         from blueprints.pipeline.orchestrator import _phase_enrichment
 
         ctx = MagicMock()
+        ctx.instance_id = "run-1"
         parallel_sentinel = MagicMock()
         finalize_sentinel = MagicMock()
         ctx.task_all.return_value = parallel_sentinel
         ctx.call_activity_with_retry.return_value = finalize_sentinel
 
-        aois = [{"name": "solo", "coords": [[1, 2]], "area_ha": 10}]
+        aois = [{"aoi_ref": "claims/run-1/aoi_0.json", "aoi_claim_index": 0}]
 
         gen = _phase_enrichment(
             ctx,
@@ -842,7 +843,9 @@ class TestEnrichmentParallelFanOut:
         activity_names = [call.args[0] for call in ctx.call_activity_with_retry.call_args_list]
         assert "enrich_single_aoi" not in activity_names
         finalize_payload = ctx.call_activity_with_retry.call_args_list[-1].args[2]
-        assert finalize_payload["per_aoi_coords"] == aois
+        assert finalize_payload["per_aoi_claim_indexes"] == [0]
+        assert finalize_payload["per_aoi_result_count"] == 0
+        assert "per_aoi_coords" not in finalize_payload
 
     def test_enrichment_reports_substep_status(self):
         """Orchestrator should set customStatus with enrichment sub-steps."""
@@ -1335,6 +1338,27 @@ class TestCollectPerAoiCoordsEdgeCases:
         result = _collect_per_aoi_coords(aois)
         assert result[0]["cluster"] == 0
 
+    def test_claim_refs_preserve_source_indexes_when_empty_aois_are_skipped(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+
+        aois = [
+            {"feature_name": "first", "exterior_coords": [[1, 1], [2, 2]], "bbox": [1, 1, 2, 2]},
+            {"feature_name": "empty", "exterior_coords": [], "bbox": [0, 0, 0, 0]},
+            {"feature_name": "last", "exterior_coords": [[3, 3], [4, 4]], "bbox": [3, 3, 4, 4]},
+        ]
+        aoi_refs = [
+            {"ref": "claims/run/aoi_7.json", "key": "first", "aoi_claim_index": 7},
+            {"ref": "claims/run/aoi_11.json", "key": "empty", "aoi_claim_index": 11},
+            {"ref": "claims/run/aoi_19.json", "key": "last", "aoi_claim_index": 19},
+        ]
+
+        result = _collect_per_aoi_coords(aois, aoi_refs=aoi_refs)
+
+        assert result == [
+            {"aoi_ref": "claims/run/aoi_7.json", "aoi_claim_index": 7},
+            {"aoi_ref": "claims/run/aoi_19.json", "aoi_claim_index": 19},
+        ]
+
 
 class TestBuildOrderLookupsEdgeCases:
     """Guards against lookup-dict collisions with malformed order data."""
@@ -1482,6 +1506,7 @@ class TestPhaseIngestionCentroidTelemetry:
                 {
                     "feature_name": "farm",
                     "aoi_ref": "claims/inst-6/aoi_0.json",
+                    "aoi_claim_index": 0,
                     "bbox": [36.8, -1.3, 36.81, -1.31],
                     "area_ha": 1.0,
                     "centroid": [36.8, -1.3],
@@ -1489,6 +1514,7 @@ class TestPhaseIngestionCentroidTelemetry:
                 {
                     "feature_name": "empty",
                     "aoi_ref": "claims/inst-6/aoi_1.json",
+                    "aoi_claim_index": 1,
                     "bbox": [0.0, 0.0, 0.0, 0.0],
                     "area_ha": 0.0,
                     "centroid": [0.0, 0.0],

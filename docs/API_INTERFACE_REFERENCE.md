@@ -84,6 +84,8 @@ record field; a pre-existing record with the same ID and owner is insufficient.
 Malformed KML values return `400` through normal reservation cleanup. Rejected
 new submissions release admission; partial direct publication must confirm ticket
 revocation before refund, and uncertain revocation retains the reservation.
+A KML Placemark name is limited to 256 characters so compact Durable activity
+results remain bounded; files with longer names are rejected during parsing.
 After a history or blob
 publication failure, marking history `failed` is best-effort and logged if it
 cannot be verified. A continuing storage outage can leave an uncertain record
@@ -190,7 +192,7 @@ optional fields live in the implementation and
 | --- | --- | --- |
 | `parse_kml` | BlobEvent fields | `feature_refs`: one claim reference per parsed feature |
 | `load_offloaded_features` | `ref` | Feature dictionaries (retained helper; not used by the main claim-per-feature path) |
-| `prepare_aoi` | `feature_ref`, `instance_id`, optional `buffer_m` (`feature` is accepted for direct callers) | `aoi_ref` plus compact AOI metadata |
+| `prepare_aoi` | `feature_ref`, `instance_id`, optional `buffer_m` (`feature` is accepted for direct callers) | `aoi_ref`, stable `aoi_claim_index`, and compact AOI metadata |
 | `store_aoi_claims` | `instance_id`, `aois` | Claim references `{claim_id, ref, key}` |
 | `load_aoi_claim` | `aoi_ref` or `ref` | AOI dictionary |
 | `write_metadata` | AOI/claim, source, processing ID, timestamp, output container | Metadata and archive paths |

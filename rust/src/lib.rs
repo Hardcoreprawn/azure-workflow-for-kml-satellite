@@ -6,6 +6,8 @@ use numpy::{IntoPyArray, PyArray2, PyReadonlyArray2};
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
+const MIN_VALID_CHANGE_PIXELS: u64 = 4;
+
 /// Helper: extract a contiguous slice from a 2-D array, returning a Python
 /// ValueError instead of panicking if the array is not contiguous.
 fn contiguous_slice<'a, T: numpy::Element>(
@@ -334,7 +336,7 @@ fn compute_change<'py>(
     let to_array = |buf| Array2::from_shape_vec((rows, cols), buf)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()));
 
-    if acc.n_valid == 0 {
+    if acc.n_valid < MIN_VALID_CHANGE_PIXELS {
         return Ok((to_array(delta_buf)?.into_pyarray(py), py.None().into_any()));
     }
 

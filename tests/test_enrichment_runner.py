@@ -743,10 +743,11 @@ class TestCollectPerAoiCoords:
                     "area_ha": 10.0,
                 }
             ],
-            aoi_refs=[{"ref": "claims/run/aoi-0.json"}],
+            aoi_refs=[{"ref": "claims/run/aoi-0.json", "aoi_claim_index": 0}],
         )
 
         assert entries[0]["aoi_ref"] == "claims/run/aoi-0.json"
+        assert entries[0]["aoi_claim_index"] == 0
         assert "coords" not in entries[0]
         assert "interior_coords" not in entries[0]
         assert len(json.dumps(entries).encode("utf-8")) < PAYLOAD_OFFLOAD_THRESHOLD_BYTES
@@ -767,11 +768,14 @@ class TestCollectPerAoiCoords:
             }
             for index in range(500)
         ]
-        aoi_refs = [{"ref": f"claims/run/aoi_{index}.json", "key": f"Farm {index}"} for index in range(500)]
+        aoi_refs = [
+            {"ref": f"claims/run/aoi_{index}.json", "key": f"Farm {index}", "aoi_claim_index": index}
+            for index in range(500)
+        ]
 
         entries = _collect_per_aoi_coords(aois, aoi_refs=aoi_refs)
 
-        assert all(set(entry) == {"aoi_ref"} for entry in entries)
+        assert all(set(entry) == {"aoi_ref", "aoi_claim_index"} for entry in entries)
         assert len(json.dumps(entries).encode("utf-8")) < PAYLOAD_OFFLOAD_THRESHOLD_BYTES
 
     def test_hydrates_polygon_rings_from_claim_ref(self):

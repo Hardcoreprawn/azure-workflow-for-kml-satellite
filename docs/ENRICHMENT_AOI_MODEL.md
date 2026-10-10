@@ -38,6 +38,9 @@ type and declared plot area can be retained for downstream review.
 NDVI statistics require at least four valid in-plot pixel centres (a 2×2
 minimum spatial sample); smaller samples are unavailable, not a claim that
 larger samples are scientifically or legally conclusive.
+Change-detection statistics use the same minimum on the pixels valid in both
+time-step rasters; a smaller pairwise overlap is unavailable in both the
+Python and native Rust paths.
 One-parcel and multi-parcel runs use the same per-AOI contract.
 
 Other fields include frame plans, weather, NDVI statistics/raster references,

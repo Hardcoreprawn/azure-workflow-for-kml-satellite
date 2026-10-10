@@ -61,7 +61,7 @@ def _phase_ingestion(
     aois = ensure_list_of_dicts(
         (yield context.task_all(aoi_tasks)),
         name="prepare_aoi",
-        required_item_keys=("aoi_ref", "feature_name", "bbox", "area_ha", "centroid"),
+        required_item_keys=("aoi_ref", "aoi_claim_index", "feature_name", "bbox", "area_ha", "centroid"),
     )
 
     # Claim-check: extract enrichment coords before offloading AOIs
@@ -79,7 +79,14 @@ def _phase_ingestion(
     ]
 
     aoi_refs = ensure_list_of_dicts(
-        [{"ref": aoi["aoi_ref"], "key": aoi.get("feature_name") or f"item_{index}"} for index, aoi in enumerate(aois)],
+        [
+            {
+                "ref": aoi["aoi_ref"],
+                "key": aoi.get("feature_name") or f"item_{index}",
+                "aoi_claim_index": aoi["aoi_claim_index"],
+            }
+            for index, aoi in enumerate(aois)
+        ],
         name="prepare_aoi",
         required_item_keys=("ref", "key"),
     )

@@ -200,6 +200,31 @@ class TestPrepareAoi:
         assert "metadata" not in result
         store_claim.assert_called_once_with("run", "aoi_0", aoi.model_dump())
 
+    def test_maximum_feature_name_keeps_durable_result_bounded(self):
+        import json
+
+        from blueprints.pipeline.activities import prepare_aoi
+        from treesight.constants import MAX_AOI_NAME_LENGTH, PAYLOAD_OFFLOAD_THRESHOLD_BYTES
+        from treesight.models.aoi import AOI
+
+        aoi = AOI(feature_name="x" * MAX_AOI_NAME_LENGTH, metadata={})
+        feature_dict = {"name": "Field", "feature_index": 0, "source_file": "test.kml"}
+        with (
+            patch("treesight.models.feature.Feature") as mock_feature,
+            patch("treesight.geo.prepare_aoi", return_value=aoi),
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch(
+                "treesight.storage.offload.PayloadOffloader.store_claim",
+                return_value="claims/run/aoi_0.json",
+            ),
+        ):
+            mock_feature.model_validate.return_value = MagicMock()
+            result = prepare_aoi({"instance_id": "run", "feature": feature_dict})
+
+        assert result["feature_name"] == "x" * MAX_AOI_NAME_LENGTH
+        assert result["aoi_ref"] == "claims/run/aoi_0.json"
+        assert len(json.dumps(result).encode("utf-8")) < PAYLOAD_OFFLOAD_THRESHOLD_BYTES
+
     def test_loads_one_feature_from_offloaded_kml_ref(self):
         from blueprints.pipeline.activities import prepare_aoi
 
@@ -808,28 +833,37 @@ class TestEnrichFinalize:
         from blueprints.pipeline.activities import enrich_finalize
 
         expected = {"manifest_path": "output/manifest.json"}
-        per_aoi_refs = [{"name": "Solo", "aoi_ref": "claims/run/aoi-0.json", "area_ha": 1}]
+        per_aoi_refs = [{"aoi_ref": "claims/run/aoi_7.json"}]
         hydrated = [{"name": "Solo", "coords": [[1, 2]], "interior_coords": [], "area_ha": 1}]
         with (
             patch("treesight.storage.client.BlobStorageClient"),
             patch(
                 "blueprints.pipeline._payloads._hydrate_per_aoi_enrichment_coords",
                 return_value=hydrated,
-            ),
+            ) as hydrate,
+            patch(
+                "treesight.storage.offload.PayloadOffloader.load_claim",
+                return_value={"name": "Solo result"},
+            ) as load_claim,
             patch("treesight.pipeline.enrichment.enrich_finalize", return_value=expected) as finalize,
         ):
             result = enrich_finalize(
                 {
+                    "instance_id": "run",
                     "data_sources": {},
                     "imagery": {},
-                    "per_aoi_coords": per_aoi_refs,
+                    "per_aoi_claim_indexes": [7],
+                    "per_aoi_result_count": 1,
                     "project_name": "farm",
                     "timestamp": "2024-06-01T00:00:00Z",
                 }
             )
 
         assert result == expected
+        hydrate.assert_called_once_with(per_aoi_refs, hydrate.call_args.args[1])
+        load_claim.assert_called_once_with("claims/run/enrichment_aoi_0.json")
         assert finalize.call_args.kwargs["per_aoi_coords"] == hydrated
+        assert finalize.call_args.args[2] == [{"name": "Solo result"}]
 
     def test_returns_compact_summary_instead_of_manifest_geometry(self):
         from blueprints.pipeline.activities import enrich_finalize

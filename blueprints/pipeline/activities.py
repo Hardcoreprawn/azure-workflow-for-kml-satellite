@@ -136,15 +136,16 @@ def prepare_aoi(payload: _Payload) -> dict[str, Any]:
     feature = Feature.model_validate(feature_dict)
     aoi = _prepare(feature, buffer_m=payload.get("buffer_m"))
     aoi_data = aoi.model_dump()
+    aoi_claim_index = payload.get("feature_index", aoi.feature_index)
     aoi_ref = offloader.store_claim(
         payload["instance_id"],
-        f"aoi_{payload.get('feature_index', aoi.feature_index)}",
+        f"aoi_{aoi_claim_index}",
         aoi_data,
     )
     return {
         "aoi_ref": aoi_ref,
+        "aoi_claim_index": aoi_claim_index,
         "feature_name": aoi.feature_name,
-        "source_file": aoi.source_file,
         "feature_index": aoi.feature_index,
         "bbox": aoi.bbox,
         "buffered_bbox": aoi.buffered_bbox,
@@ -507,11 +508,22 @@ def enrich_finalize(payload: _Payload) -> dict[str, Any]:
     from ._payloads import _hydrate_per_aoi_enrichment_coords, _load_enrichment_activity_result
 
     storage = BlobStorageClient()
-    per_aoi_coords = _hydrate_per_aoi_enrichment_coords(payload.get("per_aoi_coords", []), storage)
+    from treesight.storage.offload import PayloadOffloader
+
+    offloader = PayloadOffloader(storage)
+    instance_id = payload.get("instance_id", "")
+    aoi_claim_indexes = payload.get("per_aoi_claim_indexes", [])
+    per_aoi_refs = [
+        {"aoi_ref": offloader.claim_ref(instance_id, f"aoi_{claim_index}")} for claim_index in aoi_claim_indexes
+    ]
+    per_aoi_coords = _hydrate_per_aoi_enrichment_coords(per_aoi_refs, storage)
     data_sources = _load_enrichment_activity_result(payload["data_sources"], storage)
     imagery = _load_enrichment_activity_result(payload["imagery"], storage)
     per_aoi_results = [
-        _load_enrichment_activity_result(result, storage) for result in payload.get("per_aoi_results", [])
+        _load_enrichment_activity_result(
+            {"result_ref": offloader.claim_ref(instance_id, f"enrichment_aoi_{index}")}, storage
+        )
+        for index in range(payload.get("per_aoi_result_count", 0))
     ]
     manifest = _finalize(
         data_sources,
