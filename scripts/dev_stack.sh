@@ -19,11 +19,12 @@ compose=(docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directo
 if [[ "${CANOPEX_DEV_GPU:-0}" == "1" ]]; then
     compose+=(-f "$root/.devcontainer/docker-compose.gpu.yml")
 fi
+api_verifier_compose=("${compose[@]}" -f "$root/docker-compose.api-verifier.yml")
 
 action="${1:-status}"
 case "$action" in
-    prepare|up|rebuild|storage|down|clean|status|logs|config) ;;
-    *) echo "Usage: bash scripts/dev_stack.sh {prepare|up|rebuild|storage|down|clean|status|logs|config}" >&2; exit 2 ;;
+    prepare|up|rebuild|storage|down|clean|status|logs|config|api-verifier) ;;
+    *) echo "Usage: bash scripts/dev_stack.sh {prepare|up|rebuild|storage|down|clean|status|logs|config|api-verifier}" >&2; exit 2 ;;
 esac
 if [[ "$action" == "config" ]]; then
     exec "${compose[@]}" config --quiet
@@ -127,4 +128,31 @@ case "$action" in
         ;;
     status) "${compose[@]}" ps --all ;;
     logs) "${compose[@]}" logs --follow --tail=50 "${services[@]}" ;;
+    api-verifier)
+        verifier_active=0
+        restore_api_verifier() {
+            result=$?
+            trap - EXIT INT TERM
+            if [[ "$verifier_active" == 1 ]]; then
+                "${api_verifier_compose[@]}" stop --timeout 10 local-ciam || result=1
+                "${api_verifier_compose[@]}" rm --force local-ciam || result=1
+                echo "Restoring the standard development auth configuration."
+                if ! "${compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate func orch; then
+                    echo "ERROR: Could not restore the standard func/orch services." >&2
+                    result=1
+                fi
+            fi
+            exit "$result"
+        }
+        verifier_active=1
+        trap restore_api_verifier EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        "${api_verifier_compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate local-ciam func orch
+        VERIFY_COMPUTE_BASE="http://func" \
+            VERIFY_ORCH_BASE="http://orch" \
+            VERIFY_WEB_BASE="http://web" \
+            VERIFY_LOCAL_CIAM_TOKEN_URL="http://local-ciam:8080/tokens" \
+            uv run python scripts/verify_local_stack.py --api-only
+        ;;
 esac

@@ -1,0 +1,9 @@
+FROM python:3.12-slim-bookworm
+
+RUN python -m pip install --no-cache-dir cryptography==50.0.0
+
+WORKDIR /app
+COPY scripts/local_ciam_issuer.py ./local_ciam_issuer.py
+
+EXPOSE 8080
+CMD ["python", "local_ciam_issuer.py"]

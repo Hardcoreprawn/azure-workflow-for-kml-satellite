@@ -396,6 +396,68 @@ def _get_history(client: httpx.Client, api_base: str, token: str) -> dict[str, o
     return payload
 
 
+def _load_api_only_tokens() -> tuple[str, str, str] | None:
+    explicit_tokens = (
+        os.environ.get("VERIFY_BEARER_TOKEN", "").strip(),
+        os.environ.get("VERIFY_WRONG_USER_BEARER_TOKEN", "").strip(),
+        os.environ.get("VERIFY_WRONG_ORG_BEARER_TOKEN", "").strip(),
+    )
+    if all(explicit_tokens):
+        return explicit_tokens
+
+    token_url = os.environ.get("VERIFY_LOCAL_CIAM_TOKEN_URL", "http://local-ciam:8080/tokens").strip()
+    if not token_url:
+        return None
+
+    response = httpx.get(token_url, timeout=5.0, trust_env=False)
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValueError("Local token issuer returned an invalid response")
+    tokens = (payload.get("owner"), payload.get("wrong_user"), payload.get("wrong_org"))
+    if not all(isinstance(token, str) and token.strip() for token in tokens):
+        raise ValueError("Local token issuer response is missing an identity token")
+    return tokens
+
+
+def _ensure_api_verifier_org(
+    client: httpx.Client,
+    *,
+    api_base: str,
+    token: str,
+    name: str,
+) -> str:
+    url = f"{api_base.rstrip('/')}/api/org"
+    headers = _bearer_headers(token)
+    response = client.get(url, headers=headers, timeout=10.0)
+    response.raise_for_status()
+    payload = response.json()
+    org = payload.get("org") if isinstance(payload, dict) else None
+    if org is None:
+        response = client.post(url, headers=headers, json={"name": name}, timeout=10.0)
+        if response.status_code == 409:
+            response = client.get(url, headers=headers, timeout=10.0)
+        response.raise_for_status()
+        payload = response.json()
+        org = payload.get("org") if isinstance(payload, dict) else None
+    org_id = org.get("org_id") or org.get("id") if isinstance(org, dict) else None
+    if not isinstance(org_id, str) or not org_id:
+        raise ValueError("Authenticated organisation response is missing its id")
+    return org_id
+
+
+def _verify_api_identity_without_org(client: httpx.Client, *, api_base: str, token: str) -> None:
+    response = client.get(
+        f"{api_base.rstrip('/')}/api/org",
+        headers=_bearer_headers(token),
+        timeout=10.0,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict) or payload.get("org") is not None:
+        raise ValueError("Wrong-user verifier token must not belong to an organization")
+
+
 def _export_access_denied(
     client: httpx.Client,
     api_base: str,
@@ -418,46 +480,76 @@ def check_api_only_journey() -> list[Result]:
     CIAM verifier. This proves local behavior, not deployed CIAM configuration.
     """
     print("\n[6/9] Authenticated API-only journey (website-independent)")
-    owner_token = os.environ.get("VERIFY_BEARER_TOKEN", "").strip()
-    wrong_user_token = os.environ.get("VERIFY_WRONG_USER_BEARER_TOKEN", "").strip()
-    wrong_org_token = os.environ.get("VERIFY_WRONG_ORG_BEARER_TOKEN", "").strip()
-    missing = [
-        name
-        for name, value in (
-            ("VERIFY_BEARER_TOKEN", owner_token),
-            ("VERIFY_WRONG_USER_BEARER_TOKEN", wrong_user_token),
-            ("VERIFY_WRONG_ORG_BEARER_TOKEN", wrong_org_token),
+    explicit_tokens = all(
+        os.environ.get(name, "").strip()
+        for name in (
+            "VERIFY_BEARER_TOKEN",
+            "VERIFY_WRONG_USER_BEARER_TOKEN",
+            "VERIFY_WRONG_ORG_BEARER_TOKEN",
         )
-        if not value
-    ]
-    if missing:
-        print(f"  ... missing required identity inputs: {', '.join(missing)}")
+    )
+    using_local_issuer = not explicit_tokens and bool(
+        os.environ.get("VERIFY_LOCAL_CIAM_TOKEN_URL", "http://local-ciam:8080/tokens").strip()
+    )
+    if not explicit_tokens and not using_local_issuer:
+        print("  ... set all three VERIFY_*_BEARER_TOKEN values")
         _print_result("owned API submission, access controls, and evidence", False)
         return [("api-only:journey", False)]
 
-    api_base = ORCH_BASE.rstrip("/")
     results: list[Result] = []
-    stage = "fixture validation"
+    stage = "token issuer"
     try:
+        tokens = _load_api_only_tokens()
+        if tokens is None:
+            raise ValueError("API verifier identity inputs are unavailable")
+        owner_token, wrong_user_token, wrong_org_token = tokens
+        api_base = ORCH_BASE.rstrip("/")
+
         kml_bytes = DEFAULT_KML.read_bytes()
         if not kml_bytes:
             raise ValueError("KML fixture is empty")
 
         with httpx.Client(trust_env=False) as client:
+            if using_local_issuer:
+                stage = "owner organization setup"
+                owner_org_id = _ensure_api_verifier_org(
+                    client,
+                    api_base=api_base,
+                    token=owner_token,
+                    name="Local API verifier owner",
+                )
+                stage = "wrong-user identity validation"
+                _verify_api_identity_without_org(client, api_base=api_base, token=wrong_user_token)
+                results.append(("api-only:wrong-user-identity", True))
+                stage = "wrong-org organization setup"
+                wrong_org_id = _ensure_api_verifier_org(
+                    client,
+                    api_base=api_base,
+                    token=wrong_org_token,
+                    name="Local API verifier wrong org",
+                )
+                if wrong_org_id == owner_org_id:
+                    raise ValueError("VERIFY_WRONG_ORG_BEARER_TOKEN belongs to the run's originating organisation")
+
             stage = "owner identity validation"
             owner_identity = _get_history(client, api_base, owner_token)
+            if using_local_issuer and owner_identity["orgId"] != owner_org_id:
+                raise ValueError("Owner identity did not resolve to its provisioned local organization")
             results.append(("api-only:owner-identity", True))
 
-            stage = "wrong-user identity validation"
-            wrong_user_identity = _get_history(client, api_base, wrong_user_token)
-            if wrong_user_identity["orgId"] == owner_identity["orgId"]:
-                raise ValueError("VERIFY_WRONG_USER_BEARER_TOKEN belongs to the run's originating organisation")
-            results.append(("api-only:wrong-user-identity", True))
+            if not using_local_issuer:
+                stage = "wrong-user identity validation"
+                wrong_user_identity = _get_history(client, api_base, wrong_user_token)
+                if wrong_user_identity["orgId"] == owner_identity["orgId"]:
+                    raise ValueError("VERIFY_WRONG_USER_BEARER_TOKEN belongs to the run's originating organisation")
+                results.append(("api-only:wrong-user-identity", True))
 
             stage = "wrong-org identity validation"
             wrong_org_identity = _get_history(client, api_base, wrong_org_token)
             if wrong_org_identity["orgId"] == owner_identity["orgId"]:
                 raise ValueError("VERIFY_WRONG_ORG_BEARER_TOKEN belongs to the run's originating organisation")
+            if using_local_issuer and wrong_org_identity["orgId"] != wrong_org_id:
+                raise ValueError("Wrong-org identity did not resolve to its provisioned local organization")
             results.append(("api-only:wrong-org-identity", True))
 
             stage = "API submission and authorized status"

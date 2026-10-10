@@ -141,8 +141,8 @@ blueprint-parity-check: ## Verify compute and orchestrator serve the identical H
 verify-local: ## Full local verification gate: every service/surface/integration in one command (needs make dev-all running) (#1411, surfaces #1414)
 	uv run python scripts/verify_local_stack.py
 
-verify-local-api: ## Authenticated API-only journey without the website or full-stack checks (#1557)
-	uv run python scripts/verify_local_stack.py --api-only
+verify-local-api: ## Authenticated API journey with a temporary local OIDC issuer; restores normal auth config (#1557)
+	bash scripts/dev_stack.sh api-verifier
 
 lint: ## Static checks: ruff lint + format check + pyright (canonical — CI runs this)
 	uv run ruff check .
