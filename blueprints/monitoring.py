@@ -303,7 +303,7 @@ def create_monitor_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id
         return error_response(400, "aoi_geometry with a valid polygon and centroid is required", req=req)
     polygon_geometry = _validated_monitor_polygon(aoi_geometry)
     if polygon_geometry is None:
-        return error_response(400, "aoi_geometry must contain a valid Polygon or MultiPolygon", req=req)
+        return error_response(400, "aoi_geometry must contain a valid Polygon or supported MultiPolygon", req=req)
     aoi_geometry = {**aoi_geometry, **polygon_geometry}
 
     cadence_days = body.get("cadence_days", 30)
