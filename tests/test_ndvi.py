@@ -602,6 +602,43 @@ class TestComputeNdviPolygonMask:
         assert np.isnan(ndvi[3, 0])
         assert np.isclose(ndvi[0, 3], 0.1, atol=0.01)
 
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
+    def test_scl_masked_count_excludes_pixels_outside_plot(self, mock_find, mock_read):
+        import numpy as np
+        from rasterio.transform import from_bounds
+
+        from treesight.pipeline.enrichment.ndvi import compute_ndvi
+
+        mock_find.return_value = _s2_scene_fixture(with_scl=True)
+        red = np.full((4, 4), 1000, dtype=np.uint16)
+        nir = np.full((4, 4), 3000, dtype=np.uint16)
+        scl = np.array([[4, 4], [9, 9]], dtype=np.uint8)
+        profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:3857",
+            "transform": from_bounds(0, 0, 445277.96, 445640.11, 4, 4),
+        }
+        scl_profile = _band_profile(2, 2)
+        mock_read.side_effect = [(red, profile), (nir, profile), (scl, scl_profile)]
+        geometry = {
+            "type": "MultiPolygon",
+            "coordinates": [
+                [
+                    [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]],
+                    [[0.25, 0.25], [0.75, 0.25], [0.75, 0.75], [0.25, 0.75], [0.25, 0.25]],
+                ],
+                [[[2, 2], [4, 2], [4, 4], [2, 4], [2, 2]]],
+            ],
+        }
+
+        result = compute_ndvi([0, 0, 4, 4], "2024-06-01", "2024-08-31", geometry=geometry)
+
+        assert result is not None
+        assert result["total_pixels"] == 7
+        assert result["scl_masked_pixels"] == 3
+        assert result["valid_pixels"] == 4
+
 
 class TestComputeLandsatNdviPolygonMask:
     @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
@@ -683,6 +720,50 @@ class TestComputeLandsatNdviPolygonMask:
         assert np.isnan(ndvi[0, 0])
         assert np.isnan(ndvi[2, 1])
         assert np.isclose(ndvi[3, 3], 0.1, atol=0.01)
+
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_landsat_scene")
+    def test_qa_masked_count_excludes_pixels_outside_plot(self, mock_find, mock_read):
+        import numpy as np
+        from rasterio.transform import from_bounds
+
+        from treesight.pipeline.enrichment.ndvi import _LANDSAT_QA_CLEAR_MASK, compute_landsat_ndvi
+
+        mock_find.return_value = {
+            "scene_id": "LC08_masked",
+            "red": "https://example.com/red.tif",
+            "nir": "https://example.com/nir.tif",
+            "qa_pixel": "https://example.com/qa.tif",
+            "cloud_cover": 5.0,
+            "datetime": "2015-07-15T10:00:00Z",
+        }
+        red = np.full((4, 4), 1000, dtype=np.uint16)
+        nir = np.full((4, 4), 3000, dtype=np.uint16)
+        qa = np.array([[_LANDSAT_QA_CLEAR_MASK, 0], [_LANDSAT_QA_CLEAR_MASK, _LANDSAT_QA_CLEAR_MASK]], dtype=np.uint16)
+        profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:3857",
+            "transform": from_bounds(0, 0, 445277.96, 445640.11, 4, 4),
+        }
+        qa_profile = _band_profile(2, 2)
+        mock_read.side_effect = [(red, profile), (nir, profile), (qa, qa_profile)]
+        geometry = {
+            "type": "MultiPolygon",
+            "coordinates": [
+                [
+                    [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]],
+                    [[0.25, 0.25], [0.75, 0.25], [0.75, 0.75], [0.25, 0.75], [0.25, 0.25]],
+                ],
+                [[[2, 2], [4, 2], [4, 4], [2, 4], [2, 2]]],
+            ],
+        }
+
+        result = compute_landsat_ndvi([0, 0, 4, 4], "2015-06-01", "2015-08-31", geometry=geometry)
+
+        assert result is not None
+        assert result["total_pixels"] == 7
+        assert result["qa_masked_pixels"] == 3
+        assert result["valid_pixels"] == 4
 
 
 def test_cog_band_read_transform_matches_read_window(tmp_path):

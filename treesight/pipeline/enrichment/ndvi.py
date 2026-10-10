@@ -226,15 +226,14 @@ def compute_ndvi(
         if _rs is not None:
             # Rust-accelerated NDVI: parallel SIMD band math
             ndvi, valid_mask = _rs.compute_ndvi_array(red, nir)
+            valid_mask_before_scl = valid_mask.copy()
 
             # Apply SCL mask via Rust (in-place)
             if scl_mask is not None:
-                scl_masked_count = int(
-                    _rs.apply_scl_mask(
-                        valid_mask,
-                        scl_mask.astype(np.uint8),
-                        list(VALID_SCL_CLASSES),
-                    )
+                _rs.apply_scl_mask(
+                    valid_mask,
+                    scl_mask.astype(np.uint8),
+                    list(VALID_SCL_CLASSES),
                 )
         else:
             # Pure-Python fallback
@@ -242,13 +241,16 @@ def compute_ndvi(
             with np.errstate(invalid="ignore", divide="ignore"):
                 ndvi = np.where(denom > 0, (nir - red) / denom, np.nan)
             valid_mask = (b04_data > 0) & (b08_data > 0) & np.isfinite(ndvi)
+            valid_mask_before_scl = valid_mask.copy()
             if scl_mask is not None:
                 scl_valid = np.isin(scl_mask, VALID_SCL_CLASSES)
-                scl_masked_count = int(np.sum(valid_mask & ~scl_valid))
                 valid_mask = valid_mask & scl_valid
 
         plot_mask = _raster_geometry_mask(geometry, b04_profile, ndvi.shape)
         geometry_masked_count = int(np.count_nonzero(~plot_mask))
+        if scl_mask is not None:
+            scl_valid = np.isin(scl_mask, VALID_SCL_CLASSES)
+            scl_masked_count = int(np.count_nonzero(valid_mask_before_scl & plot_mask & ~scl_valid))
         valid_mask = valid_mask & plot_mask
 
         valid_pixels = ndvi[valid_mask]
@@ -457,13 +459,15 @@ def compute_landsat_ndvi(
         with np.errstate(invalid="ignore", divide="ignore"):
             ndvi = np.where(denom > 0, (nir - red) / denom, np.nan)
         valid_mask = (red_data > 0) & (nir_data > 0) & np.isfinite(ndvi)
+        valid_mask_before_qa = valid_mask.copy()
 
         if qa_mask is not None:
-            qa_masked_count = int(np.sum(valid_mask & ~qa_mask))
             valid_mask = valid_mask & qa_mask
 
         plot_mask = _raster_geometry_mask(geometry, red_profile, ndvi.shape)
         geometry_masked_count = int(np.count_nonzero(~plot_mask))
+        if qa_mask is not None:
+            qa_masked_count = int(np.count_nonzero(valid_mask_before_qa & plot_mask & ~qa_mask))
         valid_mask = valid_mask & plot_mask
 
         valid_pixels = ndvi[valid_mask]

@@ -702,8 +702,10 @@ class TestEnrichSingleAoi:
         aoi_entry = {"name": "Block A", "aoi_ref": "claims/run/aoi-0.json"}
         loaded_aoi = AOI(
             feature_name="Block A",
+            area_ha=15.2,
             exterior_coords=[[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]],
             interior_coords=[[[36.805, -1.305], [36.806, -1.305], [36.805, -1.305]]],
+            metadata={"source_geometry_type": "Polygon", "plot_area_ha": "14.8"},
         )
         with (
             patch("treesight.storage.client.BlobStorageClient"),
@@ -715,7 +717,7 @@ class TestEnrichSingleAoi:
             patch(
                 "treesight.pipeline.enrichment.enrich_single_aoi_step",
                 return_value=expected,
-            ),
+            ) as enrich_step,
         ):
             result = enrich_single_aoi(
                 {
@@ -728,6 +730,11 @@ class TestEnrichSingleAoi:
             )
 
         assert result == {"result_ref": "claims/run/enrichment-aoi-0.json"}
+        hydrated_entry = enrich_step.call_args.args[0]
+        assert hydrated_entry["name"] == "Block A"
+        assert hydrated_entry["area_ha"] == 15.2
+        assert hydrated_entry["source_geometry_type"] == "Polygon"
+        assert hydrated_entry["plot_area_ha"] == 14.8
 
     def test_stores_large_activity_result_by_claim_ref(self):
         from blueprints.pipeline.activities import enrich_single_aoi

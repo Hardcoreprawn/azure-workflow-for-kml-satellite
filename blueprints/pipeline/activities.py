@@ -459,9 +459,24 @@ def enrich_single_aoi(payload: _Payload) -> dict[str, Any]:
     source_coords = aoi.exterior_coords
     hydrated_aoi_entry = {
         **aoi_entry,
+        "name": aoi.feature_name,
+        "area_ha": aoi.area_ha,
         "coords": source_coords or aoi_entry.get("coords", []),
         "interior_coords": aoi.interior_coords if source_coords else None,
     }
+    source_geometry_type = aoi.metadata.get("source_geometry_type", "")
+    if source_geometry_type:
+        hydrated_aoi_entry["source_geometry_type"] = source_geometry_type
+    plot_area_ha = aoi.metadata.get("plot_area_ha", "")
+    if plot_area_ha:
+        try:
+            hydrated_aoi_entry["plot_area_ha"] = float(plot_area_ha)
+        except ValueError:
+            logger.warning(
+                "Could not parse plot_area_ha %r for AOI %r; field omitted",
+                plot_area_ha,
+                aoi.feature_name,
+            )
     result = _enrich_aoi(
         hydrated_aoi_entry,
         date_start=payload.get("date_start"),
