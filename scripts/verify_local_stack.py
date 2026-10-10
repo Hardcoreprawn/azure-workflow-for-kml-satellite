@@ -12,10 +12,8 @@ Checks, in order:
 5. Full pipeline     — upload -> blob trigger -> orchestration -> Completed,
    run against BOTH compute and orchestrator (the same fixture, twice),
    proving blob_trigger genuinely works on either host post-#1407.
-6. API-only journey  — authenticated submission, authorized status/history,
-    denial controls, and validated EUDR artifact downloads.
-7. Website           — static site serves and its /api/* proxy reaches func.
-8. Event Grid relay  — the dev_event_grid_relay.py container is running
+6. Website           — static site serves and its /api/* proxy reaches func.
+7. Event Grid relay  — the dev_event_grid_relay.py container is running
    (liveness only; the pipeline check above exercises the same code path
    deterministically rather than depending on the relay's own poll timing).
 9. Ollama            — best-effort; failure here is a WARNING, not a FAILURE,
@@ -437,7 +435,7 @@ def check_api_only_journey() -> list[Result]:
         _print_result("owned API submission, access controls, and evidence", False)
         return [("api-only:journey", False)]
 
-    api_base = COMPUTE_BASE.rstrip("/")
+    api_base = ORCH_BASE.rstrip("/")
     results: list[Result] = []
     stage = "fixture validation"
     try:
@@ -584,7 +582,6 @@ def main(argv: list[str] | None = None) -> int:
         all_results += check_cosmos()
         pipeline_results, _ = check_pipeline()
         all_results += pipeline_results
-        all_results += check_api_only_journey()
         all_results += check_website()
         all_results += check_event_grid_relay()
         all_results += check_ollama()

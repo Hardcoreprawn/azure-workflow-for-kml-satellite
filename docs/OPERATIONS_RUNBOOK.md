@@ -209,6 +209,19 @@ Local validation loop (no Azure):
 2. `make test` for the suite; `make smoke` for host health.
 3. Exercise the pipeline end-to-end against Azurite with `make test-upload`.
 
+The authenticated API-only journey is an explicit, separate gate. The ordinary
+`make verify-local` path remains usable with the default token-free local stack
+and does not claim authenticated API evidence. To run `make verify-local-api`,
+configure the same trusted CIAM authority, tenant, and API audience accepted by
+the Functions apps, set `REQUIRE_AUTH=true`, and provide three short-lived API
+access tokens through `VERIFY_BEARER_TOKEN`, `VERIFY_WRONG_USER_BEARER_TOKEN`,
+and `VERIFY_WRONG_ORG_BEARER_TOKEN`. Use accounts from distinct originating
+organizations for the negative controls. Export these values in the shell
+before starting `make dev-all` so Compose applies the same auth configuration
+to both Function Apps, then run the API-only target. Keep tokens out of command
+arguments, logs, and committed files. This local check still does not prove
+deployed CIAM configuration or production-provider behavior.
+
 Manual dev deployment remains possible; do not interpret the production freeze
 as disabling every cloud deployment. Confirm `DEPLOY_PAUSED` and target state
 before deploying. Guard removal is a reviewed change, not a routine reset command.

@@ -221,8 +221,9 @@ def test_full_mode_runs_the_existing_verification_slices() -> None:
     ):
         assert main([]) == 0
 
-    for check in (service_health, parity, storage, cosmos, pipeline, api_journey, website, relay, ollama):
+    for check in (service_health, parity, storage, cosmos, pipeline, website, relay, ollama):
         check.assert_called_once()
+    api_journey.assert_not_called()
 
 
 def test_api_only_journey_checks_owned_run_and_negative_controls(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -231,7 +232,7 @@ def test_api_only_journey_checks_owned_run_and_negative_controls(monkeypatch: py
     monkeypatch.setenv("VERIFY_BEARER_TOKEN", "owner-token")
     monkeypatch.setenv("VERIFY_WRONG_USER_BEARER_TOKEN", "wrong-user-token")
     monkeypatch.setenv("VERIFY_WRONG_ORG_BEARER_TOKEN", "wrong-org-token")
-    monkeypatch.setattr(verifier, "COMPUTE_BASE", "http://compute.test/")
+    monkeypatch.setattr(verifier, "ORCH_BASE", "http://orch.test/")
     output = {
         "artifacts": {"manifest": "run-1/manifest.json"},
     }
@@ -267,8 +268,8 @@ def test_api_only_journey_checks_owned_run_and_negative_controls(monkeypatch: py
     assert mint.call_args.kwargs["eudr_mode"] is True
     upload.assert_called_once()
     assert poll.call_args.kwargs["token"] == "owner-token"
-    assert poll.call_args.kwargs["api_base"] == "http://compute.test"
-    exports.assert_called_once_with("run-1", token="owner-token", api_base="http://compute.test")
+    assert poll.call_args.kwargs["api_base"] == "http://orch.test"
+    exports.assert_called_once_with("run-1", token="owner-token", api_base="http://orch.test")
     assert [call.kwargs["headers"] for call in client.get.call_args_list] == [
         {},
         {"Authorization": "Bearer wrong-user-token"},
