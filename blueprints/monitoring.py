@@ -111,6 +111,11 @@ def _validated_monitor_polygon(stored_geometry: dict[str, Any]) -> dict[str, Any
             geometry = Polygon(exterior_coords, interior_coords)
         if geometry.geom_type not in {"Polygon", "MultiPolygon"} or geometry.is_empty or not geometry.is_valid:
             return None
+        min_x, min_y, max_x, max_y = geometry.bounds
+        if not all(math.isfinite(value) for value in (min_x, min_y, max_x, max_y)):
+            return None
+        if min_x < -180 or min_y < -90 or max_x > 180 or max_y > 90:
+            return None
         mapped = mapping(geometry)
         return {"type": mapped["type"], "coordinates": _nested_lists(mapped["coordinates"])}
     except (TypeError, ValueError, IndexError, OverflowError):

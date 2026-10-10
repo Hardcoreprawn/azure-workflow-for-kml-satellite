@@ -60,6 +60,26 @@ class TestParseKml:
             with pytest.raises(ValueError, match="exceeding the limit"):
                 parse_kml({"container": "c", "blob_name": "b.kml", "correlation_id": "cid-1"})
 
+    def test_enforces_tier_limit_before_storing_feature_claims(self):
+        from blueprints.pipeline.activities import parse_kml
+
+        feature = MagicMock()
+        with (
+            patch("treesight.models.blob_event.BlobEvent") as mock_blob_event,
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("treesight.pipeline.ingestion.parse_kml_from_blob", return_value=[feature, feature]),
+            patch("treesight.storage.offload.PayloadOffloader") as mock_offloader,
+            patch("treesight.pipeline.ingestion.enforce_aoi_limit", side_effect=ValueError("tier limit")) as gate,
+        ):
+            blob_event = MagicMock()
+            blob_event.correlation_id = "cid-1"
+            mock_blob_event.model_validate.return_value = blob_event
+            with pytest.raises(ValueError, match="tier limit"):
+                parse_kml({"container": "c", "blob_name": "b.kml", "correlation_id": "cid-1", "tier": "free"})
+
+        gate.assert_called_once_with(feature_count=2, tier="free")
+        mock_offloader.return_value.store_claim.assert_not_called()
+
     def test_stores_features_individually_and_returns_bounded_refs(self):
         import json
 
@@ -77,6 +97,7 @@ class TestParseKml:
                 return_value=[feature] * MAX_FEATURES_PER_KML,
             ),
             patch("treesight.storage.offload.PayloadOffloader") as mock_offloader,
+            patch("treesight.pipeline.ingestion.enforce_aoi_limit"),
         ):
             blob_event = MagicMock()
             blob_event.correlation_id = "cid-1"

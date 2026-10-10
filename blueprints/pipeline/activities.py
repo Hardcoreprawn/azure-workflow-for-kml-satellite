@@ -80,7 +80,7 @@ def parse_kml(payload: _Payload) -> list[dict[str, Any]] | dict[str, Any]:
         raise TypeError(f"parse_kml expects dict payload, got {type(payload).__name__}")
 
     from treesight.models.blob_event import BlobEvent
-    from treesight.pipeline.ingestion import parse_kml_from_blob
+    from treesight.pipeline.ingestion import enforce_aoi_limit, parse_kml_from_blob
     from treesight.storage.client import BlobStorageClient
     from treesight.storage.offload import PayloadOffloader
 
@@ -102,6 +102,7 @@ def parse_kml(payload: _Payload) -> list[dict[str, Any]] | dict[str, Any]:
 
     if len(features) > MAX_FEATURES_PER_KML:
         raise ValueError(f"KML contains {len(features)} features, exceeding the limit of {MAX_FEATURES_PER_KML}")
+    enforce_aoi_limit(feature_count=len(features), tier=payload.get("tier"))
 
     offloader = PayloadOffloader(storage)
     feature_refs = [

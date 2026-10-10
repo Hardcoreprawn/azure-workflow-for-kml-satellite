@@ -447,6 +447,40 @@ class TestMonitoringEndpoints:
 
         assert monitoring_endpoint(req).status_code == 400
 
+    def test_create_monitor_rejects_polygon_outside_epsg4326_bounds(
+        self, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Out of bounds",
+            "aoi_geometry": {
+                "centroid": [180.0, 0.0],
+                "type": "Polygon",
+                "coordinates": [[[179.0, -1.0], [181.0, -1.0], [181.0, 1.0], [179.0, 1.0], [179.0, -1.0]]],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 400
+
+    def test_create_monitor_rejects_polygon_with_non_finite_bounds(
+        self, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Non-finite bounds",
+            "aoi_geometry": {
+                "centroid": [0.0, 0.0],
+                "type": "Polygon",
+                "coordinates": [[[0.0, 0.0], [float("inf"), 0.0], [1.0, 1.0], [0.0, 0.0]]],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 400
+
     def test_create_monitor_invalid_cadence(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
         from blueprints.monitoring import monitoring_endpoint
 

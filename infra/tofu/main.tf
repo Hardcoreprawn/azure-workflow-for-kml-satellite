@@ -94,6 +94,20 @@ resource "azurerm_storage_management_policy" "main" {
   }
 
   rule {
+    name    = "delete-intermediate-claims-30d"
+    enabled = true
+    filters {
+      prefix_match = ["pipeline-payloads/claims/"]
+      blob_types   = ["blockBlob"]
+    }
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 30
+      }
+    }
+  }
+
+  rule {
     name    = "archive-raw-imagery-180d"
     enabled = true
     filters {
