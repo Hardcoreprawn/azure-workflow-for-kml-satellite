@@ -162,6 +162,7 @@ li strong{color:var(--c-text)}
       <p>The <strong>Normalised Difference Vegetation Index</strong> (NDVI) is computed for each seasonal frame using Sentinel-2 bands B08 (near-infrared) and B04 (red):</p>
       <p style="text-align:center;font-size:1.1rem;font-weight:600;margin:16px 0">NDVI = (B08 − B04) / (B08 + B04)</p>
       <p>NDVI ranges from −1 to +1. Healthy vegetation typically yields 0.3–0.8. Values below 0.2 may indicate bare soil, impervious surfaces, or water.</p>
+      <p>For polygon parcels, Sentinel-2 and Landsat statistics and change rasters use the submitted parcel geometry, including interior rings. Geometry is transformed to the raster coordinate system; a pixel is included only when its centre falls inside the parcel and outside any hole. Pixels outside the plot do not contribute to parcel statistics. NDVI statistics require at least four valid in-plot pixels (a 2×2 sample); if the boundary or sufficient pixels are unavailable, NDVI evidence is unavailable rather than estimated from the bounding box. This minimum prevents single-pixel summaries and does not guarantee scientific accuracy or legal compliance.</p>
 
       <h3>3.3 Year-over-Year Comparison</h3>
       <p>Canopex compares the <strong>same season across different years</strong> to detect genuine vegetation loss. A decline of &gt;0.15 in same-season NDVI between consecutive years is flagged as a significant event requiring attention. This approach avoids false alarms from comparing winter (low NDVI) with summer (high NDVI).</p>
@@ -229,7 +230,7 @@ li strong{color:var(--c-text)}
       <p>Analysis results are timestamped at each pipeline stage: upload, ingestion, enrichment start, enrichment completion, and determination. The <strong>enriched_at</strong> field records the UTC datetime when the assessment was finalised. All timestamps use ISO 8601 format.</p>
 
       <h3>6.3 Immutable Storage</h3>
-      <p>Completed assessments are stored in Azure Cosmos DB with the full manifest — input coordinates, enrichment data, NDVI statistics, change detection results, and determination outcome. Records are immutable once the assessment completes; subsequent re-analyses create new records rather than overwriting.</p>
+      <p>Enrichment manifests, including parcel geometry, NDVI statistics, change detection results, and determination outcome, are stored in Azure Blob Storage. Cosmos DB stores application records and references to manifest artifacts; it does not hold the full manifest. Subsequent analyses create new records rather than overwriting prior evidence.</p>
 
       <h3>6.4 Data Retention</h3>
       <p>Assessment records are retained indefinitely while the account is active. Uploaded KML/KMZ source files are stored in Azure Blob Storage alongside the assessment record. Operators can export their data at any time in GeoJSON, CSV, or PDF format.</p>

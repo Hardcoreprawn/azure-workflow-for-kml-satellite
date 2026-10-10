@@ -35,32 +35,37 @@ def _phase_ingestion(
     context.set_custom_status({"phase": "ingestion", "step": "parsing_kml"})
     features = ensure_parse_kml_output((yield context.call_activity("parse_kml", inp)))
 
-    if isinstance(features, list):
-        feature_list = features
-        offloaded = False
-    else:
-        loaded = ensure_list_of_dicts(
-            (yield context.call_activity("load_offloaded_features", features)),
-            name="load_offloaded_features",
-        )
-        feature_list = loaded
-        offloaded = True
+    feature_refs = features["feature_refs"]
+    feature_count = len(feature_refs)
+    prepare_inputs = [{"feature_ref": feature_ref} for feature_ref in feature_refs]
+    offloaded = True
 
     # Gate: enforce tier's aoi_limit before expensive fan-out
     from treesight.pipeline.ingestion import enforce_aoi_limit
 
-    enforce_aoi_limit(feature_count=len(feature_list), tier=inp.get("tier"))
+    enforce_aoi_limit(feature_count=feature_count, tier=inp.get("tier"))
 
     # Fan-out: prepare AOIs
-    context.set_custom_status({"phase": "ingestion", "step": "preparing_aois", "features": len(feature_list)})
+    context.set_custom_status({"phase": "ingestion", "step": "preparing_aois", "features": feature_count})
     aoi_tasks = [
-        context.call_activity("prepare_aoi", {"feature": f, "buffer_m": inp.get("buffer_m")}) for f in feature_list
+        context.call_activity(
+            "prepare_aoi",
+            {
+                **prepare_input,
+                "buffer_m": inp.get("buffer_m"),
+                "instance_id": instance_id,
+            },
+        )
+        for prepare_input in prepare_inputs
     ]
-    aois = ensure_list_of_dicts((yield context.task_all(aoi_tasks)), name="prepare_aoi")
+    aois = ensure_list_of_dicts(
+        (yield context.task_all(aoi_tasks)),
+        name="prepare_aoi",
+        required_item_keys=("aoi_ref", "aoi_claim_index", "feature_name", "bbox", "area_ha", "centroid"),
+    )
 
     # Claim-check: extract enrichment coords before offloading AOIs
     all_coords = _collect_enrichment_coords(aois)
-    per_aoi_coords = _collect_per_aoi_coords(aois)
 
     # Extract area_ha per AOI for batch routing (before claim-check offload)
     aoi_area_by_name: dict[str, float] = {a.get("feature_name", ""): a.get("area_ha", 0.0) for a in aois}
@@ -73,21 +78,22 @@ def _phase_ingestion(
         a["centroid"] for a in aois if a.get("centroid") and len(a["centroid"]) == 2 and a["centroid"] != [0.0, 0.0]
     ]
 
-    # Claim-check: store full AOI dicts in blob storage, get lightweight refs
-    context.set_custom_status({"phase": "ingestion", "step": "storing_claims", "aois": len(aois)})
     aoi_refs = ensure_list_of_dicts(
-        (
-            yield context.call_activity(
-                "store_aoi_claims",
-                {"instance_id": instance_id, "aois": aois},
-            )
-        ),
-        name="store_aoi_claims",
+        [
+            {
+                "ref": aoi["aoi_ref"],
+                "key": aoi.get("feature_name") or f"item_{index}",
+                "aoi_claim_index": aoi["aoi_claim_index"],
+            }
+            for index, aoi in enumerate(aois)
+        ],
+        name="prepare_aoi",
         required_item_keys=("ref", "key"),
     )
     for index, ref in enumerate(aoi_refs):
-        ensure_nonempty_str_field(ref["ref"], name="store_aoi_claims", field="ref", index=index)
-        ensure_nonempty_str_field(ref["key"], name="store_aoi_claims", field="key", index=index)
+        ensure_nonempty_str_field(ref["ref"], name="prepare_aoi", field="ref", index=index)
+        ensure_nonempty_str_field(ref["key"], name="prepare_aoi", field="key", index=index)
+    per_aoi_coords = _collect_per_aoi_coords(aois, aoi_refs=aoi_refs)
     # Fan-out: write metadata (activities retrieve AOI from claim check)
     meta_tasks = [
         context.call_activity(
@@ -111,7 +117,7 @@ def _phase_ingestion(
 
     return {
         "ingestion": {
-            "feature_count": len(feature_list),
+            "feature_count": feature_count,
             "offloaded": offloaded,
             "aoi_refs": aoi_refs,
             "aoi_count": len(aoi_refs),

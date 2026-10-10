@@ -19,8 +19,28 @@ parsing. Old record types or retained projections do not define new writes.
 ## Parcel Evidence
 
 Each per-AOI entry identifies `aoi_index`, `name`, `area_ha`, `coords`, `bbox`
-and named `center.lat`/`center.lon`. Geometry arrays use longitude/latitude order.
-Source geometry type and declared plot area can be retained for downstream review.
+and named `center.lat`/`center.lon`. Durable enrichment entries carry the AOI
+claim ref plus compact metadata, not coordinate rings; each activity hydrates
+the existing claim locally. Workers reconstruct the full GeoJSON Polygon,
+including interior rings, before raster masking. Persisted per-AOI `coords`
+retains the exterior ring and `geometry` retains the complete Polygon in
+EPSG:4326. The KML parser treats each Polygon in a
+placemark MultiGeometry as a separate AOI; the run-level mask combines those
+AOI polygons as a MultiPolygon without filling the spaces between them.
+
+NDVI screening transforms geometry to the raster CRS and masks pixels outside
+the plot and inside holes before calculating statistics. The mask uses pixel
+centres (`all_touched=false`); `geometry_mask_applied`, `geometry_masked_pixels`,
+`geometry_mask_method` and `aoi_geometry_type` record that method in each NDVI
+stat result. Missing geometry or zero valid in-plot pixels yields unavailable
+NDVI evidence; bbox tile statistics are not used as a fallback. Source geometry
+type and declared plot area can be retained for downstream review.
+NDVI statistics require at least four valid in-plot pixel centres (a 2×2
+minimum spatial sample); smaller samples are unavailable, not a claim that
+larger samples are scientifically or legally conclusive.
+Change-detection statistics use the same minimum on the pixels valid in both
+time-step rasters; a smaller pairwise overlap is unavailable in both the
+Python and native Rust paths.
 One-parcel and multi-parcel runs use the same per-AOI contract.
 
 Other fields include frame plans, weather, NDVI statistics/raster references,

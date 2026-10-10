@@ -23,7 +23,7 @@ from typing import Any, cast
 
 import httpx
 
-from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
+from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS, MIN_VALID_NDVI_PIXELS
 from treesight.geo import transform_bbox
 from treesight.log import log_phase
 from treesight.pipeline.enrichment.mosaic import PC_API
@@ -103,11 +103,41 @@ VALID_SCL_CLASSES = (
 )
 
 
+def _raster_geometry_mask(
+    geometry: dict[str, Any],
+    profile: dict[str, Any],
+    shape: tuple[int, int],
+) -> Any:
+    """Rasterize EPSG:4326 plot geometry on a band's native pixel grid."""
+    from pyproj import Transformer
+    from rasterio.features import geometry_mask
+    from shapely.geometry import mapping
+    from shapely.geometry import shape as shape_geometry
+    from shapely.ops import transform as transform_geometry
+
+    raster_crs = profile.get("crs")
+    transform = profile.get("transform")
+    if raster_crs is None or transform is None:
+        raise ValueError("Raster profile is missing CRS or transform")
+
+    transformer = Transformer.from_crs("EPSG:4326", raster_crs, always_xy=True)
+    raster_geometry = mapping(transform_geometry(transformer.transform, shape_geometry(geometry)))
+    return geometry_mask(
+        [raster_geometry],
+        out_shape=shape,
+        transform=transform,
+        all_touched=False,
+        invert=True,
+    )
+
+
 def compute_ndvi(
     bbox: list[float],
     date_start: str,
     date_end: str,
     max_cloud: float = 20.0,
+    *,
+    geometry: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Compute NDVI from Sentinel-2 B04/B08 COGs for the given bbox and date range.
 
@@ -130,8 +160,12 @@ def compute_ndvi(
         ``{"mean", "min", "max", "std", "median", "valid_pixels",
         "total_pixels", "scene_id", "cloud_cover", "datetime",
         "scl_applied", "scl_masked_pixels", "geotiff_bytes"}`` on success;
-        None if no scene found.
+        None if geometry or in-plot pixels are unavailable, or no scene is found.
     """
+    if geometry is None:
+        log_phase("ndvi", "geometry_unavailable")
+        return None
+
     import numpy as np
     import rasterio
 
@@ -193,15 +227,14 @@ def compute_ndvi(
         if _rs is not None:
             # Rust-accelerated NDVI: parallel SIMD band math
             ndvi, valid_mask = _rs.compute_ndvi_array(red, nir)
+            valid_mask_before_scl = valid_mask.copy()
 
             # Apply SCL mask via Rust (in-place)
             if scl_mask is not None:
-                scl_masked_count = int(
-                    _rs.apply_scl_mask(
-                        valid_mask,
-                        scl_mask.astype(np.uint8),
-                        list(VALID_SCL_CLASSES),
-                    )
+                _rs.apply_scl_mask(
+                    valid_mask,
+                    scl_mask.astype(np.uint8),
+                    list(VALID_SCL_CLASSES),
                 )
         else:
             # Pure-Python fallback
@@ -209,15 +242,28 @@ def compute_ndvi(
             with np.errstate(invalid="ignore", divide="ignore"):
                 ndvi = np.where(denom > 0, (nir - red) / denom, np.nan)
             valid_mask = (b04_data > 0) & (b08_data > 0) & np.isfinite(ndvi)
+            valid_mask_before_scl = valid_mask.copy()
             if scl_mask is not None:
                 scl_valid = np.isin(scl_mask, VALID_SCL_CLASSES)
-                scl_masked_count = int(np.sum(valid_mask & ~scl_valid))
                 valid_mask = valid_mask & scl_valid
+
+        plot_mask = _raster_geometry_mask(geometry, b04_profile, ndvi.shape)
+        geometry_masked_count = int(np.count_nonzero(~plot_mask))
+        if scl_mask is not None:
+            scl_valid = np.isin(scl_mask, VALID_SCL_CLASSES)
+            scl_masked_count = int(np.count_nonzero(valid_mask_before_scl & plot_mask & ~scl_valid))
+        valid_mask = valid_mask & plot_mask
 
         valid_pixels = ndvi[valid_mask]
 
-        if len(valid_pixels) == 0:
-            log_phase("ndvi", "no_valid_pixels", scene_id=scene["scene_id"])
+        if len(valid_pixels) < MIN_VALID_NDVI_PIXELS:
+            log_phase(
+                "ndvi",
+                "insufficient_in_plot_pixels",
+                scene_id=scene["scene_id"],
+                valid_pixels=len(valid_pixels),
+                minimum_valid_pixels=MIN_VALID_NDVI_PIXELS,
+            )
             return None
 
         stats = {
@@ -227,9 +273,13 @@ def compute_ndvi(
             "std": round(float(np.std(valid_pixels)), 4),
             "median": round(float(np.median(valid_pixels)), 4),
             "valid_pixels": len(valid_pixels),
-            "total_pixels": int(ndvi.size),
+            "total_pixels": int(np.count_nonzero(plot_mask)),
             "scl_masked_pixels": scl_masked_count,
             "scl_applied": scl_mask is not None,
+            "geometry_mask_applied": True,
+            "geometry_masked_pixels": geometry_masked_count,
+            "geometry_mask_method": "pixel-center",
+            "aoi_geometry_type": geometry.get("type", "unknown"),
             "scene_id": scene["scene_id"],
             "cloud_cover": scene["cloud_cover"],
             "datetime": scene["datetime"],
@@ -327,6 +377,8 @@ def compute_landsat_ndvi(
     date_start: str,
     date_end: str,
     max_cloud: float = 30.0,
+    *,
+    geometry: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Compute NDVI from Landsat C2 L2 Red/NIR08 COGs.
 
@@ -347,6 +399,10 @@ def compute_landsat_ndvi(
     dict or None
         Same structure as ``compute_ndvi`` on success; None if no scene.
     """
+    if geometry is None:
+        log_phase("ndvi", "landsat_geometry_unavailable")
+        return None
+
     import numpy as np
     import rasterio
 
@@ -405,14 +461,26 @@ def compute_landsat_ndvi(
         with np.errstate(invalid="ignore", divide="ignore"):
             ndvi = np.where(denom > 0, (nir - red) / denom, np.nan)
         valid_mask = (red_data > 0) & (nir_data > 0) & np.isfinite(ndvi)
+        valid_mask_before_qa = valid_mask.copy()
 
         if qa_mask is not None:
-            qa_masked_count = int(np.sum(valid_mask & ~qa_mask))
             valid_mask = valid_mask & qa_mask
 
+        plot_mask = _raster_geometry_mask(geometry, red_profile, ndvi.shape)
+        geometry_masked_count = int(np.count_nonzero(~plot_mask))
+        if qa_mask is not None:
+            qa_masked_count = int(np.count_nonzero(valid_mask_before_qa & plot_mask & ~qa_mask))
+        valid_mask = valid_mask & plot_mask
+
         valid_pixels = ndvi[valid_mask]
-        if len(valid_pixels) == 0:
-            log_phase("ndvi", "landsat_no_valid_pixels", scene_id=scene["scene_id"])
+        if len(valid_pixels) < MIN_VALID_NDVI_PIXELS:
+            log_phase(
+                "ndvi",
+                "landsat_insufficient_in_plot_pixels",
+                scene_id=scene["scene_id"],
+                valid_pixels=len(valid_pixels),
+                minimum_valid_pixels=MIN_VALID_NDVI_PIXELS,
+            )
             return None
 
         ndvi_masked = np.where(valid_mask, ndvi, np.nan)
@@ -436,9 +504,13 @@ def compute_landsat_ndvi(
             "std": round(float(np.std(valid_pixels)), 4),
             "median": round(float(np.median(valid_pixels)), 4),
             "valid_pixels": len(valid_pixels),
-            "total_pixels": int(ndvi.size),
+            "total_pixels": int(np.count_nonzero(plot_mask)),
             "qa_masked_pixels": qa_masked_count,
             "qa_applied": qa_mask is not None,
+            "geometry_mask_applied": True,
+            "geometry_masked_pixels": geometry_masked_count,
+            "geometry_mask_method": "pixel-center",
+            "aoi_geometry_type": geometry.get("type", "unknown"),
             "scene_id": scene["scene_id"],
             "cloud_cover": scene["cloud_cover"],
             "datetime": scene["datetime"],
@@ -473,7 +545,18 @@ def _cog_band_read(
 
     with rasterio.open(url) as src:
         src_bbox = transform_bbox(bbox, "EPSG:4326", str(src.crs))
-        window = window_from_bounds(*src_bbox, transform=src.transform)
+        # Rasterio's Window runtime has offsets/lengths missing from its stubs.
+        window = cast(Any, window_from_bounds(*src_bbox, transform=src.transform))
+        col_start = math.floor(window.col_off)
+        row_start = math.floor(window.row_off)
+        col_end = math.ceil(window.col_off + window.width)
+        row_end = math.ceil(window.row_off + window.height)
+        window = rasterio.windows.Window(
+            col_start,
+            row_start,
+            col_end - col_start,
+            row_end - row_start,
+        )
         window = window.intersection(rasterio.windows.Window(0, 0, src.width, src.height))
         data = src.read(1, window=window)
         profile = {

@@ -70,11 +70,22 @@ class TestMosaicNdviParallel:
         # Each mosaic call returns a unique search ID
         mock_mosaic.side_effect = lambda coll, start, end, bbox, extra, cl: f"sid-{start}-{coll}"
         # Each NDVI call returns stats keyed by year+season for traceability
-        mock_ndvi.side_effect = lambda bbox, start, end: {"mean": 0.5, "scene_id": f"s-{start}"}
+        mock_ndvi.side_effect = lambda bbox, start, end, geometry=None: {"mean": 0.5, "scene_id": f"s-{start}"}
         storage = MagicMock()
         results: dict = {}
+        geometry = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}
 
-        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        stats, raster_paths = _run_mosaic_ndvi_phase(
+            BBOX,
+            COORDS,
+            frames,
+            "proj",
+            "ts",
+            "out",
+            storage,
+            results,
+            geometry=geometry,
+        )
 
         assert len(stats) == 3
         assert len(raster_paths) == 3
@@ -82,6 +93,7 @@ class TestMosaicNdviParallel:
         assert all(s is not None for s in results["search_ids"])
         # stats should all be populated
         assert all(s is not None for s in stats)
+        assert all(call.kwargs["geometry"] == geometry for call in mock_ndvi.call_args_list)
 
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
@@ -356,28 +368,24 @@ class TestMosaicNdviParallel:
         mock_mosaic.assert_not_called()
         mock_ndvi.assert_not_called()
 
-    @patch("treesight.pipeline.enrichment._phase_runners.fetch_ndvi_stat")
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
-    def test_fallback_to_tile_when_cog_returns_none(self, mock_mosaic, mock_ndvi, mock_fetch_stat):
-        """When compute_ndvi returns None, fall back to tile-based fetch_ndvi_stat."""
+    def test_does_not_use_unmasked_tile_fallback_when_cog_returns_none(self, mock_mosaic, mock_ndvi):
+        """Tile statistics cannot substitute for plot-masked COG statistics."""
         frames = [_make_frame()]
         mock_mosaic.return_value = "sid-1"
         mock_ndvi.return_value = None
-        mock_fetch_stat.return_value = {"mean": 0.4}
         storage = MagicMock()
         results: dict = {}
 
         stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
 
-        mock_fetch_stat.assert_called_once()
-        assert stats[0] == {"mean": 0.4}
+        assert stats[0] is None
         assert raster_paths[0] is None
 
-    @patch("treesight.pipeline.enrichment._phase_runners.fetch_ndvi_stat")
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
-    def test_no_mosaic_and_no_cog_returns_none_stat(self, mock_mosaic, mock_ndvi, mock_fetch_stat):
+    def test_no_mosaic_and_no_cog_returns_none_stat(self, mock_mosaic, mock_ndvi):
         """When mosaic registration and the COG path both fail, no tile fallback is possible."""
         frames = [_make_frame()]
         mock_mosaic.return_value = None
@@ -387,7 +395,6 @@ class TestMosaicNdviParallel:
 
         stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
 
-        mock_fetch_stat.assert_not_called()
         assert stats[0] is None
         assert raster_paths[0] is None
 
@@ -682,6 +689,138 @@ class TestCollectPerAoiCoords:
         assert result[0]["coords"] == [[-50, -10], [-50, -9], [-49, -9]]
         assert result[1]["area_ha"] == 200
 
+    def test_preserves_polygon_holes_without_duplicating_exterior(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+
+        exterior = [[-50, -10], [-50, -9], [-49, -9], [-50, -10]]
+        hole = [[-49.8, -9.8], [-49.8, -9.6], [-49.6, -9.6], [-49.8, -9.8]]
+        result = _collect_per_aoi_coords(
+            [
+                {
+                    "feature_name": "Farm A",
+                    "exterior_coords": exterior,
+                    "interior_coords": [hole],
+                    "area_ha": 100,
+                }
+            ]
+        )
+
+        assert result[0]["coords"] == exterior
+        assert result[0]["interior_coords"] == [hole]
+        assert "geometry" not in result[0]
+
+    def test_activity_coords_flatten_source_exteriors_once(self):
+        from blueprints.pipeline._payloads import _collect_per_aoi_enrichment_coords
+
+        first = [[0, 0], [1, 0], [1, 1], [0, 0]]
+        second = [[4, 4], [5, 4], [5, 5], [4, 4]]
+        hole = [[0.2, 0.2], [0.3, 0.2], [0.3, 0.3], [0.2, 0.2]]
+
+        result = _collect_per_aoi_enrichment_coords(
+            [
+                {"coords": first, "interior_coords": [hole]},
+                {"coords": second, "interior_coords": []},
+            ]
+        )
+
+        assert result == [*first, *second]
+
+    def test_claim_checked_entries_do_not_carry_large_rings(self):
+        import json
+
+        from blueprints.pipeline._payloads import _collect_per_aoi_coords
+        from treesight.constants import PAYLOAD_OFFLOAD_THRESHOLD_BYTES
+
+        ring = [[float(index), 0.0] for index in range(10_000)]
+        entries = _collect_per_aoi_coords(
+            [
+                {
+                    "feature_name": "Large plot",
+                    "exterior_coords": ring,
+                    "interior_coords": [ring],
+                    "bbox": [0.0, 0.0, 10_000.0, 0.0],
+                    "centroid": [5_000.0, 0.0],
+                    "area_ha": 10.0,
+                }
+            ],
+            aoi_refs=[{"ref": "claims/run/aoi-0.json", "aoi_claim_index": 0}],
+        )
+
+        assert entries[0]["aoi_ref"] == "claims/run/aoi-0.json"
+        assert entries[0]["aoi_claim_index"] == 0
+        assert "coords" not in entries[0]
+        assert "interior_coords" not in entries[0]
+        assert len(json.dumps(entries).encode("utf-8")) < PAYLOAD_OFFLOAD_THRESHOLD_BYTES
+
+    def test_five_hundred_claim_refs_fit_durable_payload_budget(self):
+        import json
+
+        from blueprints.pipeline._payloads import _collect_per_aoi_coords
+        from treesight.constants import PAYLOAD_OFFLOAD_THRESHOLD_BYTES
+
+        aois = [
+            {
+                "feature_name": f"Farm {index}",
+                "exterior_coords": [[float(index), 0.0], [float(index) + 1, 0.0], [float(index), 1.0]],
+                "interior_coords": [],
+                "area_ha": 1.0,
+                "metadata": {"supplier_note": "large" * 100},
+            }
+            for index in range(500)
+        ]
+        aoi_refs = [
+            {"ref": f"claims/run/aoi_{index}.json", "key": f"Farm {index}", "aoi_claim_index": index}
+            for index in range(500)
+        ]
+
+        entries = _collect_per_aoi_coords(aois, aoi_refs=aoi_refs)
+
+        assert all(set(entry) == {"aoi_ref", "aoi_claim_index"} for entry in entries)
+        assert len(json.dumps(entries).encode("utf-8")) < PAYLOAD_OFFLOAD_THRESHOLD_BYTES
+
+    def test_hydrates_polygon_rings_from_claim_ref(self):
+        from blueprints.pipeline._payloads import _hydrate_per_aoi_enrichment_coords
+        from treesight.storage.offload import PayloadOffloader
+
+        exterior = [[0, 0], [1, 0], [1, 1], [0, 0]]
+        hole = [[0.2, 0.2], [0.3, 0.2], [0.3, 0.3], [0.2, 0.2]]
+        aoi_data = {
+            "feature_name": "Farm",
+            "exterior_coords": exterior,
+            "interior_coords": [hole],
+        }
+        with patch.object(PayloadOffloader, "load_claim", return_value=aoi_data) as load_claim:
+            result = _hydrate_per_aoi_enrichment_coords(
+                [{"name": "Farm", "aoi_ref": "claims/run/aoi-0.json"}],
+                MagicMock(),
+            )
+
+        load_claim.assert_called_once_with("claims/run/aoi-0.json")
+        assert result[0]["coords"] == exterior
+        assert result[0]["interior_coords"] == [hole]
+
+    def test_bbox_fallback_does_not_become_plot_geometry(self):
+        from blueprints.pipeline._payloads import _hydrate_per_aoi_enrichment_coords
+        from treesight.pipeline.enrichment.runner import _aoi_geometry_from_entry
+        from treesight.storage.offload import PayloadOffloader
+
+        fallback_ring = [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]
+        aoi_data = {
+            "feature_name": "Empty",
+            "exterior_coords": [],
+            "interior_coords": [],
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+        }
+        with patch.object(PayloadOffloader, "load_claim", return_value=aoi_data):
+            result = _hydrate_per_aoi_enrichment_coords(
+                [{"name": "Empty", "aoi_ref": "claims/run/aoi-0.json", "coords": fallback_ring}],
+                MagicMock(),
+            )
+
+        assert result[0]["coords"] == fallback_ring
+        assert result[0]["interior_coords"] is None
+        assert _aoi_geometry_from_entry(result[0]) is None
+
     def test_falls_back_to_bbox(self):
         from blueprints.pipeline._helpers import _collect_per_aoi_coords
 
@@ -700,6 +839,52 @@ class TestCollectPerAoiCoords:
         result = _collect_per_aoi_coords(aois)
         assert len(result) == 1
         assert result[0]["name"] == "Good"
+
+
+class TestCombineAoiGeometries:
+    def test_kml_multipolygon_parts_form_union_geometry(self, multi_polygon_kml_bytes: bytes):
+        from blueprints.pipeline._payloads import _collect_per_aoi_coords
+        from treesight.geo import prepare_aoi
+        from treesight.parsers.lxml_parser import parse_kml_lxml
+        from treesight.pipeline.enrichment.runner import _combine_aoi_geometries
+
+        features = parse_kml_lxml(multi_polygon_kml_bytes, source_file="multi.kml")
+        aois = [prepare_aoi(feature).model_dump() for feature in features]
+        per_aoi = _collect_per_aoi_coords(aois)
+
+        geometry = _combine_aoi_geometries(per_aoi)
+
+        assert len(per_aoi) == 2
+        assert geometry == {
+            "type": "MultiPolygon",
+            "coordinates": [[feature.exterior_coords] for feature in features],
+        }
+
+    def test_combines_parcels_without_filling_the_space_between_them(self):
+        from treesight.pipeline.enrichment.runner import _combine_aoi_geometries
+
+        first_coords = [[0, 0], [1, 0], [1, 1], [0, 0]]
+        second_coords = [[4, 4], [5, 4], [5, 5], [4, 4]]
+        second_hole = [[4.2, 4.2], [4.3, 4.2], [4.3, 4.3], [4.2, 4.2]]
+
+        result = _combine_aoi_geometries(
+            [
+                {"coords": first_coords, "interior_coords": []},
+                {"coords": second_coords, "interior_coords": [second_hole]},
+            ]
+        )
+
+        assert result == {
+            "type": "MultiPolygon",
+            "coordinates": [[first_coords], [second_coords, second_hole]],
+        }
+
+    def test_returns_unavailable_when_any_parcel_geometry_is_missing(self):
+        from treesight.pipeline.enrichment.runner import _combine_aoi_geometries
+
+        result = _combine_aoi_geometries([{"coords": [[0, 0], [1, 0], [1, 1], [0, 0]], "interior_coords": []}, {}])
+
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -941,6 +1126,25 @@ class TestEnrichImagery:
 class TestEnrichSingleAoiStep:
     """Verify enrich_single_aoi_step wraps _enrich_single_aoi with error containment."""
 
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan", return_value=[])
+    def test_claim_checked_result_does_not_return_full_coordinates(self, _mock_frame_plan):
+        coords = [[float(index), 0.0] for index in range(10_000)]
+        result = _enrich_single_aoi(
+            {"name": "large", "coords": coords, "interior_coords": []},
+            date_start=None,
+            date_end=None,
+            cadence="maximum",
+            max_history_years=None,
+            eudr_mode=False,
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=MagicMock(),
+        )
+
+        assert "coords" not in result
+        assert len(str(result)) < 2_000
+
     @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
     def test_safe_mode_returns_canonical_stub(self, mock_enrich):
         storage = MagicMock()
@@ -1075,6 +1279,27 @@ class TestEnrichFinalize:
         assert "manifest_path" in result
         storage.upload_json.assert_called_once()
 
+    def test_rebuilds_run_coords_from_hydrated_parcels(self):
+        storage = MagicMock()
+        first = [[0, 0], [1, 0], [1, 1], [0, 0]]
+        second = [[4, 4], [5, 4], [5, 5], [4, 4]]
+
+        result = enrich_finalize(
+            {"bbox": [[0, 0], [5, 5]], "frame_plan": []},
+            {},
+            [],
+            per_aoi_coords=[
+                {"name": "A", "coords": first, "interior_coords": [], "area_ha": 1},
+                {"name": "B", "coords": second, "interior_coords": [], "area_ha": 1},
+            ],
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+
+        assert result["coords"] == [*first, *second]
+
     def test_includes_per_aoi_results(self):
         storage = MagicMock()
         per_aoi = [
@@ -1138,11 +1363,20 @@ class TestEnrichFinalize:
     def test_single_aoi_finalize_derives_geometry_from_per_aoi_coords(self):
         storage = MagicMock()
         coords = [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0], [-49.0, -10.0], [-50.0, -10.0]]
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [
+                coords,
+                [[-49.8, -9.8], [-49.8, -9.7], [-49.7, -9.7], [-49.8, -9.8]],
+            ],
+        }
         result = enrich_finalize(
             {"safe_mode": True, "frame_plan": []},
             {"safe_mode": True},
             [],
-            per_aoi_coords=[{"name": "Solo Farm", "coords": coords, "area_ha": 50}],
+            per_aoi_coords=[
+                {"name": "Solo Farm", "coords": coords, "area_ha": 50, "interior_coords": geometry["coordinates"][1:]}
+            ],
             project_name="p",
             timestamp="t",
             output_container="out",
@@ -1150,6 +1384,7 @@ class TestEnrichFinalize:
         )
 
         entry = result["per_aoi_enrichment"][0]
+        assert entry["geometry"] == geometry
         assert entry["bbox"]
         assert entry["center"] == {"lat": -9.5, "lon": -49.5}
         assert entry["safe_mode"] is True

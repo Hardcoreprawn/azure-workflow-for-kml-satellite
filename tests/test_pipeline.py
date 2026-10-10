@@ -505,8 +505,7 @@ class TestPhaseIngestionAoiLimitGate:
         from blueprints.pipeline.orchestrator import _phase_ingestion
 
         ctx = MagicMock()
-        # parse_kml returns a list of features (inline, not offloaded)
-        six_features = [{"geometry": {"type": "Point", "coordinates": [0, 0]}}] * 6
+        six_feature_refs = {"feature_refs": [f"claims/run/feature_{index}.json" for index in range(6)]}
         ctx.call_activity.return_value = "parse_kml_sentinel"
 
         inp = {"blob_name": "test.kml", "tier": "free"}  # free allows 5
@@ -514,9 +513,9 @@ class TestPhaseIngestionAoiLimitGate:
 
         # First yield: call_activity("parse_kml", ...)
         gen.send(None)
-        # Send back 6 features (exceeds free tier limit of 5)
+        # Send back 6 feature refs (exceeds free tier limit of 5)
         with pytest.raises(ValueError, match=r"6 AOIs.*Free.*allows 5"):
-            gen.send(six_features)
+            gen.send(six_feature_refs)
 
     def test_within_limit_proceeds_to_fan_out(self):
         """Within-limit input reaches the prepare_aoi fan-out step."""
@@ -525,7 +524,7 @@ class TestPhaseIngestionAoiLimitGate:
         from blueprints.pipeline.orchestrator import _phase_ingestion
 
         ctx = MagicMock()
-        three_features = [{"geometry": {"type": "Point", "coordinates": [0, 0]}}] * 3
+        three_feature_refs = {"feature_refs": [f"claims/run/feature_{index}.json" for index in range(3)]}
         ctx.call_activity.return_value = "activity_sentinel"
         ctx.task_all.return_value = "task_all_sentinel"
 
@@ -534,8 +533,8 @@ class TestPhaseIngestionAoiLimitGate:
 
         # First yield: parse_kml
         gen.send(None)
-        # Send back 3 features (within limit) — should proceed, not raise
-        gen.send(three_features)
+        # Send back 3 feature refs (within limit) — should proceed, not raise
+        gen.send(three_feature_refs)
         # If we got here, enforce_aoi_limit passed and the generator continued
         # to the prepare_aoi fan-out step (task_all yield)
         ctx.set_custom_status.assert_any_call({"phase": "ingestion", "step": "preparing_aois", "features": 3})
@@ -820,12 +819,13 @@ class TestEnrichmentParallelFanOut:
         from blueprints.pipeline.orchestrator import _phase_enrichment
 
         ctx = MagicMock()
+        ctx.instance_id = "run-1"
         parallel_sentinel = MagicMock()
         finalize_sentinel = MagicMock()
         ctx.task_all.return_value = parallel_sentinel
         ctx.call_activity_with_retry.return_value = finalize_sentinel
 
-        aois = [{"name": "solo", "coords": [[1, 2]], "area_ha": 10}]
+        aois = [{"aoi_ref": "claims/run-1/aoi_0.json", "aoi_claim_index": 0}]
 
         gen = _phase_enrichment(
             ctx,
@@ -843,7 +843,9 @@ class TestEnrichmentParallelFanOut:
         activity_names = [call.args[0] for call in ctx.call_activity_with_retry.call_args_list]
         assert "enrich_single_aoi" not in activity_names
         finalize_payload = ctx.call_activity_with_retry.call_args_list[-1].args[2]
-        assert finalize_payload["per_aoi_coords"] == aois
+        assert finalize_payload["per_aoi_claim_indexes"] == [0]
+        assert finalize_payload["per_aoi_result_count"] == 0
+        assert "per_aoi_coords" not in finalize_payload
 
     def test_enrichment_reports_substep_status(self):
         """Orchestrator should set customStatus with enrichment sub-steps."""
@@ -1336,6 +1338,27 @@ class TestCollectPerAoiCoordsEdgeCases:
         result = _collect_per_aoi_coords(aois)
         assert result[0]["cluster"] == 0
 
+    def test_claim_refs_preserve_source_indexes_when_empty_aois_are_skipped(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+
+        aois = [
+            {"feature_name": "first", "exterior_coords": [[1, 1], [2, 2]], "bbox": [1, 1, 2, 2]},
+            {"feature_name": "empty", "exterior_coords": [], "bbox": [0, 0, 0, 0]},
+            {"feature_name": "last", "exterior_coords": [[3, 3], [4, 4]], "bbox": [3, 3, 4, 4]},
+        ]
+        aoi_refs = [
+            {"ref": "claims/run/aoi_7.json", "key": "first", "aoi_claim_index": 7},
+            {"ref": "claims/run/aoi_11.json", "key": "empty", "aoi_claim_index": 11},
+            {"ref": "claims/run/aoi_19.json", "key": "last", "aoi_claim_index": 19},
+        ]
+
+        result = _collect_per_aoi_coords(aois, aoi_refs=aoi_refs)
+
+        assert result == [
+            {"aoi_ref": "claims/run/aoi_7.json", "aoi_claim_index": 7},
+            {"aoi_ref": "claims/run/aoi_19.json", "aoi_claim_index": 19},
+        ]
+
 
 class TestBuildOrderLookupsEdgeCases:
     """Guards against lookup-dict collisions with malformed order data."""
@@ -1370,27 +1393,29 @@ class TestBuildOrderLookupsEdgeCases:
 class TestOffloadedFeaturesPath:
     """Verify the ingestion phase correctly handles both inline and offloaded features."""
 
-    def test_phase_ingestion_inline_features_branch(self):
-        """When parse_kml returns a list, offloaded=False and no load_offloaded call."""
+    def test_phase_ingestion_sends_feature_claim_refs_to_prepare(self):
         from blueprints.pipeline.orchestrator import _phase_ingestion
 
         ctx = MagicMock()
-        # parse_kml returns a list (inline, not offloaded)
-        one_feature = [{"feature_name": "farm", "exterior_coords": [[36.8, -1.3]]}]
         ctx.call_activity.return_value = "sentinel"
-        ctx.task_all.return_value = [{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}]
+        ctx.task_all.return_value = [
+            {"feature_name": "farm", "aoi_ref": "claims/inst-1/aoi_0.json", "bbox": [36.8, -1.3, 36.81, -1.31]}
+        ]
 
         gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-1", {})
         gen.send(None)  # first yield: parse_kml
 
-        # Resume with inline list — must NOT call load_offloaded_features
-        gen.send(one_feature)
+        gen.send({"feature_refs": ["claims/run/feature_0.json"]})
 
         activity_names = [c[0][0] for c in ctx.call_activity.call_args_list]
         assert "load_offloaded_features" not in activity_names
+        assert "store_aoi_claims" not in activity_names
+        prepare_payload = next(c[0][1] for c in ctx.call_activity.call_args_list if c[0][0] == "prepare_aoi")
+        assert prepare_payload["instance_id"] == "inst-1"
+        assert prepare_payload["feature_ref"] == "claims/run/feature_0.json"
 
-    def test_phase_ingestion_offloaded_features_branch(self):
-        """When parse_kml returns a dict (ref), load_offloaded_features is called next."""
+    def test_phase_ingestion_never_loads_full_offloaded_feature_list(self):
+        """KML feature refs are passed directly to per-feature preparation."""
         from blueprints.pipeline.orchestrator import _phase_ingestion
 
         ctx = MagicMock()
@@ -1400,17 +1425,18 @@ class TestOffloadedFeaturesPath:
         gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-2", {})
         gen.send(None)  # first yield: parse_kml
 
-        # Resume with a dict (offload ref) — must call load_offloaded_features
-        gen.send({"ref": "payloads/inst-2/abc.json", "count": 1})
+        gen.send({"feature_refs": ["claims/inst-2/feature_0.json"]})
 
         activity_names = [c[0][0] for c in ctx.call_activity.call_args_list]
-        assert "load_offloaded_features" in activity_names
+        assert "load_offloaded_features" not in activity_names
+        prepare_payload = next(c[0][1] for c in ctx.call_activity.call_args_list if c[0][0] == "prepare_aoi")
+        assert prepare_payload["feature_ref"] == "claims/inst-2/feature_0.json"
 
 
 class TestOrchestratorActivityOutputContracts:
     """Verify ingestion fails fast on malformed activity outputs."""
 
-    def test_phase_ingestion_rejects_non_list_non_dict_parse_output(self):
+    def test_phase_ingestion_rejects_non_dict_parse_output(self):
         from unittest.mock import MagicMock
 
         import pytest
@@ -1425,11 +1451,11 @@ class TestOrchestratorActivityOutputContracts:
 
         with pytest.raises(
             TypeError,
-            match=r"parse_kml activity output must be list\[dict\] or dict with required keys: ref",
+            match=r"parse_kml activity output must be dict, got str",
         ):
             gen.send("malformed")
 
-    def test_phase_ingestion_rejects_claim_refs_without_ref_key(self):
+    def test_phase_ingestion_rejects_prepare_results_without_claim_ref(self):
         from unittest.mock import MagicMock
 
         import pytest
@@ -1442,15 +1468,18 @@ class TestOrchestratorActivityOutputContracts:
 
         gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-4", {})
         gen.send(None)  # yield parse_kml activity call
-        gen.send(
-            [{"feature_name": "farm", "exterior_coords": [[36.8, -1.3]]}]
-        )  # resolve parse_kml; yield prepare_aoi fan-out
-        gen.send(
-            [{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}]
-        )  # resolve prepare_aoi; yield store_aoi_claims
-
-        with pytest.raises(ValueError, match=r"store_aoi_claims activity output item 0 missing required keys: ref"):
-            gen.send([{"key": "farm"}])  # resolve store_aoi_claims
+        gen.send({"feature_refs": ["claims/run/feature_0.json"]})  # resolve parse_kml; yield prepare fan-out
+        with pytest.raises(ValueError, match=r"prepare_aoi activity output item 0 missing required keys: aoi_ref"):
+            gen.send(
+                [
+                    {
+                        "feature_name": "farm",
+                        "bbox": [36.8, -1.3, 36.81, -1.31],
+                        "area_ha": 1.0,
+                        "centroid": [36.805, -1.305],
+                    }
+                ]
+            )
 
 
 class TestPhaseIngestionCentroidTelemetry:
@@ -1471,24 +1500,27 @@ class TestPhaseIngestionCentroidTelemetry:
 
         gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-6", {"timestamp": "t1"})
         gen.send(None)  # yield parse_kml
+        gen.send({"feature_refs": ["claims/inst-6/feature_0.json", "claims/inst-6/feature_1.json"]})
         gen.send(
             [
-                {"feature_name": "farm", "exterior_coords": [[36.8, -1.3]]},
-                {"feature_name": "empty", "exterior_coords": []},
+                {
+                    "feature_name": "farm",
+                    "aoi_ref": "claims/inst-6/aoi_0.json",
+                    "aoi_claim_index": 0,
+                    "bbox": [36.8, -1.3, 36.81, -1.31],
+                    "area_ha": 1.0,
+                    "centroid": [36.8, -1.3],
+                },
+                {
+                    "feature_name": "empty",
+                    "aoi_ref": "claims/inst-6/aoi_1.json",
+                    "aoi_claim_index": 1,
+                    "bbox": [0.0, 0.0, 0.0, 0.0],
+                    "area_ha": 0.0,
+                    "centroid": [0.0, 0.0],
+                },
             ]
-        )  # resolve parse_kml; yield prepare_aoi fan-out
-        gen.send(
-            [
-                {"feature_name": "farm", "centroid": [36.8, -1.3]},
-                {"feature_name": "empty", "centroid": [0.0, 0.0]},
-            ]
-        )  # resolve prepare_aoi; yield store_aoi_claims
-        gen.send(
-            [
-                {"ref": "r1", "key": "farm"},
-                {"ref": "r2", "key": "empty"},
-            ]
-        )  # resolve store_aoi_claims; yield write_metadata fan-out
+        )  # resolve prepare_aoi claim checks; yield metadata writes
         with pytest.raises(StopIteration) as exc_info:
             gen.send([{"status": "ok"}, {"status": "ok"}])  # resolve write_metadata
 
@@ -1527,11 +1559,11 @@ class TestPhaseCustomStatusReporting:
         ctx.call_activity.return_value = "sentinel"
         ctx.task_all.return_value = []
 
-        features = [{"feature_name": "f", "exterior_coords": [[1.0, 2.0]]}] * 2
+        feature_refs = {"feature_refs": ["claims/i2/feature_0.json", "claims/i2/feature_1.json"]}
         gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "i2", {})
         gen.send(None)
         with contextlib.suppress(StopIteration):
-            gen.send(features)
+            gen.send(feature_refs)
 
         statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
         assert any(s.get("phase") == "ingestion" and s.get("step") == "preparing_aois" for s in statuses)

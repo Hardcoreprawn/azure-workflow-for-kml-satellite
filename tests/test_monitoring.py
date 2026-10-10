@@ -432,6 +432,95 @@ class TestMonitoringEndpoints:
         resp = monitoring_endpoint(req)
         assert resp.status_code == 400
 
+    def test_create_monitor_rejects_malformed_polygon(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Malformed",
+            "aoi_geometry": {
+                "centroid": [0.5, 0.5],
+                "type": "Polygon",
+                "coordinates": ["bad"],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 400
+
+    def test_create_monitor_rejects_multipolygon_beyond_supported_span(
+        self, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Disjoint regions",
+            "aoi_geometry": {
+                "centroid": [5.0, 5.0],
+                "type": "MultiPolygon",
+                "coordinates": [
+                    [[[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.1], [0.0, 0.0]]],
+                    [[[10.0, 10.0], [10.1, 10.0], [10.1, 10.1], [10.0, 10.1], [10.0, 10.0]]],
+                ],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 400
+
+    def test_create_monitor_accepts_nearby_multipolygon_components(
+        self, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Nearby islands",
+            "aoi_geometry": {
+                "centroid": [36.81, -1.3],
+                "type": "MultiPolygon",
+                "coordinates": [
+                    [[[36.8, -1.3], [36.801, -1.3], [36.801, -1.299], [36.8, -1.299], [36.8, -1.3]]],
+                    [[[36.82, -1.3], [36.821, -1.3], [36.821, -1.299], [36.82, -1.299], [36.82, -1.3]]],
+                ],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 201
+
+    def test_create_monitor_rejects_polygon_outside_epsg4326_bounds(
+        self, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Out of bounds",
+            "aoi_geometry": {
+                "centroid": [180.0, 0.0],
+                "type": "Polygon",
+                "coordinates": [[[179.0, -1.0], [181.0, -1.0], [181.0, 1.0], [179.0, 1.0], [179.0, -1.0]]],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 400
+
+    def test_create_monitor_rejects_polygon_with_non_finite_bounds(
+        self, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Non-finite bounds",
+            "aoi_geometry": {
+                "centroid": [0.0, 0.0],
+                "type": "Polygon",
+                "coordinates": [[[0.0, 0.0], [float("inf"), 0.0], [1.0, 1.0], [0.0, 0.0]]],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 400
+
     def test_create_monitor_invalid_cadence(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
         from blueprints.monitoring import monitoring_endpoint
 
@@ -584,6 +673,30 @@ class TestMonitoringScheduler:
         timer.past_due = False
         monitoring_scheduler(timer)  # empty store, nothing due
 
+    def test_malformed_legacy_geometry_is_unavailable(self):
+        from blueprints.monitoring import _monitor_geometry_and_coords
+
+        geometry, coords = _monitor_geometry_and_coords({"type": "Polygon", "coordinates": ["bad"]})
+
+        assert geometry is None
+        assert coords == []
+
+    def test_disjoint_legacy_multipolygon_is_unavailable(self):
+        from blueprints.monitoring import _monitor_geometry_and_coords
+
+        geometry, coords = _monitor_geometry_and_coords(
+            {
+                "type": "MultiPolygon",
+                "coordinates": [
+                    [[[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.1], [0.0, 0.0]]],
+                    [[[10.0, 10.0], [10.1, 10.0], [10.1, 10.1], [10.0, 10.1], [10.0, 10.0]]],
+                ],
+            }
+        )
+
+        assert geometry is None
+        assert coords == []
+
     def test_process_monitor_no_centroid(self, _mock_cosmos):
         from treesight.monitoring import create_monitor
 
@@ -629,11 +742,18 @@ class TestMonitoringScheduler:
             patch(
                 "treesight.pipeline.enrichment.run_enrichment",
                 return_value=mock_enrichment,
-            ),
+            ) as mock_run_enrichment,
             patch("treesight.storage.client.BlobStorageClient"),
             patch("treesight.email.send_email", return_value=True),
         ):
             _process_monitor(m)
+
+        run_kwargs = mock_run_enrichment.call_args.kwargs
+        assert run_kwargs["coords"] == _SAMPLE_GEOMETRY["exterior_coords"]
+        assert run_kwargs["geometry"] == {
+            "type": "Polygon",
+            "coordinates": [_SAMPLE_GEOMETRY["exterior_coords"]],
+        }
 
     def test_process_monitor_uses_latest_change_comparison_by_year(self, _mock_cosmos):
         from treesight.monitoring import create_monitor

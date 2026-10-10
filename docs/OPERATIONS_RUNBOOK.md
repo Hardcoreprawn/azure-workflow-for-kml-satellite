@@ -23,6 +23,16 @@ stored in this document; retrieve them from the Azure portal or from
 
 **Note:** The SWA does not proxy `/api/*` — all API calls go directly to the Function App hostname (see Architecture Overview for details). Use `tofu output -raw function_app_orch_default_hostname` to retrieve the exact ingress hostname.
 
+## Pipeline Payload Retention
+
+Temporary Durable payload blobs under `pipeline-payloads/payloads/` expire after
+7 days. Per-feature, AOI, and intermediate enrichment claim blobs under
+`pipeline-payloads/claims/` expire after 30 days, leaving time for normal
+orchestration retries while bounding storage from abandoned or completed-run
+intermediates. These are temporary execution data, not manifests or durable
+evidence artifacts. Re-submit the source KML to restart a run after its claim
+blobs expire. The policy is managed in `infra/tofu/main.tf`.
+
 ## Deploy
 
 ### Local Container Lifecycle

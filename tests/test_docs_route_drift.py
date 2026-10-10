@@ -223,6 +223,11 @@ def test_activity_reference_matches_registered_functions() -> None:
     section = reference.split("## Activity Functions and Contracts", 1)[1].split("\n## ", 1)[0]
     documented = set(re.findall(r"^\| `([a-z_]+)` \|", section, re.MULTILINE))
     assert documented == registered
+    assert "`feature_refs`" in section
+    assert "`feature_ref`" in section
+    assert "`aoi_claim_index`" in section
+    assert "`result_ref`" in section
+    assert "compact summary" in section
 
 
 @pytest.mark.parametrize("output", [None, {"status": "completed"}, {"status": "partial_imagery"}])

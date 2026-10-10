@@ -32,6 +32,12 @@ class TestFeature:
         assert f.vertex_count == 0
         assert f.has_holes is False
 
+    def test_rejects_name_over_durable_safe_limit(self):
+        from treesight.constants import MAX_AOI_NAME_LENGTH
+
+        with pytest.raises(ValidationError, match="name"):
+            Feature(name="x" * (MAX_AOI_NAME_LENGTH + 1))
+
     def test_computed_vertex_count(self, sample_feature: Feature):
         assert sample_feature.vertex_count == 5
 
@@ -82,6 +88,12 @@ class TestAOI:
         assert aoi.buffer_m == 100.0
         assert aoi.crs == "EPSG:4326"
         assert aoi.bbox == [0.0, 0.0, 0.0, 0.0]
+
+    def test_rejects_feature_name_over_durable_safe_limit(self):
+        from treesight.constants import MAX_AOI_NAME_LENGTH
+
+        with pytest.raises(ValidationError, match="feature_name"):
+            AOI(feature_name="x" * (MAX_AOI_NAME_LENGTH + 1))
 
     def test_model_dump_roundtrip(self, sample_aoi: AOI):
         d = sample_aoi.model_dump()

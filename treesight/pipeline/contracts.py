@@ -47,12 +47,12 @@ def ensure_list_of_dicts(
     return value
 
 
-def ensure_parse_kml_output(value: Any) -> list[dict[str, Any]] | dict[str, Any]:
-    """Validate parse_kml's bifurcated output (inline list or offloaded ref dict)."""
-    if isinstance(value, list):
-        return ensure_list_of_dicts(value, name="parse_kml")
-    if isinstance(value, dict):
-        out = ensure_dict_with_keys(value, name="parse_kml", required=("ref",))
-        ensure_nonempty_str_field(out["ref"], name="parse_kml", field="ref")
-        return out
-    raise TypeError("parse_kml activity output must be list[dict] or dict with required keys: ref")
+def ensure_parse_kml_output(value: Any) -> dict[str, Any]:
+    """Validate parse_kml's compact list of individual feature claim refs."""
+    output = ensure_dict_with_keys(value, name="parse_kml", required=("feature_refs",))
+    feature_refs = output["feature_refs"]
+    if not isinstance(feature_refs, list):
+        raise TypeError("parse_kml activity output key 'feature_refs' must be a list")
+    for index, feature_ref in enumerate(feature_refs):
+        ensure_nonempty_str_field(feature_ref, name="parse_kml", field="feature_refs", index=index)
+    return output

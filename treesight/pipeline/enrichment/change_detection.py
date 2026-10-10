@@ -12,6 +12,7 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
+from treesight.constants import MIN_VALID_NDVI_PIXELS
 from treesight.log import log_phase
 
 logger = logging.getLogger(__name__)
@@ -79,13 +80,14 @@ def compute_change_map(
                 float(loss_threshold),
                 float(gain_threshold),
             )
-            if rs_stats is None:
+            if rs_stats is None or rs_stats.get("valid_pixels", 0) < MIN_VALID_NDVI_PIXELS:
                 return None
             result: dict[str, Any] = dict(rs_stats)
         else:
             # Pure-Python fallback
             valid = np.isfinite(ndvi_a) & np.isfinite(ndvi_b)
-            if not np.any(valid):
+            n_valid = int(np.sum(valid))
+            if n_valid < MIN_VALID_NDVI_PIXELS:
                 return None
 
             delta = np.where(valid, ndvi_b - ndvi_a, np.nan)
@@ -95,7 +97,6 @@ def compute_change_map(
             gain_mask = valid_deltas > gain_threshold
             stable_mask = ~loss_mask & ~gain_mask
 
-            n_valid = int(np.sum(valid))
             n_loss = int(np.sum(loss_mask))
             n_gain = int(np.sum(gain_mask))
             n_stable = int(np.sum(stable_mask))

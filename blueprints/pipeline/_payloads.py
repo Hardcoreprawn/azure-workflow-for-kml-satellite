@@ -38,8 +38,158 @@ def _collect_enrichment_coords(aois: list[dict[str, Any]]) -> list[list[float]]:
     return all_coords
 
 
+def _source_interior_coords(aoi: dict[str, Any]) -> list[list[list[float]]] | None:
+    if not aoi.get("exterior_coords"):
+        return None
+    return aoi.get("interior_coords", [])
+
+
+def _collect_per_aoi_enrichment_coords(
+    per_aoi_coords: list[dict[str, Any]],
+) -> list[list[float]]:
+    return [coord for entry in per_aoi_coords for coord in entry.get("coords", [])]
+
+
+def _hydrate_per_aoi_enrichment_coords(
+    per_aoi_refs: list[dict[str, Any]],
+    storage: Any,
+) -> list[dict[str, Any]]:
+    from treesight.models.aoi import AOI
+    from treesight.storage.offload import PayloadOffloader
+
+    offloader = PayloadOffloader(storage)
+    hydrated: list[dict[str, Any]] = []
+    for entry in per_aoi_refs:
+        aoi_ref = entry.get("aoi_ref")
+        if not isinstance(aoi_ref, str) or not aoi_ref:
+            raise ValueError("per-AOI enrichment entry is missing aoi_ref")
+        aoi = AOI.model_validate(offloader.load_claim(aoi_ref))
+        source_coords = aoi.exterior_coords
+        hydrated_entry: dict[str, Any] = {
+            **entry,
+            "name": aoi.feature_name,
+            "area_ha": aoi.area_ha,
+            "bbox": aoi.bbox,
+            "center": aoi.centroid,
+            "coords": source_coords or _aoi_coords(aoi.model_dump()),
+            "interior_coords": aoi.interior_coords if source_coords else None,
+        }
+        source_geometry_type = aoi.metadata.get("source_geometry_type", "")
+        if source_geometry_type:
+            hydrated_entry["source_geometry_type"] = source_geometry_type
+        plot_area_ha = aoi.metadata.get("plot_area_ha", "")
+        if plot_area_ha:
+            try:
+                hydrated_entry["plot_area_ha"] = float(plot_area_ha)
+            except ValueError:
+                logger.warning(
+                    "Could not parse plot_area_ha %r for AOI %r; field omitted",
+                    plot_area_ha,
+                    aoi.feature_name,
+                )
+        hydrated.append(hydrated_entry)
+    return _assign_spatial_clusters(hydrated)
+
+
+def _store_enrichment_activity_result(
+    result: dict[str, Any],
+    storage: Any,
+    instance_id: str,
+    claim_id: str,
+) -> dict[str, str]:
+    from treesight.storage.offload import PayloadOffloader
+
+    result_ref = PayloadOffloader(storage).store_claim(instance_id, claim_id, result)
+    return {"result_ref": result_ref}
+
+
+def _load_enrichment_activity_result(
+    result: dict[str, Any],
+    storage: Any,
+) -> dict[str, Any]:
+    result_ref = result.get("result_ref")
+    if not isinstance(result_ref, str) or not result_ref:
+        return result
+    from treesight.storage.offload import PayloadOffloader
+
+    return PayloadOffloader(storage).load_claim(result_ref)
+
+
+def _aoi_coords(aoi: dict[str, Any]) -> list[list[float]]:
+    exterior_coords = aoi.get("exterior_coords", [])
+    if exterior_coords:
+        return exterior_coords
+    bbox = aoi.get("bbox")
+    if not bbox or len(bbox) != 4 or bbox == [0.0, 0.0, 0.0, 0.0]:
+        bbox = aoi.get("buffered_bbox")
+    if not bbox or len(bbox) != 4:
+        return []
+    min_lon, min_lat, max_lon, max_lat = bbox
+    return [
+        [min_lon, min_lat],
+        [max_lon, min_lat],
+        [max_lon, max_lat],
+        [min_lon, max_lat],
+        [min_lon, min_lat],
+    ]
+
+
+def _build_per_aoi_entry(
+    aoi: dict[str, Any],
+    aoi_index: int,
+    aoi_refs: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    coords = _aoi_coords(aoi)
+    if not coords:
+        return None
+
+    entry: dict[str, Any] = {
+        "name": aoi.get("feature_name", ""),
+        "coords": coords,
+        "area_ha": aoi.get("area_ha", 0.0),
+    }
+    if aoi_refs is None:
+        entry["interior_coords"] = _source_interior_coords(aoi)
+    else:
+        entry["aoi_ref"] = aoi_refs[aoi_index]["ref"]
+        entry["aoi_claim_index"] = aoi_refs[aoi_index]["aoi_claim_index"]
+        entry["bbox"] = aoi.get("bbox", [])
+        entry["center"] = aoi.get("centroid", [])
+
+    metadata: dict[str, str] = aoi.get("metadata", {})
+    source_geometry_type = metadata.get("source_geometry_type", "")
+    if source_geometry_type:
+        entry["source_geometry_type"] = source_geometry_type
+    plot_area_ha = metadata.get("plot_area_ha", "")
+    if plot_area_ha:
+        try:
+            entry["plot_area_ha"] = float(plot_area_ha)
+        except ValueError:
+            logger.warning(
+                "Could not parse plot_area_ha %r for AOI %r; field omitted",
+                plot_area_ha,
+                entry.get("name", ""),
+            )
+    return entry
+
+
+def _assign_spatial_clusters(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if len(entries) > 1:
+        from treesight.geo import cluster_aois
+
+        clusters = cluster_aois(entries)
+        for cluster_idx, group in enumerate(clusters):
+            for entry in group:
+                entry["cluster"] = cluster_idx
+    elif entries:
+        entries[0]["cluster"] = 0
+    return entries
+
+
 def _collect_per_aoi_coords(
     aois: list[dict[str, Any]],
+    *,
+    aoi_refs: list[dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Extract per-AOI coordinate data for per-AOI enrichment.
 
@@ -57,57 +207,19 @@ def _collect_per_aoi_coords(
     - ``plot_area_ha``: supplier-declared area in hectares when present in
       AOI metadata
     """
+    if aoi_refs is not None and len(aoi_refs) != len(aois):
+        raise ValueError("aoi_refs must align with the AOI list")
+
     result: list[dict[str, Any]] = []
-    for aoi in aois:
-        coords = aoi.get("exterior_coords", [])
-        if not coords:
-            bb = aoi.get("bbox") or aoi.get("buffered_bbox")
-            if bb and len(bb) == 4:
-                min_lon, min_lat, max_lon, max_lat = bb
-                coords = [
-                    [min_lon, min_lat],
-                    [max_lon, min_lat],
-                    [max_lon, max_lat],
-                    [min_lon, max_lat],
-                    [min_lon, min_lat],
-                ]
-        if coords:
-            entry: dict[str, Any] = {
-                "name": aoi.get("feature_name", ""),
-                "coords": coords,
-                "area_ha": aoi.get("area_ha", 0.0),
-            }
-            # Propagate supplier-declared geometry type and area from KML ExtendedData
-            # so DDS exports use supplier-declared values, not derived buffer geometry
-            # (EUDR Article 2(28)).  Set by coords_to_kml via build_geolocation_provenance.
-            meta: dict[str, str] = aoi.get("metadata", {})
-            source_geometry_type = meta.get("source_geometry_type", "")
-            if source_geometry_type:
-                entry["source_geometry_type"] = source_geometry_type
-            plot_area_ha_str = meta.get("plot_area_ha", "")
-            if plot_area_ha_str:
-                try:
-                    entry["plot_area_ha"] = float(plot_area_ha_str)
-                except ValueError:
-                    logger.warning(
-                        "Could not parse plot_area_ha %r for AOI %r; field omitted",
-                        plot_area_ha_str,
-                        entry.get("name", ""),
-                    )
+    for aoi_index, aoi in enumerate(aois):
+        entry = _build_per_aoi_entry(aoi, aoi_index, aoi_refs)
+        if entry is not None:
             result.append(entry)
 
-    # Assign spatial cluster labels (#581)
-    if len(result) > 1:
-        from treesight.geo import cluster_aois
+    if aoi_refs is not None:
+        return [{"aoi_ref": entry["aoi_ref"], "aoi_claim_index": entry["aoi_claim_index"]} for entry in result]
 
-        clusters = cluster_aois(result)
-        for cluster_idx, group in enumerate(clusters):
-            for entry in group:
-                entry["cluster"] = cluster_idx
-    elif result:
-        result[0]["cluster"] = 0
-
-    return result
+    return _assign_spatial_clusters(result)
 
 
 def _build_order_lookups(

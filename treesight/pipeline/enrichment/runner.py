@@ -37,6 +37,36 @@ _SAFE_MODE_IMAGERY_SKIPS = ["mosaic", "ndvi", "change_detection"]
 _SAFE_MODE_ALL_SKIPS = _SAFE_MODE_DATA_SOURCE_SKIPS + _SAFE_MODE_IMAGERY_SKIPS
 
 
+def _aoi_geometry_from_entry(aoi_entry: dict[str, Any]) -> dict[str, Any] | None:
+    coords = aoi_entry.get("coords")
+    interior_coords = aoi_entry.get("interior_coords")
+    if not coords or not isinstance(interior_coords, list):
+        return None
+    return {"type": "Polygon", "coordinates": [coords, *interior_coords]}
+
+
+def _flatten_per_aoi_coords(per_aoi_coords: list[dict[str, Any]]) -> list[list[float]]:
+    return [coordinate for entry in per_aoi_coords for coordinate in entry.get("coords", [])]
+
+
+def _combine_aoi_geometries(
+    per_aoi_coords: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    if not per_aoi_coords:
+        return None
+
+    polygons: list[Any] = []
+    for entry in per_aoi_coords:
+        geometry = _aoi_geometry_from_entry(entry)
+        if geometry is None:
+            return None
+        polygons.append(geometry["coordinates"])
+
+    if len(polygons) == 1:
+        return {"type": "Polygon", "coordinates": polygons[0]}
+    return {"type": "MultiPolygon", "coordinates": polygons}
+
+
 # ── Per-AOI enrichment ────────────────────────────────────────
 
 
@@ -63,6 +93,7 @@ def _enrich_single_aoi(
     """
     aoi_name = aoi_entry.get("name", "")
     coords = aoi_entry["coords"]
+    geometry = _aoi_geometry_from_entry(aoi_entry)
 
     bbox = _coords_to_bbox(coords)
     lons = [c[0] for c in coords]
@@ -81,7 +112,6 @@ def _enrich_single_aoi(
     result: dict[str, Any] = {
         "aoi_index": aoi_index if aoi_index is not None else 0,
         "name": aoi_name,
-        "coords": coords,
         "bbox": bbox,
         "center": {"lat": center_lat, "lon": center_lon},
         "frame_plan": frame_plan,
@@ -113,7 +143,7 @@ def _enrich_single_aoi(
     _run_flood_fire_phase(bbox, center_lat, center_lon, result, acc=aoi_acc)
 
     if eudr_mode:
-        _run_eudr_phase(bbox, center_lat, center_lon, result, acc=aoi_acc)
+        _run_eudr_phase(bbox, center_lat, center_lon, result, acc=aoi_acc, geometry=geometry)
 
     _ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
         bbox,
@@ -126,6 +156,7 @@ def _enrich_single_aoi(
         result,
         acc=aoi_acc,
         aoi_index=aoi_index,
+        geometry=geometry,
     )
 
     _run_change_detection_phase(
@@ -234,6 +265,7 @@ def _single_aoi_projection(results: dict[str, Any], aoi_entry: dict[str, Any]) -
         "name": str(aoi_entry.get("name", "")),
         "area_ha": aoi_entry.get("area_ha", 0.0),
         "coords": coords,
+        "geometry": _aoi_geometry_from_entry(aoi_entry),
         "bbox": results.get("bbox") or _bbox_from_entry(aoi_entry),
         "center": results.get("center") or _center_from_coords(coords),
         "frame_plan": results.get("frame_plan", []),
@@ -264,6 +296,7 @@ def _normalise_per_aoi_entry(result: dict[str, Any], aoi_entry: dict[str, Any], 
         "name": str(aoi_entry.get("name", "")),
         "area_ha": aoi_entry.get("area_ha", 0.0),
         "coords": coords,
+        "geometry": _aoi_geometry_from_entry(aoi_entry),
         "bbox": result.get("bbox") or _bbox_from_entry(aoi_entry),
         "center": result.get("center") or _center_from_coords(coords),
         "frame_plan": result.get("frame_plan", []),
@@ -301,6 +334,7 @@ def run_enrichment(
     aoi_list: list[dict[str, Any]] | None = None,
     *,
     per_aoi_coords: list[dict[str, Any]] | None = None,
+    geometry: dict[str, Any] | None = None,
     eudr_mode: bool = False,
     date_start: str | None = None,
     date_end: str | None = None,
@@ -329,6 +363,7 @@ def run_enrichment(
     """
     start = time.monotonic()
     bbox = _coords_to_bbox(coords)
+    effective_geometry = geometry if geometry is not None else _combine_aoi_geometries(per_aoi_coords)
 
     # EUDR mode: default to post-cutoff baseline
     if eudr_mode and not date_start:
@@ -403,7 +438,7 @@ def run_enrichment(
 
     # 1d. EUDR-specific enrichments (WorldCover + WDPA) — skipped for multi-region
     if eudr_mode and not multi_region and not safe_mode:
-        _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc)
+        _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc, geometry=effective_geometry)
 
     # 2/3. Mosaic registration + NDVI computation — skipped for multi-region
     if not multi_region and not safe_mode:
@@ -417,6 +452,7 @@ def run_enrichment(
             storage,
             results,
             acc=acc,
+            geometry=effective_geometry,
         )
     else:
         ndvi_stats, ndvi_raster_paths = [], []
@@ -571,6 +607,7 @@ def run_enrichment(
 def enrich_data_sources(
     coords: list[list[float]],
     *,
+    per_aoi_coords: list[dict[str, Any]] | None = None,
     eudr_mode: bool = False,
     date_start: str | None = None,
     date_end: str | None = None,
@@ -634,7 +671,14 @@ def enrich_data_sources(
     _run_flood_fire_phase(bbox, center_lat, center_lon, results, acc=acc)
 
     if eudr_mode:
-        _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc)
+        _run_eudr_phase(
+            bbox,
+            center_lat,
+            center_lon,
+            results,
+            acc=acc,
+            geometry=_combine_aoi_geometries(per_aoi_coords),
+        )
         results["eudr_mode"] = True
         results["eudr_date_start"] = date_start
 
@@ -645,6 +689,7 @@ def enrich_data_sources(
 def enrich_imagery(
     coords: list[list[float]],
     *,
+    per_aoi_coords: list[dict[str, Any]] | None = None,
     eudr_mode: bool = False,
     date_start: str | None = None,
     date_end: str | None = None,
@@ -699,6 +744,7 @@ def enrich_imagery(
         storage,
         results,
         acc=acc,
+        geometry=_combine_aoi_geometries(per_aoi_coords),
     )
 
     _run_change_detection_phase(
@@ -802,6 +848,8 @@ def enrich_finalize(
         **data_sources,
         **imagery,
     }
+    if not merged.get("coords") and per_aoi_coords:
+        merged["coords"] = _flatten_per_aoi_coords(per_aoi_coords)
     if data_sources.get("safe_mode") or imagery.get("safe_mode"):
         merged["safe_mode"] = True
         merged["skipped"] = list(

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, computed_field
 
-from treesight.constants import DEFAULT_AOI_BUFFER_M
+from treesight.constants import DEFAULT_AOI_BUFFER_M, MAX_AOI_NAME_LENGTH
 
 
 class AOI(BaseModel):
@@ -30,7 +30,7 @@ class AOI(BaseModel):
         area_warning: Non-empty if area exceeds reasonableness threshold.
     """
 
-    feature_name: str
+    feature_name: str = Field(max_length=MAX_AOI_NAME_LENGTH)
     source_file: str = ""
     feature_index: int = 0
     exterior_coords: list[list[float]] = Field(default_factory=lambda: [])

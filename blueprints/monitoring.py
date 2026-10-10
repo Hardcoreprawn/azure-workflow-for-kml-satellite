@@ -12,6 +12,7 @@ at import time.  PEP 563 causes FunctionLoadError.
 
 import json
 import logging
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -94,6 +95,67 @@ def monitoring_scheduler(timer: func.TimerRequest) -> None:
             )
 
 
+def _validated_monitor_polygon(stored_geometry: dict[str, Any]) -> dict[str, Any] | None:
+    from shapely.geometry import Polygon, mapping, shape
+
+    geometry_type = stored_geometry.get("type")
+    coordinates = stored_geometry.get("coordinates")
+    try:
+        if geometry_type in {"Polygon", "MultiPolygon"}:
+            geometry = shape({"type": geometry_type, "coordinates": coordinates})
+        else:
+            exterior_coords = stored_geometry.get("exterior_coords")
+            interior_coords = stored_geometry.get("interior_coords", [])
+            if not isinstance(exterior_coords, list) or not exterior_coords:
+                return None
+            geometry = Polygon(exterior_coords, interior_coords)
+        if geometry.geom_type not in {"Polygon", "MultiPolygon"} or geometry.is_empty or not geometry.is_valid:
+            return None
+        min_x, min_y, max_x, max_y = geometry.bounds
+        if not all(math.isfinite(value) for value in (min_x, min_y, max_x, max_y)):
+            return None
+        if min_x < -180 or min_y < -90 or max_x > 180 or max_y > 90:
+            return None
+        if geometry.geom_type == "MultiPolygon" and not _monitor_components_within_supported_span(geometry):
+            return None
+        mapped = mapping(geometry)
+        return {"type": mapped["type"], "coordinates": _nested_lists(mapped["coordinates"])}
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+
+
+def _monitor_components_within_supported_span(geometry: Any) -> bool:
+    from treesight.constants import MULTI_REGION_THRESHOLD_KM
+    from treesight.geo import haversine_km
+
+    centroids = [component.centroid for component in geometry.geoms]
+    for index, centroid in enumerate(centroids):
+        for other in centroids[index + 1 :]:
+            distance_km = haversine_km(centroid.x, centroid.y, other.x, other.y)
+            if distance_km > MULTI_REGION_THRESHOLD_KM:
+                return False
+    return True
+
+
+def _nested_lists(value: Any) -> Any:
+    if isinstance(value, (list, tuple)):
+        return [_nested_lists(item) for item in value]
+    return value
+
+
+def _monitor_geometry_and_coords(
+    stored_geometry: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[list[float]]]:
+    geometry = _validated_monitor_polygon(stored_geometry)
+    if geometry is None:
+        return None, []
+    coordinates = geometry["coordinates"]
+    if geometry["type"] == "Polygon":
+        return geometry, [list(point) for point in coordinates[0]]
+    exterior_rings = [polygon[0] for polygon in coordinates]
+    return geometry, [list(point) for ring in exterior_rings for point in ring]
+
+
 def _process_monitor(monitor: Any) -> None:
     """Run enrichment for a single monitor and evaluate alerts.
 
@@ -109,16 +171,17 @@ def _process_monitor(monitor: Any) -> None:
     from treesight.pipeline.enrichment import run_enrichment
     from treesight.storage.client import BlobStorageClient
 
-    geometry = monitor.aoi_geometry
-    centroid = geometry.get("centroid", [0.0, 0.0])
+    stored_geometry = monitor.aoi_geometry
+    polygon_geometry, coords = _monitor_geometry_and_coords(stored_geometry)
+    centroid = stored_geometry.get("centroid", [0.0, 0.0])
 
     if not centroid or centroid == [0.0, 0.0]:
         logger.warning("Monitor %s has no valid centroid — skipping", monitor.id)
         advance_schedule(monitor, run_id="skipped-no-centroid")
         return
 
-    # run_enrichment expects coords as [[lon, lat], ...]
-    coords = [centroid]
+    if not coords:
+        coords = [centroid]
     storage = BlobStorageClient()
 
     now = datetime.now(UTC)
@@ -145,6 +208,7 @@ def _process_monitor(monitor: Any) -> None:
         cadence="monthly",
         date_start=date_start,
         date_end=date_end,
+        geometry=polygon_geometry,
     )
 
     # Extract the latest change metrics from the enrichment payload.
@@ -226,8 +290,21 @@ def create_monitor_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id
         return error_response(400, "aoi_name is required", req=req)
 
     aoi_geometry = body.get("aoi_geometry")
-    if not isinstance(aoi_geometry, dict) or not aoi_geometry.get("centroid"):
-        return error_response(400, "aoi_geometry with centroid is required", req=req)
+    if not isinstance(aoi_geometry, dict):
+        return error_response(400, "aoi_geometry with a valid polygon and centroid is required", req=req)
+    centroid = aoi_geometry.get("centroid")
+    if not (
+        isinstance(centroid, (list, tuple))
+        and len(centroid) == 2
+        and all(type(value) in {int, float} and math.isfinite(value) for value in centroid)
+        and -180 <= centroid[0] <= 180
+        and -90 <= centroid[1] <= 90
+    ):
+        return error_response(400, "aoi_geometry with a valid polygon and centroid is required", req=req)
+    polygon_geometry = _validated_monitor_polygon(aoi_geometry)
+    if polygon_geometry is None:
+        return error_response(400, "aoi_geometry must contain a valid Polygon or supported MultiPolygon", req=req)
+    aoi_geometry = {**aoi_geometry, **polygon_geometry}
 
     cadence_days = body.get("cadence_days", 30)
     if not isinstance(cadence_days, int) or cadence_days < 1 or cadence_days > 365:
