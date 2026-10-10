@@ -219,7 +219,6 @@ def _collect_per_aoi_coords(
         return [{"aoi_ref": entry["aoi_ref"]} for entry in result]
 
     return _assign_spatial_clusters(result)
-    return result
 
 
 def _build_order_lookups(
