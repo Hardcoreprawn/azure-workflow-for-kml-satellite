@@ -97,13 +97,13 @@ class TestComputeChangeMap:
         assert compute_change_map(_make_ndvi_tiff(before), _make_ndvi_tiff(after)) is None
 
     def test_python_fallback_requires_minimum_pairwise_valid_pixel_overlap(self, monkeypatch):
-        import treesight.pipeline.enrichment.change_detection as change_detection
+        from treesight.pipeline.enrichment.change_detection import compute_change_map
 
-        monkeypatch.setattr(change_detection, "_rs", None)
+        monkeypatch.setattr("treesight.pipeline.enrichment.change_detection._rs", None)
         before = np.array([[0.5, 0.5], [np.nan, np.nan]], dtype=np.float32)
         after = np.array([[0.6, 0.4], [0.5, np.nan]], dtype=np.float32)
 
-        assert change_detection.compute_change_map(_make_ndvi_tiff(before), _make_ndvi_tiff(after)) is None
+        assert compute_change_map(_make_ndvi_tiff(before), _make_ndvi_tiff(after)) is None
 
     def test_returns_none_all_nan(self):
         from treesight.pipeline.enrichment.change_detection import compute_change_map
