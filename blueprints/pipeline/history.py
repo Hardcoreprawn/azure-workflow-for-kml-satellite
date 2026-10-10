@@ -65,6 +65,7 @@ def get_authorized_run_record(instance_id: str, user_id: str, *, active_org: dic
     assert_run_write_access(record, user_id, active_org=active_org)
     return record
 
+
 def _extract_submission_context(body: Any) -> dict[str, Any]:
     if not isinstance(body, dict):
         return {}
