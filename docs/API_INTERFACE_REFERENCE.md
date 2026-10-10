@@ -182,9 +182,9 @@ optional fields live in the implementation and
 
 | Activity | Input Contract | Output Contract |
 | --- | --- | --- |
-| `parse_kml` | BlobEvent fields | Feature dictionaries or offloaded `{ref, count}` |
-| `load_offloaded_features` | `ref` | Feature dictionaries |
-| `prepare_aoi` | `feature`, optional `buffer_m` | AOI dictionary |
+| `parse_kml` | BlobEvent fields | `feature_refs`: one claim reference per parsed feature |
+| `load_offloaded_features` | `ref` | Feature dictionaries (retained helper; not used by the main claim-per-feature path) |
+| `prepare_aoi` | `feature_ref`, `instance_id`, optional `buffer_m` (`feature` is accepted for direct callers) | `aoi_ref` plus compact AOI metadata |
 | `store_aoi_claims` | `instance_id`, `aois` | Claim references `{claim_id, ref, key}` |
 | `load_aoi_claim` | `aoi_ref` or `ref` | AOI dictionary |
 | `write_metadata` | AOI/claim, source, processing ID, timestamp, output container | Metadata and archive paths |
@@ -193,11 +193,11 @@ optional fields live in the implementation and
 | `check_order_status` | `order_id`, provider and source identity | Single-shot state and `is_terminal` |
 | `download_imagery` | Outcome, source asset, AOI bounds, output namespace | Download result and stored blob path |
 | `post_process_imagery` | Download result, AOI/claim, output namespace, flags | Post-process result and output path |
-| `run_enrichment` | Coordinates, per-AOI coordinates, dates, output namespace | Combined enrichment result |
-| `enrich_data_sources` | Coordinates, dates, cadence, EUDR mode | Weather/event/dataset results |
-| `enrich_imagery` | Coordinates, dates, output namespace | Imagery/NDVI/change results |
-| `enrich_single_aoi` | `aoi_entry`, `aoi_index`, dates, output namespace | Per-AOI enrichment result |
-| `enrich_finalize` | Data-source, imagery and per-AOI results, output namespace | Merged manifest result |
+| `run_enrichment` | Coordinates, per-AOI coordinates, dates, output namespace | Combined enrichment result (retained monolithic entrypoint) |
+| `enrich_data_sources` | `instance_id`, per-AOI claim refs, dates, cadence, EUDR mode | `result_ref` to weather/event/dataset results (or a safe-mode skip marker) |
+| `enrich_imagery` | `instance_id`, per-AOI claim refs, dates, output namespace | `result_ref` to imagery/NDVI/change results |
+| `enrich_single_aoi` | `aoi_entry.aoi_ref`, `aoi_index`, dates, output namespace | `result_ref` to per-AOI enrichment result |
+| `enrich_finalize` | Data-source, imagery and per-AOI `result_ref`s; per-AOI claim refs; output namespace | Blob manifest path and compact summary with telemetry-presence flags |
 | `submit_batch_fulfilment` | Outcome, asset URL, output namespace | Batch job/task tracking dictionary |
 | `poll_batch_fulfilment` | `job_id`, `task_id` | Batch task state |
 | `complete_billing` | `user_id`, `instance_id` | `{completed: true}` (retained ledger activity) |
