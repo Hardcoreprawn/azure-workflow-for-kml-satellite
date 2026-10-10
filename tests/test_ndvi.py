@@ -595,6 +595,7 @@ class TestComputeNdviPolygonMask:
         assert result["geometry_mask_applied"] is True
         assert result["mean"] < 0.5
         assert result["valid_pixels"] == 7
+        assert result["total_pixels"] == 7
         with rasterio.open(io.BytesIO(result["geotiff_bytes"])) as raster:
             ndvi = raster.read(1)
         assert np.isnan(ndvi[0, 0])
@@ -676,6 +677,7 @@ class TestComputeLandsatNdviPolygonMask:
         assert result["geometry_mask_applied"] is True
         assert result["mean"] < 0.5
         assert result["valid_pixels"] < 16
+        assert result["total_pixels"] == 12
         with rasterio.open(io.BytesIO(result["geotiff_bytes"])) as raster:
             ndvi = raster.read(1)
         assert np.isnan(ndvi[0, 0])
