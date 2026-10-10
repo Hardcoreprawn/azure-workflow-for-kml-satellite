@@ -142,9 +142,10 @@ services:
       # startup (§8.6 requires these set unconditionally). REQUIRE_AUTH
       # stays unset/false here, so nothing ever verifies these against a
       # real token — mirrors scripts/e2e_local.py's _DUMMY_CIAM_DEFAULTS.
-      CIAM_AUTHORITY: "https://ciam.example.com"
-      CIAM_TENANT_ID: "local-dev-tenant"
-      CIAM_API_AUDIENCE: "api://local-dev-audience"
+      CIAM_AUTHORITY: "${CIAM_AUTHORITY:-https://ciam.example.com}"
+      CIAM_TENANT_ID: "${CIAM_TENANT_ID:-local-dev-tenant}"
+      CIAM_API_AUDIENCE: "${CIAM_API_AUDIENCE:-api://local-dev-audience}"
+      REQUIRE_AUTH: "${REQUIRE_AUTH:-false}"
       OLLAMA_URL: "http://ollama:11434"
       OLLAMA_MODEL: "mistral"
       # Cosmos DB Emulator (#1269) -- well-known, publicly-documented
@@ -211,9 +212,10 @@ services:
       DEMO_VALET_TOKEN_SECRET: local-dev-secret-change-me  # pragma: allowlist secret
       DEMO_VALET_TOKEN_TTL_SECONDS: "86400"
       DEMO_VALET_TOKEN_MAX_USES: "3"
-      CIAM_AUTHORITY: "https://ciam.example.com"
-      CIAM_TENANT_ID: "local-dev-tenant"
-      CIAM_API_AUDIENCE: "api://local-dev-audience"
+      CIAM_AUTHORITY: "${CIAM_AUTHORITY:-https://ciam.example.com}"
+      CIAM_TENANT_ID: "${CIAM_TENANT_ID:-local-dev-tenant}"
+      CIAM_API_AUDIENCE: "${CIAM_API_AUDIENCE:-api://local-dev-audience}"
+      REQUIRE_AUTH: "${REQUIRE_AUTH:-false}"
       OLLAMA_URL: "http://ollama:11434"
       OLLAMA_MODEL: "mistral"
       COSMOS_ENDPOINT: "http://cosmos:8081"

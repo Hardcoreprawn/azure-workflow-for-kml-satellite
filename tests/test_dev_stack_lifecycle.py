@@ -127,6 +127,9 @@ def docker_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "    sys.exit(int(os.environ.get('DOCKER_STOP_EXIT', '0')))\n"
     )
     docker.chmod(0o755)
+    uv = tmp_path / "uv"
+    uv.write_text(f"#!{sys.executable}\nimport os, sys\nsys.exit(int(os.environ.get('UV_API_EXIT', '0')))\n")
+    uv.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
     monkeypatch.setenv("DOCKER_CALL_LOG", str(log))
     monkeypatch.setenv("COMPOSE_PROJECT_NAME", "lifecycle-test")
@@ -279,6 +282,29 @@ def test_failed_start_cleans_up_and_keeps_failure(docker_environment: Path, monk
     assert any("logs" in call for call in calls)
     assert any("down" in call for call in calls)
     assert not any("--volumes" in call for call in calls)
+
+
+def test_api_verifier_restores_normal_auth_configuration_after_journey_failure(
+    docker_environment: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("UV_API_EXIT", "17")
+
+    result = run_stack("api-verifier")
+
+    assert result.returncode == 17, result.stderr
+    calls = docker_calls(docker_environment)
+    start_calls = [call for call in calls if "up" in call]
+    assert len(start_calls) == 2
+    assert "local-ciam" in start_calls[0]
+    assert "func" in start_calls[0] and "orch" in start_calls[0]
+    assert "local-ciam" not in start_calls[1]
+    assert "func" in start_calls[1] and "orch" in start_calls[1]
+    cleanup_indexes = [
+        index for index, call in enumerate(calls) if "local-ciam" in call and ("stop" in call or "rm" in call)
+    ]
+    assert cleanup_indexes
+    assert max(cleanup_indexes) < calls.index(start_calls[1])
 
 
 def test_editor_shutdown_keeps_editor_alive(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:

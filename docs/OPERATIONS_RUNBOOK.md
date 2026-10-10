@@ -209,6 +209,27 @@ Local validation loop (no Azure):
 2. `make test` for the suite; `make smoke` for host health.
 3. Exercise the pipeline end-to-end against Azurite with `make test-upload`.
 
+The authenticated API-only journey is an explicit, separate gate. The ordinary
+`make verify-local` path remains token-free and does not claim authenticated API
+evidence. `make verify-local-api` temporarily starts an isolated RS256 OIDC test
+issuer, enables `REQUIRE_AUTH=true` for `func` and `orch`, and runs the public
+API journey with three distinct signed identities: an owner, an authenticated
+user without an organization, and a user in a separate organization. It creates
+or reuses those organizations through `/api/org`. The issuer's private key is
+generated in memory on each start, its tokens expire after 15 minutes, and the
+target always removes the issuer and recreates `func`/`orch` with their normal
+development configuration on exit. This proves local JWT discovery, signature,
+audience, authorization, and artifact behavior; it does not prove deployed CIAM
+configuration, cloud identity, or production-provider behavior.
+
+To test against a real trusted CIAM issuer instead, configure both Function Apps
+with its authority, tenant, audience, and `REQUIRE_AUTH=true`, then run
+`scripts/verify_local_stack.py --api-only` with short-lived tokens set through
+`VERIFY_BEARER_TOKEN`, `VERIFY_WRONG_USER_BEARER_TOKEN`, and
+`VERIFY_WRONG_ORG_BEARER_TOKEN`. Use a user without membership for the wrong-user
+control and a member of a distinct organization for the wrong-org control. Keep
+tokens out of command arguments, logs, and committed files.
+
 Manual dev deployment remains possible; do not interpret the production freeze
 as disabling every cloud deployment. Confirm `DEPLOY_PAUSED` and target state
 before deploying. Guard removal is a reviewed change, not a routine reset command.
