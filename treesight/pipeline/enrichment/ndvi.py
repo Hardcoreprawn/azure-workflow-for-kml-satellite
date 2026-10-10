@@ -135,8 +135,9 @@ def compute_ndvi(
     bbox: list[float],
     date_start: str,
     date_end: str,
-    geometry: dict[str, Any] | None = None,
     max_cloud: float = 20.0,
+    *,
+    geometry: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Compute NDVI from Sentinel-2 B04/B08 COGs for the given bbox and date range.
 
@@ -375,8 +376,9 @@ def compute_landsat_ndvi(
     bbox: list[float],
     date_start: str,
     date_end: str,
-    geometry: dict[str, Any] | None = None,
     max_cloud: float = 30.0,
+    *,
+    geometry: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Compute NDVI from Landsat C2 L2 Red/NIR08 COGs.
 

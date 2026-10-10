@@ -116,10 +116,25 @@ def _validated_monitor_polygon(stored_geometry: dict[str, Any]) -> dict[str, Any
             return None
         if min_x < -180 or min_y < -90 or max_x > 180 or max_y > 90:
             return None
+        if geometry.geom_type == "MultiPolygon" and not _monitor_components_within_supported_span(geometry):
+            return None
         mapped = mapping(geometry)
         return {"type": mapped["type"], "coordinates": _nested_lists(mapped["coordinates"])}
     except (TypeError, ValueError, IndexError, OverflowError):
         return None
+
+
+def _monitor_components_within_supported_span(geometry: Any) -> bool:
+    from treesight.constants import MULTI_REGION_THRESHOLD_KM
+    from treesight.geo import haversine_km
+
+    centroids = [component.centroid for component in geometry.geoms]
+    for index, centroid in enumerate(centroids):
+        for other in centroids[index + 1 :]:
+            distance_km = haversine_km(centroid.x, centroid.y, other.x, other.y)
+            if distance_km > MULTI_REGION_THRESHOLD_KM:
+                return False
+    return True
 
 
 def _nested_lists(value: Any) -> Any:

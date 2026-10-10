@@ -447,6 +447,46 @@ class TestMonitoringEndpoints:
 
         assert monitoring_endpoint(req).status_code == 400
 
+    def test_create_monitor_rejects_multipolygon_beyond_supported_span(
+        self, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Disjoint regions",
+            "aoi_geometry": {
+                "centroid": [5.0, 5.0],
+                "type": "MultiPolygon",
+                "coordinates": [
+                    [[[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.1], [0.0, 0.0]]],
+                    [[[10.0, 10.0], [10.1, 10.0], [10.1, 10.1], [10.0, 10.1], [10.0, 10.0]]],
+                ],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 400
+
+    def test_create_monitor_accepts_nearby_multipolygon_components(
+        self, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Nearby islands",
+            "aoi_geometry": {
+                "centroid": [36.81, -1.3],
+                "type": "MultiPolygon",
+                "coordinates": [
+                    [[[36.8, -1.3], [36.801, -1.3], [36.801, -1.299], [36.8, -1.299], [36.8, -1.3]]],
+                    [[[36.82, -1.3], [36.821, -1.3], [36.821, -1.299], [36.82, -1.299], [36.82, -1.3]]],
+                ],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 201
+
     def test_create_monitor_rejects_polygon_outside_epsg4326_bounds(
         self, _mock_cosmos, _mock_auth, _mock_pro_subscription
     ):
@@ -637,6 +677,22 @@ class TestMonitoringScheduler:
         from blueprints.monitoring import _monitor_geometry_and_coords
 
         geometry, coords = _monitor_geometry_and_coords({"type": "Polygon", "coordinates": ["bad"]})
+
+        assert geometry is None
+        assert coords == []
+
+    def test_disjoint_legacy_multipolygon_is_unavailable(self):
+        from blueprints.monitoring import _monitor_geometry_and_coords
+
+        geometry, coords = _monitor_geometry_and_coords(
+            {
+                "type": "MultiPolygon",
+                "coordinates": [
+                    [[[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.1], [0.0, 0.0]]],
+                    [[[10.0, 10.0], [10.1, 10.0], [10.1, 10.1], [10.0, 10.1], [10.0, 10.0]]],
+                ],
+            }
+        )
 
         assert geometry is None
         assert coords == []

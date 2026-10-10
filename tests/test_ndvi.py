@@ -205,6 +205,16 @@ def _test_geometry() -> dict[str, Any]:
 
 
 class TestComputeNdvi:
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene", return_value=None)
+    def test_fourth_positional_argument_remains_max_cloud(self, mock_find):
+        from treesight.pipeline.enrichment.ndvi import compute_ndvi
+
+        bbox = [0, 0, 4, 4]
+        result = compute_ndvi(bbox, "2024-06-01", "2024-08-31", 10.0, geometry=_test_geometry())
+
+        assert result is None
+        mock_find.assert_called_once_with(bbox, "2024-06-01", "2024-08-31", 10.0)
+
     @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
     def test_returns_none_when_no_scene(self, mock_find):
         from treesight.pipeline.enrichment.ndvi import compute_ndvi
@@ -641,6 +651,16 @@ class TestComputeNdviPolygonMask:
 
 
 class TestComputeLandsatNdviPolygonMask:
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_landsat_scene", return_value=None)
+    def test_fourth_positional_argument_remains_max_cloud(self, mock_find):
+        from treesight.pipeline.enrichment.ndvi import compute_landsat_ndvi
+
+        bbox = [0, 0, 4, 4]
+        result = compute_landsat_ndvi(bbox, "2015-06-01", "2015-08-31", 12.0, geometry=_test_geometry())
+
+        assert result is None
+        mock_find.assert_called_once_with(bbox, "2015-06-01", "2015-08-31", 12.0)
+
     @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
     @patch("treesight.pipeline.enrichment.ndvi._find_best_landsat_scene")
     def test_one_valid_pixel_returns_unavailable(self, mock_find, mock_read):

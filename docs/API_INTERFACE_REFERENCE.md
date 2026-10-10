@@ -46,6 +46,12 @@ routes validate bearer tokens server-side; Functions `AuthLevel.ANONYMOUS` alone
 does not describe application authentication. Explicit test-principal configuration
 is not a production authentication method.
 
+`POST /api/monitoring` accepts valid Polygon or MultiPolygon AOI geometry in
+EPSG:4326. For scheduled monitoring, every MultiPolygon component centroid must
+be within 500 km of the others; wider multipart geometries are rejected because
+the monitor workflow selects imagery as one region and cannot guarantee complete
+evidence across widely separated components.
+
 Protected APIs accept delegated access tokens carrying the exact `User.Read`
 permission in the space-delimited `scp` claim, matching the first-party browser's
 `<apiAudience>/User.Read` request. Same-audience ID tokens, absent/wrong/malformed
