@@ -89,7 +89,7 @@ coverage-check: ## Enforce changed-lines coverage against origin/BASE_REF (CI an
 	uv run diff-cover coverage.xml --compare-branch "origin/$(BASE_REF)" --fail-under 80
 
 test-js: ## Execute website/js correctness tests with Node's built-in test runner (no npm deps)
-	node --test tests/js/
+	node --test tests/js/*.test.js
 
 test-int: ## Run integration tests against a running Azurite (creates containers first)
 	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/init_storage.py
