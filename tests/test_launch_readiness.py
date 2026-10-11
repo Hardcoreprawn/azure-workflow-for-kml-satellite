@@ -2423,6 +2423,24 @@ class TestDiffCoverRequiredGate:
         assert steps[gate]["if"] == "github.event_name == 'pull_request'"
         assert steps[gate]["env"]["BASE_REF"] == "${{ github.base_ref }}"
 
+    def test_ci_rebuilds_rust_extension_when_rust_sources_change(self) -> None:
+        workflow = yaml.safe_load(CI_YML.read_text())
+        steps = next(job["steps"] for job in workflow["jobs"].values() if job.get("name") == "Test")
+        rebuild_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Rebuild Rust extension when Rust sources change"
+        )
+        test_index = next(index for index, step in enumerate(steps) if step.get("run", "").strip() == "make test")
+        rebuild = steps[rebuild_index]
+
+        assert rebuild_index < test_index
+        assert rebuild["if"] == "github.event_name != 'workflow_dispatch'"
+        assert "origin/${BASE_REF}" in rebuild["run"]
+        assert 'compare_base="${EVENT_BEFORE}"' in rebuild["run"]
+        assert "rust/" in rebuild["run"]
+        assert "uv pip install --python /opt/venv --force-reinstall ./rust" in rebuild["run"]
+
     def test_diff_cover_step_sets_safe_directory(self):
         """The Test job runs in a container (different UID than the checkout),
         so git refuses to touch the repo ('dubious ownership') unless marked

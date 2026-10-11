@@ -138,6 +138,32 @@ jobs:
         # --inexact preserves packages not in uv.lock (e.g. the treesight_rs
         # wheel installed separately in Dockerfile.dev via `uv pip install`).
         run: uv sync --all-extras --inexact
+      - name: Rebuild Rust extension when Rust sources change
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: |
+          compare_base=""
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            git fetch --no-tags origin "${BASE_REF}"
+            compare_base="origin/${BASE_REF}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            compare_base="${EVENT_BEFORE}"
+          fi
+          if [[ -n "${compare_base}" ]] && git cat-file -e "${compare_base}^{commit}" 2>/dev/null; then
+            if git diff --quiet "${compare_base}...HEAD" -- rust/; then
+              echo "No Rust source changes; using the extension from the dev image."
+              exit 0
+            fi
+          fi
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential curl ca-certificates
+          export RUSTUP_HOME=/tmp/rustup CARGO_HOME=/tmp/cargo
+          export PATH="${CARGO_HOME}/bin:${PATH}"
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh
+          sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable
+          uv pip install --python /opt/venv --force-reinstall ./rust
       # Canonical test command lives in the Makefile (matches local `make test`).
       - run: make test
       # Changed-lines coverage is shared with local `make check`.
