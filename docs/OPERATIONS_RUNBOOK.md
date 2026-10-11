@@ -212,13 +212,15 @@ Local validation loop (no Azure):
 The authenticated API-only journey is an explicit, separate gate. The ordinary
 `make verify-local` path remains token-free and does not claim authenticated API
 evidence. `make verify-local-api` temporarily starts an isolated RS256 OIDC test
-issuer, enables `REQUIRE_AUTH=true` for `func` and `orch`, and runs the public
+issuer, enables `REQUIRE_AUTH=true` on the public orchestrator ingress, and runs the public
 API journey with three distinct signed identities: an owner, an authenticated
 user without an organization, and a user in a separate organization. It creates
 or reuses those organizations through `/api/org`. The issuer's private key is
 generated in memory on each start, its tokens expire after 15 minutes, and the
-target always removes the issuer and recreates `func`/`orch` with their normal
-development configuration on exit. This proves local JWT discovery, signature,
+target starts the Event Grid relay for clean-stack uploads, refreshes `func`
+after `orch` so the relay reads the compute host's current system key, then
+removes the issuer and restores normal `orch`/relay configuration on exit. This
+proves local JWT discovery, signature,
 audience, authorization, and artifact behavior; it does not prove deployed CIAM
 configuration, cloud identity, or production-provider behavior.
 

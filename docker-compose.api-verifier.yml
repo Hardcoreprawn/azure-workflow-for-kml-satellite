@@ -1,16 +1,6 @@
 # Applied only by `make verify-local-api`; the normal development stack keeps
 # auth disabled and uses its existing placeholder CIAM settings.
 services:
-  func:
-    environment:
-      CIAM_AUTHORITY: http://local-ciam:8080
-      CIAM_TENANT_ID: local-dev-tenant
-      CIAM_API_AUDIENCE: api://local-dev-audience
-      REQUIRE_AUTH: "true"
-    depends_on:
-      local-ciam:
-        condition: service_healthy
-
   orch:
     environment:
       CIAM_AUTHORITY: http://local-ciam:8080
@@ -25,6 +15,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.local-ciam
+    ports:
+      - "127.0.0.1:7073:8080"
     environment:
       LOCAL_CIAM_AUTHORITY: http://local-ciam:8080
       LOCAL_CIAM_TENANT_ID: local-dev-tenant
