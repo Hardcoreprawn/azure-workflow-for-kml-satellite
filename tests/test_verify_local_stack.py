@@ -194,6 +194,20 @@ def test_history_contains_completed_owned_run() -> None:
     assert not _history_contains_run(payload, "other-run")
 
 
+@pytest.mark.parametrize("output_status,expected", [("completed", True), ("partial_imagery", False), ("failed", False)])
+def test_pipeline_output_success_requires_completed_status(output_status: str, expected: bool) -> None:
+    from verify_local_stack import _pipeline_output_is_complete
+
+    assert _pipeline_output_is_complete({"status": output_status}) is expected
+
+
+@pytest.mark.parametrize("status_code,expected", [(404, True), (403, False), (401, False)])
+def test_authenticated_run_denial_requires_non_disclosing_404(status_code: int, expected: bool) -> None:
+    from verify_local_stack import _run_denial_is_hidden
+
+    assert _run_denial_is_hidden(status_code) is expected
+
+
 def test_get_history_requires_org_identity() -> None:
     from verify_local_stack import _get_history
 
@@ -438,16 +452,17 @@ def test_api_only_journey_checks_owned_run_and_negative_controls(monkeypatch: py
     monkeypatch.setenv("VERIFY_WRONG_ORG_BEARER_TOKEN", "wrong-org-token")
     monkeypatch.setattr(verifier, "ORCH_BASE", "http://orch.test/")
     output = {
+        "status": "completed",
         "artifacts": {"manifest": "run-1/manifest.json"},
     }
     histories = [
         {"orgId": "owner-org"},
-        {"orgId": "wrong-user-org"},
         {"orgId": "wrong-org"},
         {"orgId": "owner-org", "runs": [{"instanceId": "run-1", "runtimeStatus": "Completed"}]},
     ]
     with (
         patch("verify_local_stack.httpx.Client") as client_factory,
+        patch("verify_local_stack._verify_api_identity_without_org") as verify_unassigned,
         patch("verify_local_stack._get_history", side_effect=histories),
         patch("verify_local_stack.mint_upload_token", return_value={"submissionId": "run-1", "sasUrl": "sas"}) as mint,
         patch("verify_local_stack._upload_api_kml") as upload,
@@ -471,6 +486,11 @@ def test_api_only_journey_checks_owned_run_and_negative_controls(monkeypatch: py
     assert mint.call_args.kwargs["token"] == "owner-token"
     assert mint.call_args.kwargs["eudr_mode"] is True
     upload.assert_called_once()
+    verify_unassigned.assert_called_once_with(
+        client,
+        api_base="http://orch.test",
+        token="wrong-user-token",
+    )
     assert poll.call_args.kwargs["token"] == "owner-token"
     assert poll.call_args.kwargs["api_base"] == "http://orch.test"
     exports.assert_called_once_with("run-1", token="owner-token", api_base="http://orch.test")
@@ -494,7 +514,7 @@ def test_api_only_journey_uses_local_issuer_and_distinct_membership_controls(
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("VERIFY_LOCAL_CIAM_TOKEN_URL", "http://issuer.test/tokens")
     monkeypatch.setattr(verifier, "ORCH_BASE", "http://orch.test/")
-    output = {"artifacts": {"manifest": "run-local/manifest.json"}}
+    output = {"status": "completed", "artifacts": {"manifest": "run-local/manifest.json"}}
     histories = [
         {"orgId": "owner-org"},
         {"orgId": "wrong-org"},

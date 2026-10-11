@@ -383,6 +383,14 @@ def _history_contains_run(payload: dict[str, object], instance_id: str) -> bool:
     )
 
 
+def _pipeline_output_is_complete(output: dict[str, object]) -> bool:
+    return output.get("status") == "completed"
+
+
+def _run_denial_is_hidden(status_code: int) -> bool:
+    return status_code == 404
+
+
 def _get_history(client: httpx.Client, api_base: str, token: str) -> dict[str, object]:
     response = client.get(
         f"{api_base.rstrip('/')}/api/analysis/history?scope=user&limit=20",
@@ -539,9 +547,7 @@ def check_api_only_journey() -> list[Result]:
 
             if not using_local_issuer:
                 stage = "wrong-user identity validation"
-                wrong_user_identity = _get_history(client, api_base, wrong_user_token)
-                if wrong_user_identity["orgId"] == owner_identity["orgId"]:
-                    raise ValueError("VERIFY_WRONG_USER_BEARER_TOKEN belongs to the run's originating organisation")
+                _verify_api_identity_without_org(client, api_base=api_base, token=wrong_user_token)
                 results.append(("api-only:wrong-user-identity", True))
 
             stage = "wrong-org identity validation"
@@ -570,6 +576,8 @@ def check_api_only_journey() -> list[Result]:
                 poll_interval_seconds=5,
             )
             output = verify_completed_output_shape(status_payload)
+            if not _pipeline_output_is_complete(output):
+                raise ValueError(f"Pipeline completed with non-success output status: {output.get('status')}")
             if not _collect_artifact_paths(output):
                 raise ValueError("Completed API run contains no artifact references")
 
@@ -586,8 +594,8 @@ def check_api_only_journey() -> list[Result]:
 
         api_results = [
             ("api-only:anonymous-denied", anonymous_status == 401),
-            ("api-only:wrong-user-denied", wrong_user_status in {403, 404}),
-            ("api-only:wrong-org-denied", wrong_org_status in {403, 404}),
+            ("api-only:wrong-user-denied", _run_denial_is_hidden(wrong_user_status)),
+            ("api-only:wrong-org-denied", _run_denial_is_hidden(wrong_org_status)),
         ]
         _print_result("anonymous export denied (401)", api_results[0][1])
         _print_result("wrong-user export denied", api_results[1][1])
