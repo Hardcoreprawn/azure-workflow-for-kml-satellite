@@ -25,13 +25,17 @@ stored in this document; retrieve them from the Azure portal or from
 
 ## Pipeline Payload Retention
 
-Temporary Durable payload blobs under `pipeline-payloads/payloads/` expire after
-7 days. Per-feature, AOI, and intermediate enrichment claim blobs under
-`pipeline-payloads/claims/` expire after 30 days, leaving time for normal
-orchestration retries while bounding storage from abandoned or completed-run
-intermediates. These are temporary execution data, not manifests or durable
-evidence artifacts. Re-submit the source KML to restart a run after its claim
-blobs expire. The policy is managed in `infra/tofu/main.tf`.
+Durable payload blobs under `pipeline-payloads/payloads/` and per-feature, AOI,
+and intermediate enrichment claims under `pipeline-payloads/claims/` have no
+age-based deletion policy. Pending activities can need these inputs after
+weeks or months. Retain them for as long as the associated Durable history can
+be resumed or replayed. Delete execution data only after the owner deliberately
+retires that history and confirms no running or suspended instance needs it.
+Completed status alone does not authorize deletion when later replay is required.
+The checked-in policy in `infra/tofu/main.tf` removes the prior 7/30-day rules;
+the infrastructure owner must apply it before relying on extended retention.
+Already deleted inputs cannot be recovered by a code deployment. This increases
+execution-data storage retention but changes no auth, quota, or billing gate.
 
 ## Deploy
 

@@ -1021,6 +1021,22 @@ class TestEnrichDataSources:
         mock_eudr.assert_called_once()
         assert result.get("eudr_mode") is True
 
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_split_multi_region_skips_union_eudr_phase(self, mock_plan, mock_weather, mock_flood, mock_eudr):
+        mock_plan.return_value = [_make_frame()]
+        per_aoi = [
+            {"name": "Farm A", "coords": [[-50, -10], [-49, -10], [-50, -9]]},
+            {"name": "Farm B", "coords": [[30, 1], [31, 1], [30, 2]]},
+        ]
+
+        result = enrich_data_sources(COORDS, per_aoi_coords=per_aoi, eudr_mode=True)
+
+        assert result["eudr_mode"] is True
+        mock_eudr.assert_not_called()
+
 
 class TestEnrichImagery:
     """Verify enrich_imagery returns mosaic/NDVI/change-detection results."""
@@ -1063,6 +1079,29 @@ class TestEnrichImagery:
         mock_mosaic.assert_called_once()
         mock_change.assert_called_once()
         assert isinstance(result, dict)
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_split_multi_region_skips_union_imagery(self, mock_plan, mock_mosaic, mock_change):
+        mock_plan.return_value = [_make_frame()]
+        mock_mosaic.return_value = ([], [])
+        per_aoi = [
+            {"name": "Farm A", "coords": [[-50, -10], [-49, -10], [-50, -9]]},
+            {"name": "Farm B", "coords": [[30, 1], [31, 1], [30, 2]]},
+        ]
+
+        enrich_imagery(
+            COORDS,
+            per_aoi_coords=per_aoi,
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=MagicMock(),
+        )
+
+        mock_mosaic.assert_not_called()
+        mock_change.assert_not_called()
 
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
     def test_empty_frame_plan_returns_empty(self, mock_plan):

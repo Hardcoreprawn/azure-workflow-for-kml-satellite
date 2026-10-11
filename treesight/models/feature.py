@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, computed_field
 
-from treesight.constants import MAX_AOI_NAME_LENGTH
-
 
 class Feature(BaseModel):
     """A single polygon feature extracted from a KML file.
@@ -24,7 +22,7 @@ class Feature(BaseModel):
         feature_index: Zero-based index within the source file.
     """
 
-    name: str = Field(max_length=MAX_AOI_NAME_LENGTH)
+    name: str
     description: str = ""
     exterior_coords: list[list[float]] = Field(default_factory=lambda: [])
     interior_coords: list[list[list[float]]] = Field(default_factory=lambda: [])

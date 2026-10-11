@@ -46,11 +46,11 @@ routes validate bearer tokens server-side; Functions `AuthLevel.ANONYMOUS` alone
 does not describe application authentication. Explicit test-principal configuration
 is not a production authentication method.
 
-`POST /api/monitoring` accepts valid Polygon or MultiPolygon AOI geometry in
-EPSG:4326. For scheduled monitoring, every MultiPolygon component centroid must
-be within 500 km of the others; wider multipart geometries are rejected because
-the monitor workflow selects imagery as one region and cannot guarantee complete
-evidence across widely separated components.
+`POST /api/monitoring` accepts valid Polygon AOI geometry in EPSG:4326.
+MultiPolygon requests are rejected because scheduled monitoring currently selects
+imagery as one region and cannot prove complete scene coverage for every component.
+Legacy stored MultiPolygon monitors are treated as unavailable rather than
+producing potentially partial evidence.
 
 Protected APIs accept delegated access tokens carrying the exact `User.Read`
 permission in the space-delimited `scp` claim, matching the first-party browser's
@@ -84,8 +84,9 @@ record field; a pre-existing record with the same ID and owner is insufficient.
 Malformed KML values return `400` through normal reservation cleanup. Rejected
 new submissions release admission; partial direct publication must confirm ticket
 revocation before refund, and uncertain revocation retains the reservation.
-A KML Placemark name is limited to 256 characters so compact Durable activity
-results remain bounded; files with longer names are rejected during parsing.
+A KML Placemark name is limited to 256 characters for newly versioned runs so
+compact Durable activity results remain bounded; longer names are rejected during
+parsing. Legacy v1 histories retain their original name-loading behavior.
 After a history or blob
 publication failure, marking history `failed` is best-effort and logged if it
 cannot be verified. A continuing storage outage can leave an uncertain record
@@ -180,6 +181,17 @@ redelivering the original blob event. Storage-native uploads without a submissio
 UUID continue to use their Event Grid event ID and do not receive this API-managed
 deduplication contract.
 
+### Durable Replay Contract Versions
+
+New orchestrations are stamped with contract version 3. Unmarked histories replay
+the original v1 activity sequence and inline payload/result shapes; histories
+stamped v2 retain their ref-list enrichment payloads. Version 3 passes compact
+AOI claim indexes to enrichment activities, which rebuild deterministic claim
+references locally. The v3 enrichment project name is capped at 128 characters
+to bound activity inputs. Do not change a version's activity ordering, names,
+payloads, or result shapes in place; introduce a new version for incompatible
+changes so suspended instances can replay safely after long delays.
+
 ## Activity Functions and Contracts
 
 Durable activities are defined in [activities.py](../blueprints/pipeline/activities.py).
@@ -202,9 +214,9 @@ optional fields live in the implementation and
 | `download_imagery` | Outcome, source asset, AOI bounds, output namespace | Download result and stored blob path |
 | `post_process_imagery` | Download result, AOI/claim, output namespace, flags | Post-process result and output path |
 | `run_enrichment` | Coordinates, per-AOI coordinates, dates, output namespace | Combined enrichment result (retained monolithic entrypoint) |
-| `enrich_data_sources` | `instance_id`, per-AOI claim refs, dates, cadence, EUDR mode | `result_ref` to weather/event/dataset results (or a safe-mode skip marker) |
-| `enrich_imagery` | `instance_id`, per-AOI claim refs, dates, output namespace | `result_ref` to imagery/NDVI/change results |
-| `enrich_single_aoi` | `aoi_entry.aoi_ref`, `aoi_index`, dates, output namespace | `result_ref` to per-AOI enrichment result |
+| `enrich_data_sources` | v2: `instance_id` and per-AOI claim refs; v3: `instance_id` and compact `per_aoi_claim_indexes`; dates, cadence, EUDR mode | `result_ref` to weather/event/dataset results (or a safe-mode skip marker) |
+| `enrich_imagery` | v2: `instance_id` and per-AOI claim refs; v3: `instance_id` and compact `per_aoi_claim_indexes`; dates, output namespace | `result_ref` to imagery/NDVI/change results |
+| `enrich_single_aoi` | v2: `aoi_entry.aoi_ref`; v3: `aoi_entry.aoi_claim_index`; `aoi_index`, dates, output namespace | `result_ref` to per-AOI enrichment result |
 | `enrich_finalize` | Data-source, imagery and per-AOI `result_ref`s; per-AOI claim refs; output namespace | Blob manifest path and compact summary with telemetry-presence flags |
 | `submit_batch_fulfilment` | Outcome, asset URL, output namespace | Batch job/task tracking dictionary |
 | `poll_batch_fulfilment` | `job_id`, `task_id` | Batch task state |

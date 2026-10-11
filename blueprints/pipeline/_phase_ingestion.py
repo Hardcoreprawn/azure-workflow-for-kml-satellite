@@ -18,7 +18,7 @@ from treesight.pipeline.contracts import (
     ensure_parse_kml_output,
 )
 
-from ._payloads import _collect_enrichment_coords, _collect_per_aoi_coords
+from ._payloads import _collect_enrichment_coords, _collect_per_aoi_coords, _collect_per_aoi_coords_legacy
 
 _PhaseGen = Generator[Any, Any, dict[str, Any]]
 
@@ -28,12 +28,18 @@ def _phase_ingestion(
     inp: dict[str, Any],
     instance_id: str,
     ctx: dict[str, str],
+    legacy_contract: bool = False,
 ) -> _PhaseGen:
     """Parse KML, fan-out AOI preparation, store claims, write metadata."""
     blob_name = inp.get("blob_name", "")
 
     context.set_custom_status({"phase": "ingestion", "step": "parsing_kml"})
-    features = ensure_parse_kml_output((yield context.call_activity("parse_kml", inp)))
+    parse_output = yield context.call_activity("parse_kml", inp)
+    if legacy_contract:
+        # Existing Durable histories replay the pre-claim parse output and activity sequence.
+        return (yield from _phase_ingestion_legacy(context, inp, instance_id, ctx, blob_name, parse_output))
+
+    features = ensure_parse_kml_output(parse_output)
 
     feature_refs = features["feature_refs"]
     feature_count = len(feature_refs)
@@ -115,6 +121,95 @@ def _phase_ingestion(
         name="write_metadata",
     )
 
+    return {
+        "ingestion": {
+            "feature_count": feature_count,
+            "offloaded": offloaded,
+            "aoi_refs": aoi_refs,
+            "aoi_count": len(aoi_refs),
+            "metadata_results": metadata_results,
+            "metadata_count": len(metadata_results),
+        },
+        "aoi_refs": aoi_refs,
+        "all_coords": all_coords,
+        "per_aoi_coords": per_aoi_coords,
+        "aoi_area_by_name": aoi_area_by_name,
+        "aoi_centroids": aoi_centroids,
+    }
+
+
+def _phase_ingestion_legacy(
+    context: df.DurableOrchestrationContext,
+    inp: dict[str, Any],
+    instance_id: str,
+    ctx: dict[str, str],
+    blob_name: str,
+    parse_output: Any,
+) -> _PhaseGen:
+    """Replay the original inline/bulk-claim ingestion action sequence."""
+    if isinstance(parse_output, list):
+        features = ensure_list_of_dicts(parse_output, name="parse_kml")
+        offloaded = False
+    elif isinstance(parse_output, dict) and isinstance(parse_output.get("ref"), str):
+        features = ensure_list_of_dicts(
+            (yield context.call_activity("load_offloaded_features", parse_output)),
+            name="load_offloaded_features",
+        )
+        offloaded = True
+    else:
+        raise ValueError("Legacy parse_kml output does not match its recorded contract")
+
+    feature_count = len(features)
+    from treesight.pipeline.ingestion import enforce_aoi_limit
+
+    enforce_aoi_limit(feature_count=feature_count, tier=inp.get("tier"))
+
+    context.set_custom_status({"phase": "ingestion", "step": "preparing_aois", "features": feature_count})
+    aoi_tasks = [
+        context.call_activity("prepare_aoi", {"feature": feature, "buffer_m": inp.get("buffer_m")})
+        for feature in features
+    ]
+    aois = ensure_list_of_dicts((yield context.task_all(aoi_tasks)), name="prepare_aoi")
+    all_coords = _collect_enrichment_coords(aois)
+    per_aoi_coords = _collect_per_aoi_coords_legacy(aois)
+    aoi_area_by_name = {aoi.get("feature_name", ""): aoi.get("area_ha", 0.0) for aoi in aois}
+    aoi_centroids = [
+        aoi["centroid"]
+        for aoi in aois
+        if aoi.get("centroid") and len(aoi["centroid"]) == 2 and aoi["centroid"] != [0.0, 0.0]
+    ]
+
+    context.set_custom_status({"phase": "ingestion", "step": "storing_claims", "aois": len(aois)})
+    aoi_refs = ensure_list_of_dicts(
+        (
+            yield context.call_activity(
+                "store_aoi_claims",
+                {"instance_id": instance_id, "aois": aois},
+            )
+        ),
+        name="store_aoi_claims",
+        required_item_keys=("ref", "key"),
+    )
+    for index, aoi_ref in enumerate(aoi_refs):
+        ensure_nonempty_str_field(aoi_ref["ref"], name="store_aoi_claims", field="ref", index=index)
+        ensure_nonempty_str_field(aoi_ref["key"], name="store_aoi_claims", field="key", index=index)
+
+    metadata_tasks = [
+        context.call_activity(
+            "write_metadata",
+            {
+                "aoi_ref": aoi_ref["ref"],
+                "processing_id": instance_id,
+                "timestamp": ctx["timestamp"],
+                "tenant_id": inp.get("tenant_id", ""),
+                "source_file": blob_name,
+                "output_container": inp.get("output_container", DEFAULT_OUTPUT_CONTAINER),
+                "input_container": inp.get("container_name", DEFAULT_INPUT_CONTAINER),
+            },
+        )
+        for aoi_ref in aoi_refs
+    ]
+    metadata_results = ensure_list_of_dicts((yield context.task_all(metadata_tasks)), name="write_metadata")
     return {
         "ingestion": {
             "feature_count": feature_count,

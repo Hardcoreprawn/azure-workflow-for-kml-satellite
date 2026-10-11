@@ -657,7 +657,10 @@ paths:
                   type: string
                 aoi_geometry:
                   type: object
-                  description: AOI geometry with centroid, bbox, exterior_coords
+                  description: >-
+                    Polygon AOI geometry in EPSG:4326 with centroid, bbox, and
+                    exterior_coords. MultiPolygon monitoring is rejected because
+                    complete scene coverage across components is not yet proven.
                 cadence_days:
                   type: integer
                   minimum: 1

@@ -9,7 +9,7 @@ modules such as treesight.storage.client.BlobStorageClient.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -75,7 +75,15 @@ class TestParseKml:
             blob_event.correlation_id = "cid-1"
             mock_blob_event.model_validate.return_value = blob_event
             with pytest.raises(ValueError, match="tier limit"):
-                parse_kml({"container": "c", "blob_name": "b.kml", "correlation_id": "cid-1", "tier": "free"})
+                parse_kml(
+                    {
+                        "container": "c",
+                        "blob_name": "b.kml",
+                        "correlation_id": "cid-1",
+                        "tier": "free",
+                        "durable_contract_version": 2,
+                    }
+                )
 
         gate.assert_called_once_with(feature_count=2, tier="free")
         mock_offloader.return_value.store_claim.assert_not_called()
@@ -104,12 +112,78 @@ class TestParseKml:
             mock_blob_event.model_validate.return_value = blob_event
             offloader = mock_offloader.return_value
             offloader.store_claim.side_effect = feature_refs
-            result = parse_kml({"container": "c", "blob_name": "b.kml", "correlation_id": "cid-1"})
+            result = parse_kml(
+                {
+                    "container": "c",
+                    "blob_name": "b.kml",
+                    "correlation_id": "cid-1",
+                    "durable_contract_version": 2,
+                }
+            )
 
         assert result == {"feature_refs": feature_refs}
         assert len(json.dumps(result).encode("utf-8")) < PAYLOAD_OFFLOAD_THRESHOLD_BYTES
         assert offloader.store_claim.call_count == MAX_FEATURES_PER_KML
         offloader.offload.assert_not_called()
+
+    def test_v2_parse_rejects_overlong_feature_name_before_claim_write(self):
+        from blueprints.pipeline.activities import parse_kml
+        from treesight.constants import MAX_AOI_NAME_LENGTH
+
+        feature = MagicMock()
+        feature.model_dump.return_value = {"name": "x" * (MAX_AOI_NAME_LENGTH + 1)}
+        with (
+            patch("treesight.models.blob_event.BlobEvent") as mock_blob_event,
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("treesight.pipeline.ingestion.parse_kml_from_blob", return_value=[feature]),
+            patch("treesight.storage.offload.PayloadOffloader") as mock_offloader,
+            patch("treesight.pipeline.ingestion.enforce_aoi_limit"),
+        ):
+            mock_blob_event.model_validate.return_value.correlation_id = "run-v2"
+            with pytest.raises(ValueError, match="256 characters"):
+                parse_kml(
+                    {
+                        "container": "c",
+                        "blob_name": "too-long.kml",
+                        "correlation_id": "run-v2",
+                        "durable_contract_version": 2,
+                    }
+                )
+
+        mock_offloader.return_value.store_claim.assert_not_called()
+
+    @pytest.mark.parametrize("offloaded", [False, True])
+    def test_v1_parse_preserves_legacy_list_and_bulk_ref_outputs(self, offloaded):
+        from blueprints.pipeline.activities import parse_kml
+
+        feature = MagicMock()
+        feature.model_dump.return_value = {"name": "x" * 300}
+        legacy_ref = {"ref": "payloads/run-legacy/features.json", "count": 1}
+        with (
+            patch("treesight.models.blob_event.BlobEvent") as mock_blob_event,
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("treesight.pipeline.ingestion.parse_kml_from_blob", return_value=[feature]),
+            patch("treesight.storage.offload.PayloadOffloader") as mock_offloader,
+            patch("treesight.pipeline.ingestion.enforce_aoi_limit") as tier_gate,
+        ):
+            mock_blob_event.model_validate.return_value.correlation_id = "run-legacy"
+            mock_offloader.return_value.should_offload.return_value = offloaded
+            mock_offloader.return_value.offload.return_value = legacy_ref
+
+            result = parse_kml(
+                {
+                    "container": "c",
+                    "blob_name": "legacy.kml",
+                    "correlation_id": "run-legacy",
+                    "durable_contract_version": 1,
+                    "tier": "free",
+                }
+            )
+
+        expected = legacy_ref if offloaded else [feature.model_dump.return_value]
+        assert result == expected
+        tier_gate.assert_not_called()
+        mock_offloader.return_value.store_claim.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +298,57 @@ class TestPrepareAoi:
         assert result["feature_name"] == "x" * MAX_AOI_NAME_LENGTH
         assert result["aoi_ref"] == "claims/run/aoi_0.json"
         assert len(json.dumps(result).encode("utf-8")) < PAYLOAD_OFFLOAD_THRESHOLD_BYTES
+
+    def test_v1_prepare_replays_full_aoi_result_without_claim_write(self):
+        from blueprints.pipeline.activities import prepare_aoi
+
+        feature = MagicMock()
+        aoi = MagicMock()
+        aoi.model_dump.return_value = {"feature_name": "x" * 300, "area_ha": 5.0}
+        with (
+            patch("treesight.models.feature.Feature.model_validate", return_value=feature),
+            patch("treesight.geo.prepare_aoi", return_value=aoi),
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("treesight.storage.offload.PayloadOffloader.store_claim") as store_claim,
+        ):
+            result = prepare_aoi({"feature": {"name": "legacy"}, "durable_contract_version": 1})
+
+        assert result == aoi.model_dump.return_value
+        store_claim.assert_not_called()
+
+    def test_v2_start_input_is_stamped_for_new_durable_contract(self):
+        from blueprints.pipeline.blob_trigger import _start_or_reuse_orchestration
+        from treesight.constants import DURABLE_PIPELINE_CONTRACT_VERSION
+
+        client = MagicMock()
+        client.start_new = AsyncMock()
+        with patch("treesight.storage.client.BlobStorageClient") as storage_client:
+            storage_client.return_value.create_json_if_absent.return_value = True
+            started = __import__("asyncio").run(
+                _start_or_reuse_orchestration(client, "run-v2", {"blob_name": "farm.kml"})
+            )
+
+        assert started is True
+        start_input = client.start_new.await_args.kwargs["client_input"]
+        assert start_input == {"blob_name": "farm.kml", "durable_contract_version": DURABLE_PIPELINE_CONTRACT_VERSION}
+
+    def test_v2_prepare_rejects_overlong_name_before_claim_write(self):
+        from blueprints.pipeline.activities import prepare_aoi
+        from treesight.constants import MAX_AOI_NAME_LENGTH
+
+        aoi = MagicMock()
+        aoi.feature_name = "x" * (MAX_AOI_NAME_LENGTH + 1)
+        aoi.feature_index = 0
+        with (
+            patch("treesight.models.feature.Feature.model_validate", return_value=MagicMock()),
+            patch("treesight.geo.prepare_aoi", return_value=aoi),
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("treesight.storage.offload.PayloadOffloader.store_claim") as store_claim,
+        ):
+            with pytest.raises(ValueError, match="256 characters"):
+                prepare_aoi({"feature": {"name": "too long"}, "instance_id": "run-v2"})
+
+        store_claim.assert_not_called()
 
     def test_loads_one_feature_from_offloaded_kml_ref(self):
         from blueprints.pipeline.activities import prepare_aoi
@@ -605,6 +730,23 @@ class TestRunEnrichment:
 
 
 class TestEnrichDataSources:
+    def test_v1_activity_replays_inline_coordinate_payload(self):
+        from blueprints.pipeline.activities import enrich_data_sources
+
+        coords = [[1.0, 1.0], [2.0, 2.0]]
+        expected = {"weather_daily": [{"temperature": 15.0}]}
+        with (
+            patch("treesight.config.SAFE_MODE", False),
+            patch("treesight.pipeline.enrichment.enrich_data_sources", return_value=expected) as enrich,
+            patch("treesight.storage.client.BlobStorageClient") as storage,
+        ):
+            result = enrich_data_sources({"coords": coords, "eudr_mode": True})
+
+        assert result == expected
+        assert enrich.call_args.args[0] == coords
+        assert enrich.call_args.kwargs["eudr_mode"] is True
+        storage.assert_not_called()
+
     def test_safe_mode_skips_external_sources(self):
         from blueprints.pipeline.activities import enrich_data_sources
 
@@ -649,6 +791,27 @@ class TestEnrichDataSources:
         assert result == {"result_ref": "claims/run/enrichment_data_sources.json"}
         store_claim.assert_called_once_with("run", "enrichment_data_sources", {"weather": {}})
 
+    def test_v3_activity_rebuilds_aoi_refs_from_compact_indexes(self):
+        from blueprints.pipeline.activities import enrich_data_sources
+
+        hydrated = [{"coords": [[1.0, 1.0]], "interior_coords": []}]
+        with (
+            patch("treesight.config.SAFE_MODE", False),
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch(
+                "blueprints.pipeline._payloads._hydrate_per_aoi_enrichment_coords",
+                return_value=hydrated,
+            ) as hydrate,
+            patch("treesight.pipeline.enrichment.enrich_data_sources", return_value={"weather": {}}),
+            patch(
+                "treesight.storage.offload.PayloadOffloader.store_claim",
+                return_value="claims/run/enrichment_data_sources.json",
+            ),
+        ):
+            enrich_data_sources({"instance_id": "run", "per_aoi_claim_indexes": [3]})
+
+        assert hydrate.call_args.args[0] == [{"aoi_ref": "claims/run/aoi_3.json", "aoi_claim_index": 3}]
+
     def test_activity_result_omits_large_run_coordinates(self):
         from blueprints.pipeline.activities import enrich_data_sources
 
@@ -685,6 +848,29 @@ class TestEnrichDataSources:
 
 
 class TestEnrichImagery:
+    def test_v1_activity_replays_inline_coordinate_payload(self):
+        from blueprints.pipeline.activities import enrich_imagery
+
+        coords = [[1.0, 1.0], [2.0, 2.0]]
+        expected = {"ndvi_stats": [{"mean": 0.4}]}
+        with (
+            patch("treesight.pipeline.enrichment.enrich_imagery", return_value=expected) as enrich,
+            patch("treesight.storage.client.BlobStorageClient") as storage,
+            patch("treesight.storage.offload.PayloadOffloader.store_claim") as store_claim,
+        ):
+            result = enrich_imagery(
+                {
+                    "coords": coords,
+                    "project_name": "farm",
+                    "timestamp": "2024-01-01T00:00:00Z",
+                }
+            )
+
+        assert result == expected
+        assert enrich.call_args.args[0] == coords
+        store_claim.assert_not_called()
+        storage.assert_called_once()
+
     def test_delegates_to_enrich_img(self):
         from blueprints.pipeline.activities import enrich_imagery
 
@@ -713,12 +899,87 @@ class TestEnrichImagery:
 
         assert result == {"result_ref": "claims/run/enrichment_imagery.json"}
 
+    def test_v3_activity_rebuilds_aoi_refs_from_compact_indexes(self):
+        from blueprints.pipeline.activities import enrich_imagery
+
+        with (
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch(
+                "blueprints.pipeline._payloads._hydrate_per_aoi_enrichment_coords",
+                return_value=[{"coords": [[1.0, 1.0]], "interior_coords": []}],
+            ) as hydrate,
+            patch("treesight.pipeline.enrichment.enrich_imagery", return_value={}),
+            patch(
+                "treesight.storage.offload.PayloadOffloader.store_claim",
+                return_value="claims/run/enrichment_imagery.json",
+            ),
+        ):
+            enrich_imagery(
+                {
+                    "instance_id": "run",
+                    "per_aoi_claim_indexes": [3],
+                    "project_name": "farm",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                }
+            )
+
+        assert hydrate.call_args.args[0] == [{"aoi_ref": "claims/run/aoi_3.json", "aoi_claim_index": 3}]
+
 
 # ---------------------------------------------------------------------------
 # enrich_single_aoi
 
 
 class TestEnrichSingleAoi:
+    def test_v3_bbox_only_claim_reconstructs_coordinates_without_plot_geometry(self):
+        from blueprints.pipeline.activities import enrich_single_aoi
+        from treesight.models.aoi import AOI
+
+        loaded_aoi = AOI(feature_name="Box", exterior_coords=[], bbox=[1.0, 2.0, 3.0, 4.0])
+        with (
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("blueprints.pipeline.activities._load_aoi", return_value=loaded_aoi),
+            patch("treesight.storage.offload.PayloadOffloader.store_claim", return_value="result.json"),
+            patch("treesight.pipeline.enrichment.enrich_single_aoi_step", return_value={}) as enrich,
+        ):
+            enrich_single_aoi(
+                {
+                    "aoi_entry": {"aoi_claim_index": 3},
+                    "instance_id": "run",
+                    "aoi_index": 0,
+                    "project_name": "farm",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                }
+            )
+
+        entry = enrich.call_args.args[0]
+        assert entry["coords"] == [[1.0, 2.0], [3.0, 2.0], [3.0, 4.0], [1.0, 4.0], [1.0, 2.0]]
+        assert entry["interior_coords"] is None
+
+    def test_v1_activity_replays_inline_per_aoi_result(self):
+        from blueprints.pipeline.activities import enrich_single_aoi
+
+        aoi_entry = {"name": "Legacy Field", "coords": [[1, 1], [2, 2]], "area_ha": 3.0}
+        expected = {"name": "Legacy Field", "ndvi_stats": [{"mean": 0.5}]}
+        with (
+            patch("treesight.storage.client.BlobStorageClient") as storage,
+            patch("treesight.pipeline.enrichment.enrich_single_aoi_step", return_value=expected) as enrich,
+            patch("treesight.storage.offload.PayloadOffloader.store_claim") as store_claim,
+        ):
+            result = enrich_single_aoi(
+                {
+                    "aoi_entry": aoi_entry,
+                    "coords": aoi_entry["coords"],
+                    "project_name": "farm",
+                    "timestamp": "2024-01-01T00:00:00Z",
+                }
+            )
+
+        assert result == expected
+        assert enrich.call_args.args[0] == aoi_entry
+        store_claim.assert_not_called()
+        storage.assert_called_once()
+
     def test_delegates_to_enrich_aoi(self):
         from blueprints.pipeline.activities import enrich_single_aoi
         from treesight.models.aoi import AOI
@@ -760,6 +1021,29 @@ class TestEnrichSingleAoi:
         assert hydrated_entry["area_ha"] == 15.2
         assert hydrated_entry["source_geometry_type"] == "Polygon"
         assert hydrated_entry["plot_area_ha"] == 14.8
+
+    def test_v3_activity_rebuilds_aoi_ref_from_compact_index(self):
+        from blueprints.pipeline.activities import enrich_single_aoi
+        from treesight.models.aoi import AOI
+
+        loaded_aoi = AOI(feature_name="Field", exterior_coords=[[0, 0], [1, 0], [1, 1], [0, 0]])
+        with (
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("blueprints.pipeline.activities._load_aoi", return_value=loaded_aoi) as load_aoi,
+            patch("treesight.storage.offload.PayloadOffloader.store_claim", return_value="result.json"),
+            patch("treesight.pipeline.enrichment.enrich_single_aoi_step", return_value={}),
+        ):
+            enrich_single_aoi(
+                {
+                    "aoi_entry": {"aoi_claim_index": 3},
+                    "instance_id": "run",
+                    "aoi_index": 0,
+                    "project_name": "farm",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                }
+            )
+
+        assert load_aoi.call_args.args[0] == {"aoi_ref": "claims/run/aoi_3.json"}
 
     def test_stores_large_activity_result_by_claim_ref(self):
         from blueprints.pipeline.activities import enrich_single_aoi
@@ -883,6 +1167,7 @@ class TestEnrichFinalize:
         ):
             result = enrich_finalize(
                 {
+                    "instance_id": "run",
                     "data_sources": {},
                     "imagery": {},
                     "per_aoi_coords": [],
@@ -899,6 +1184,36 @@ class TestEnrichFinalize:
             "ndvi_stats": True,
             "weather_daily": True,
         }
+
+    def test_replays_legacy_inline_finalize_payload(self):
+        from blueprints.pipeline.activities import enrich_finalize
+
+        data_sources = {"weather": {"daily": []}}
+        imagery = {"ndvi_stats": []}
+        per_aoi_results = [{"name": "Field", "ndvi": 0.5}]
+        per_aoi_coords = [{"name": "Field", "coords": [[1, 1], [2, 2]], "area_ha": 5.0}]
+        manifest = {"manifest_path": "output/manifest.json", "ndvi_stats": [{"mean": 0.5}], "coords": [[1, 1]]}
+        with (
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("treesight.pipeline.enrichment.enrich_finalize", return_value=manifest) as finalize,
+        ):
+            result = enrich_finalize(
+                {
+                    "data_sources": data_sources,
+                    "imagery": imagery,
+                    "per_aoi_results": per_aoi_results,
+                    "per_aoi_coords": per_aoi_coords,
+                    "eudr_mode": True,
+                    "date_start": "2020-01-01",
+                    "project_name": "farm",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                    "output_container": "output",
+                }
+            )
+
+        assert result == manifest
+        assert finalize.call_args.args == (data_sources, imagery, per_aoi_results)
+        assert finalize.call_args.kwargs["per_aoi_coords"] == per_aoi_coords
 
 
 # ---------------------------------------------------------------------------

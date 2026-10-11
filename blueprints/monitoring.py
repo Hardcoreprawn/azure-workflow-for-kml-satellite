@@ -100,8 +100,10 @@ def _validated_monitor_polygon(stored_geometry: dict[str, Any]) -> dict[str, Any
 
     geometry_type = stored_geometry.get("type")
     coordinates = stored_geometry.get("coordinates")
+    if geometry_type not in {None, "Polygon"}:
+        return None
     try:
-        if geometry_type in {"Polygon", "MultiPolygon"}:
+        if geometry_type == "Polygon":
             geometry = shape({"type": geometry_type, "coordinates": coordinates})
         else:
             exterior_coords = stored_geometry.get("exterior_coords")
@@ -109,32 +111,17 @@ def _validated_monitor_polygon(stored_geometry: dict[str, Any]) -> dict[str, Any
             if not isinstance(exterior_coords, list) or not exterior_coords:
                 return None
             geometry = Polygon(exterior_coords, interior_coords)
-        if geometry.geom_type not in {"Polygon", "MultiPolygon"} or geometry.is_empty or not geometry.is_valid:
+        if geometry.geom_type != "Polygon" or geometry.is_empty or not geometry.is_valid:
             return None
         min_x, min_y, max_x, max_y = geometry.bounds
         if not all(math.isfinite(value) for value in (min_x, min_y, max_x, max_y)):
             return None
         if min_x < -180 or min_y < -90 or max_x > 180 or max_y > 90:
             return None
-        if geometry.geom_type == "MultiPolygon" and not _monitor_components_within_supported_span(geometry):
-            return None
         mapped = mapping(geometry)
         return {"type": mapped["type"], "coordinates": _nested_lists(mapped["coordinates"])}
     except (TypeError, ValueError, IndexError, OverflowError):
         return None
-
-
-def _monitor_components_within_supported_span(geometry: Any) -> bool:
-    from treesight.constants import MULTI_REGION_THRESHOLD_KM
-    from treesight.geo import haversine_km
-
-    centroids = [component.centroid for component in geometry.geoms]
-    for index, centroid in enumerate(centroids):
-        for other in centroids[index + 1 :]:
-            distance_km = haversine_km(centroid.x, centroid.y, other.x, other.y)
-            if distance_km > MULTI_REGION_THRESHOLD_KM:
-                return False
-    return True
 
 
 def _nested_lists(value: Any) -> Any:
@@ -178,6 +165,11 @@ def _process_monitor(monitor: Any) -> None:
     if not centroid or centroid == [0.0, 0.0]:
         logger.warning("Monitor %s has no valid centroid — skipping", monitor.id)
         advance_schedule(monitor, run_id="skipped-no-centroid")
+        return
+
+    if polygon_geometry is None:
+        logger.warning("Monitor %s has unsupported or invalid polygon geometry — skipping", monitor.id)
+        advance_schedule(monitor, run_id="skipped-unavailable-geometry")
         return
 
     if not coords:

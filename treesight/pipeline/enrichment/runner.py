@@ -670,17 +670,22 @@ def enrich_data_sources(
     _run_weather_phase(center_lat, center_lon, first_date, last_date, results, acc=acc)
     _run_flood_fire_phase(bbox, center_lat, center_lon, results, acc=acc)
 
+    multi_region = _is_multi_region(per_aoi_coords) if per_aoi_coords else False
+    if multi_region:
+        results["multi_region"] = True
+
     if eudr_mode:
-        _run_eudr_phase(
-            bbox,
-            center_lat,
-            center_lon,
-            results,
-            acc=acc,
-            geometry=_combine_aoi_geometries(per_aoi_coords),
-        )
         results["eudr_mode"] = True
         results["eudr_date_start"] = date_start
+        if not multi_region:
+            _run_eudr_phase(
+                bbox,
+                center_lat,
+                center_lon,
+                results,
+                acc=acc,
+                geometry=_combine_aoi_geometries(per_aoi_coords),
+            )
 
     results["resource_usage"] = acc.to_dict()
     return results
@@ -734,29 +739,32 @@ def enrich_imagery(
         }
 
     acc = ResourceAccumulator()
-    _ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
-        bbox,
-        coords,
-        frame_plan,
-        project_name,
-        timestamp,
-        output_container,
-        storage,
-        results,
-        acc=acc,
-        geometry=_combine_aoi_geometries(per_aoi_coords),
-    )
+    if per_aoi_coords and _is_multi_region(per_aoi_coords):
+        results["multi_region"] = True
+    else:
+        _ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
+            bbox,
+            coords,
+            frame_plan,
+            project_name,
+            timestamp,
+            output_container,
+            storage,
+            results,
+            acc=acc,
+            geometry=_combine_aoi_geometries(per_aoi_coords),
+        )
 
-    _run_change_detection_phase(
-        frame_plan,
-        ndvi_raster_paths,
-        output_container,
-        project_name,
-        timestamp,
-        storage,
-        results,
-        acc=acc,
-    )
+        _run_change_detection_phase(
+            frame_plan,
+            ndvi_raster_paths,
+            output_container,
+            project_name,
+            timestamp,
+            storage,
+            results,
+            acc=acc,
+        )
 
     results["resource_usage"] = acc.to_dict()
     return results

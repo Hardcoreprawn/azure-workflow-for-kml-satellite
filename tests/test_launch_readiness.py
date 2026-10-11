@@ -2175,12 +2175,11 @@ class TestCIFeedbackHygiene:
                 "uses DefaultAzureCredential (managed identity)"
             )
 
-    def test_claim_blobs_have_a_bounded_retention_policy(self):
+    def test_resumable_durable_inputs_have_no_age_based_deletion(self):
         policy = (INFRA / "main.tf").read_text()
 
-        assert 'name    = "delete-intermediate-claims-30d"' in policy
-        assert 'prefix_match = ["pipeline-payloads/claims/"]' in policy
-        assert "delete_after_days_since_modification_greater_than = 30" in policy
+        assert 'prefix_match = ["pipeline-payloads/claims/"]' not in policy
+        assert 'prefix_match = ["pipeline-payloads/payloads/"]' not in policy
 
     def test_compose_func_passes_through_canopex_test_mode(self):
         """func's environment must pass CANOPEX_TEST_MODE through from the

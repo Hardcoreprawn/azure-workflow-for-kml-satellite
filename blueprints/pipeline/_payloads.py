@@ -38,6 +38,42 @@ def _collect_enrichment_coords(aois: list[dict[str, Any]]) -> list[list[float]]:
     return all_coords
 
 
+def _collect_per_aoi_coords_legacy(aois: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Preserve the v1 Durable history coordinate transform."""
+    result: list[dict[str, Any]] = []
+    for aoi in aois:
+        coords = aoi.get("exterior_coords", [])
+        if not coords:
+            bbox = aoi.get("bbox") or aoi.get("buffered_bbox")
+            if bbox and len(bbox) == 4:
+                min_lon, min_lat, max_lon, max_lat = bbox
+                coords = [
+                    [min_lon, min_lat],
+                    [max_lon, min_lat],
+                    [max_lon, max_lat],
+                    [min_lon, max_lat],
+                    [min_lon, min_lat],
+                ]
+        if not coords:
+            continue
+        entry: dict[str, Any] = {
+            "name": aoi.get("feature_name", ""),
+            "coords": coords,
+            "area_ha": aoi.get("area_ha", 0.0),
+        }
+        metadata = aoi.get("metadata", {})
+        if metadata.get("source_geometry_type"):
+            entry["source_geometry_type"] = metadata["source_geometry_type"]
+        plot_area_ha = metadata.get("plot_area_ha", "")
+        if plot_area_ha:
+            try:
+                entry["plot_area_ha"] = float(plot_area_ha)
+            except ValueError:
+                logger.warning("Could not parse plot_area_ha %r for AOI %r; field omitted", plot_area_ha, entry["name"])
+        result.append(entry)
+    return _assign_spatial_clusters(result)
+
+
 def _source_interior_coords(aoi: dict[str, Any]) -> list[list[list[float]]] | None:
     if not aoi.get("exterior_coords"):
         return None
@@ -89,6 +125,18 @@ def _hydrate_per_aoi_enrichment_coords(
                 )
         hydrated.append(hydrated_entry)
     return _assign_spatial_clusters(hydrated)
+
+
+def _per_aoi_claim_refs(instance_id: str, claim_indexes: list[int]) -> list[dict[str, Any]]:
+    from treesight.storage.offload import PayloadOffloader
+
+    return [
+        {
+            "aoi_ref": PayloadOffloader.claim_ref(instance_id, f"aoi_{claim_index}"),
+            "aoi_claim_index": claim_index,
+        }
+        for claim_index in claim_indexes
+    ]
 
 
 def _store_enrichment_activity_result(
