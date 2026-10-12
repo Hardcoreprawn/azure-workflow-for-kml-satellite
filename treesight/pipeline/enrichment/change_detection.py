@@ -58,15 +58,17 @@ def compute_change_map(
             ndvi_a = src_a.read(1)
             profile_a = src_a.profile.copy()
             res_a = src_a.res  # (pixel_width_m, pixel_height_m)
+            baseline_crs = src_a.crs
+
+        if baseline_crs is None:
+            return None
 
         with rasterio.open(io.BytesIO(raster_b_bytes)) as src_b:
-            ndvi_b = src_b.read(1)
+            if src_b.crs is None:
+                return None
+            ndvi_b = _align_comparison_raster(src_b, profile_a, ndvi_a.shape)
 
-        # Ensure same shape — trim to overlap
-        min_h = min(ndvi_a.shape[0], ndvi_b.shape[0])
-        min_w = min(ndvi_a.shape[1], ndvi_b.shape[1])
-        ndvi_a = ndvi_a[:min_h, :min_w]
-        ndvi_b = ndvi_b[:min_h, :min_w]
+        min_h, min_w = ndvi_a.shape
 
         pixel_area_m2 = abs(res_a[0] * res_a[1])
         pixel_area_ha = pixel_area_m2 / 10_000  # 1 ha = 10,000 m²
@@ -136,6 +138,36 @@ def compute_change_map(
     except Exception as exc:
         logger.warning("Change map computation failed: %s", exc)
         return None
+
+
+def _align_comparison_raster(source: Any, baseline_profile: dict[str, Any], shape: tuple[int, int]) -> Any:
+    import numpy as np
+    import rasterio
+    from rasterio.warp import Resampling, reproject
+
+    baseline_transform = baseline_profile.get("transform")
+    baseline_crs = baseline_profile.get("crs")
+    if baseline_transform is None or baseline_crs is None or source.crs is None:
+        raise ValueError("Change rasters require CRS and transform metadata")
+
+    comparison_transform = source.transform
+    if source.shape == shape and source.crs == baseline_crs and comparison_transform == baseline_transform:
+        return source.read(1)
+
+    aligned = np.full(shape, np.nan, dtype=np.float32)
+    reproject(
+        source=rasterio.band(source, 1),
+        destination=aligned,
+        src_transform=comparison_transform,
+        src_crs=source.crs,
+        src_nodata=source.nodata,
+        dst_transform=baseline_transform,
+        dst_crs=baseline_crs,
+        dst_nodata=np.nan,
+        resampling=Resampling.bilinear,
+        init_dest_nodata=True,
+    )
+    return aligned
 
 
 def detect_changes(
