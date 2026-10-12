@@ -32,9 +32,9 @@ class TestFeature:
         assert f.vertex_count == 0
         assert f.has_holes is False
 
-    def test_model_can_load_legacy_long_name_for_durable_replay(self):
-        feature = Feature(name="x" * 300)
-        assert len(feature.name) == 300
+    def test_rejects_names_over_durable_limit(self):
+        with pytest.raises(ValidationError):
+            Feature(name="x" * 300)
 
     def test_computed_vertex_count(self, sample_feature: Feature):
         assert sample_feature.vertex_count == 5
@@ -87,9 +87,9 @@ class TestAOI:
         assert aoi.crs == "EPSG:4326"
         assert aoi.bbox == [0.0, 0.0, 0.0, 0.0]
 
-    def test_model_can_load_legacy_long_name_for_durable_replay(self):
-        aoi = AOI(feature_name="x" * 300)
-        assert len(aoi.feature_name) == 300
+    def test_rejects_names_over_durable_limit(self):
+        with pytest.raises(ValidationError):
+            AOI(feature_name="x" * 300)
 
     def test_model_dump_roundtrip(self, sample_aoi: AOI):
         d = sample_aoi.model_dump()

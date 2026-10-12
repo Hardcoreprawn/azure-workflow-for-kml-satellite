@@ -36,9 +36,7 @@ _PHASE_RANK = {
 }
 _HISTORY_PHASE_HINTS = {
     "parse_kml": ("ingestion", "parsing_kml"),
-    "load_offloaded_features": ("ingestion", "parsing_kml"),
     "prepare_aoi": ("ingestion", "preparing_aois"),
-    "store_aoi_claims": ("ingestion", "storing_claims"),
     "write_metadata": ("ingestion", "writing_metadata"),
     "acquire_composite": ("acquisition", "searching"),
     "acquire_imagery": ("acquisition", "searching"),

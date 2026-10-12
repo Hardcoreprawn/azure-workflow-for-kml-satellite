@@ -52,8 +52,8 @@ CTX = {"project_name": "proj", "timestamp": "2024-01-01T00-00-00"}
 
 
 class TestPhaseIngestion:
-    def test_offloaded_features_path(self):
-        """When parse_kml returns a claim-check ref, load_offloaded_features is used."""
+    def test_per_feature_claim_path(self):
+        """Parsed feature refs flow directly into per-feature preparation."""
         context = MagicMock()
 
         # Yields: parse_kml, prepare_aoi (task_all), then write_metadata (task_all).
@@ -77,36 +77,6 @@ class TestPhaseIngestion:
 
         assert result["ingestion"]["offloaded"] is True
         assert result["ingestion"]["feature_count"] == 1
-
-    def test_legacy_inline_parse_replay_preserves_activity_sequence(self):
-        context = MagicMock()
-        feature = {"name": "Field", "feature_index": 0, "source_file": "farm.kml"}
-        aoi = {
-            "feature_name": "Field",
-            "feature_index": 0,
-            "source_file": "farm.kml",
-            "area_ha": 2.0,
-            "bbox": [1.0, 1.0, 2.0, 2.0],
-            "centroid": [1.5, 1.5],
-            "exterior_coords": [[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 1.0]],
-        }
-        aoi_refs = [{"ref": "claims/run-legacy/aoi_0.json", "key": "Field"}]
-        gen = _phase_ingestion(
-            context,
-            {"blob_name": "farm.kml", "tier": "enterprise"},
-            "run-legacy",
-            {"timestamp": "2024-01-01T00:00:00Z"},
-            legacy_contract=True,
-        )
-
-        result = _drain(gen, [[feature], [aoi], aoi_refs, [{"status": "ok"}]])
-
-        activity_names = [call.args[0] for call in context.call_activity.call_args_list]
-        assert activity_names == ["parse_kml", "prepare_aoi", "store_aoi_claims", "write_metadata"]
-        assert context.call_activity.call_args_list[1].args[1] == {"feature": feature, "buffer_m": None}
-        assert context.call_activity.call_args_list[2].args[1] == {"instance_id": "run-legacy", "aois": [aoi]}
-        assert result["aoi_refs"] == aoi_refs
-        assert result["per_aoi_coords"][0]["coords"] == aoi["exterior_coords"]
 
 
 class TestPhaseAcquisition:
@@ -214,14 +184,6 @@ class TestPhaseFulfilment:
 
 
 class TestPhaseEnrichment:
-    def test_v1_coordinate_transform_preserves_original_fields_and_bbox_fallback(self):
-        from blueprints.pipeline._payloads import _collect_per_aoi_coords_legacy
-
-        aois = [{"feature_name": "Legacy", "bbox": [0, 0, 0, 0], "interior_coords": [[[1, 1]]]}]
-        entries = _collect_per_aoi_coords_legacy(aois)
-
-        assert entries == [{"name": "Legacy", "coords": [[0, 0]] * 5, "area_ha": 0.0, "cluster": 0}]
-
     def test_no_coords_short_circuits(self):
         context = MagicMock()
 
@@ -255,7 +217,7 @@ class TestPhaseEnrichment:
         for activity_call in context.call_activity_with_retry.call_args_list[:2]:
             payload = activity_call.args[2]
             assert "coords" not in payload
-            assert payload["per_aoi_coords"] == per_aoi_refs
+            assert payload["per_aoi_claim_indexes"] == [0, 1]
 
     def test_finalize_payload_stays_below_durable_limit_at_max_aois(self):
         import json
@@ -291,7 +253,7 @@ class TestPhaseEnrichment:
         assert "per_aoi_coords" not in finalizer_payload
         assert "per_aoi_results" not in finalizer_payload
 
-    def test_v3_fanout_payloads_use_compact_claim_indexes(self):
+    def test_fanout_payloads_use_compact_claim_indexes(self):
         import json
 
         from treesight.constants import (
@@ -318,7 +280,6 @@ class TestPhaseEnrichment:
             [[0.0, 0.0]],
             per_aoi_refs,
             "output",
-            contract_version=3,
         )
         _drain(gen, [data_sources_and_imagery, per_aoi_results, {"manifest": True}])
 
@@ -338,65 +299,6 @@ class TestPhaseEnrichment:
         assert "per_aoi_claim_indexes" not in per_aoi_calls[-1].args[2]
         finalize_payload = context.call_activity_with_retry.call_args_list[-1].args[2]
         assert finalize_payload["project_name"] == enrichment_calls[0].args[2]["project_name"]
-
-    def test_legacy_replay_preserves_inline_enrichment_payloads(self):
-        context = MagicMock()
-        data_sources = {"weather": {"daily": []}}
-        imagery = {"ndvi_stats": []}
-        per_aoi_coords = [
-            {"name": "A", "coords": [[1.0, 1.0], [2.0, 2.0]], "area_ha": 1.0},
-            {"name": "B", "coords": [[3.0, 3.0], [4.0, 4.0]], "area_ha": 2.0},
-        ]
-        per_aoi_results = [{"name": "A"}, {"name": "B"}]
-        context.task_all.side_effect = [[data_sources, imagery], per_aoi_results]
-        gen = _phase_enrichment(
-            context,
-            {"eudr_mode": True, "date_start": "2020-01-01"},
-            CTX,
-            [[1.0, 1.0], [4.0, 4.0]],
-            per_aoi_coords,
-            "output",
-            contract_version=1,
-        )
-
-        _drain(gen, [[data_sources, imagery], per_aoi_results, {"manifest_path": "manifest.json"}])
-
-        activity_calls = context.call_activity_with_retry.call_args_list
-        assert activity_calls[0].args[2]["coords"] == [[1.0, 1.0], [4.0, 4.0]]
-        assert "instance_id" not in activity_calls[0].args[2]
-        assert "per_aoi_coords" not in activity_calls[0].args[2]
-        assert activity_calls[-1].args[2]["per_aoi_coords"] == per_aoi_coords
-        assert activity_calls[-1].args[2]["per_aoi_results"] == per_aoi_results
-        assert "per_aoi_claim_indexes" not in activity_calls[-1].args[2]
-
-    def test_legacy_replay_preserves_inline_per_aoi_activity_inputs(self):
-        context = MagicMock()
-        data_sources = {"weather": {}}
-        imagery = {"ndvi_stats": []}
-        per_aoi_coords = [
-            {"name": "A", "coords": [[1.0, 1.0], [2.0, 2.0]], "area_ha": 1.0},
-            {"name": "B", "coords": [[3.0, 3.0], [4.0, 4.0]], "area_ha": 2.0},
-        ]
-        per_aoi_results = [{"name": "A"}, {"name": "B"}]
-        context.task_all.side_effect = [[data_sources, imagery], per_aoi_results]
-        gen = _phase_enrichment(
-            context,
-            {},
-            CTX,
-            [[1.0, 1.0], [4.0, 4.0]],
-            per_aoi_coords,
-            "output",
-            contract_version=1,
-        )
-
-        _drain(gen, [[data_sources, imagery], per_aoi_results, {"manifest_path": "manifest.json"}])
-
-        per_aoi_calls = [
-            call for call in context.call_activity_with_retry.call_args_list if call.args[0] == "enrich_single_aoi"
-        ]
-        assert [call.args[2]["aoi_entry"] for call in per_aoi_calls] == per_aoi_coords
-        assert all("instance_id" not in call.args[2] for call in per_aoi_calls)
-        assert all("aoi_ref" not in call.args[2]["aoi_entry"] for call in per_aoi_calls)
 
 
 class TestSafeFinalizeRun:

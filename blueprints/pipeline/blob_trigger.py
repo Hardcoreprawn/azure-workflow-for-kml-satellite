@@ -202,17 +202,11 @@ async def _start_or_reuse_orchestration(
         ):
             raise RuntimeError(f"Orchestration admission marker was claimed concurrently for instance={instance_id}")
         logger.info("Reclaimed expired orchestration marker instance=%s", instance_id)
-    from treesight.constants import DURABLE_PIPELINE_CONTRACT_VERSION
-
-    versioned_input = {
-        **orchestrator_input,
-        "durable_contract_version": DURABLE_PIPELINE_CONTRACT_VERSION,
-    }
     try:
         await client.start_new(
             "treesight_orchestrator",
             instance_id=instance_id,
-            client_input=versioned_input,
+            client_input=orchestrator_input,
         )
     except Exception as start_error:
         try:

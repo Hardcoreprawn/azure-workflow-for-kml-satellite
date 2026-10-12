@@ -1025,16 +1025,33 @@ class TestEnrichDataSources:
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
-    def test_split_multi_region_skips_union_eudr_phase(self, mock_plan, mock_weather, mock_flood, mock_eudr):
+    def test_split_multi_aoi_skips_union_eudr_phase(self, mock_plan, mock_weather, mock_flood, mock_eudr):
         mock_plan.return_value = [_make_frame()]
         per_aoi = [
-            {"name": "Farm A", "coords": [[-50, -10], [-49, -10], [-50, -9]]},
-            {"name": "Farm B", "coords": [[30, 1], [31, 1], [30, 2]]},
+            {"name": "Farm A", "coords": [[-47, -23], [-46.5, -23], [-47, -22.5]]},
+            {"name": "Farm B", "coords": [[-46, -23], [-45.5, -23], [-46, -22.5]]},
         ]
 
         result = enrich_data_sources(COORDS, per_aoi_coords=per_aoi, eudr_mode=True)
 
         assert result["eudr_mode"] is True
+        mock_eudr.assert_not_called()
+
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_nearby_multi_aoi_skips_union_eudr_phase(self, mock_plan, mock_weather, mock_flood, mock_eudr):
+        mock_plan.return_value = [_make_frame()]
+        per_aoi = [
+            {"name": "Farm A", "coords": [[-47, -23], [-46.5, -23], [-47, -22.5]]},
+            {"name": "Farm B", "coords": [[-46, -23], [-45.5, -23], [-46, -22.5]]},
+        ]
+
+        result = enrich_data_sources(COORDS, per_aoi_coords=per_aoi, eudr_mode=True)
+
+        assert result["eudr_mode"] is True
+        assert result.get("multi_region") is not True
         mock_eudr.assert_not_called()
 
 
@@ -1083,12 +1100,12 @@ class TestEnrichImagery:
     @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
     @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
-    def test_split_multi_region_skips_union_imagery(self, mock_plan, mock_mosaic, mock_change):
+    def test_split_multi_aoi_skips_union_imagery(self, mock_plan, mock_mosaic, mock_change):
         mock_plan.return_value = [_make_frame()]
         mock_mosaic.return_value = ([], [])
         per_aoi = [
-            {"name": "Farm A", "coords": [[-50, -10], [-49, -10], [-50, -9]]},
-            {"name": "Farm B", "coords": [[30, 1], [31, 1], [30, 2]]},
+            {"name": "Farm A", "coords": [[-47, -23], [-46.5, -23], [-47, -22.5]]},
+            {"name": "Farm B", "coords": [[-46, -23], [-45.5, -23], [-46, -22.5]]},
         ]
 
         enrich_imagery(
@@ -1455,6 +1472,47 @@ class TestEnrichFinalize:
         assert result["eudr_mode"] is True
         assert result["determination"] == {"status": "compliant"}
 
+    @patch("treesight.pipeline.enrichment.determination.determine_deforestation_free")
+    def test_nearby_multi_aoi_finalize_omits_union_determination(self, mock_det):
+        per_aoi_coords = [
+            {"name": "A", "coords": [[-47.0, -23.0], [-46.5, -23.0], [-47.0, -22.5]]},
+            {"name": "B", "coords": [[-46.0, -23.0], [-45.5, -23.0], [-46.0, -22.5]]},
+        ]
+
+        result = enrich_finalize(
+            {
+                "eudr_mode": True,
+                "worldcover": {"available": True},
+                "wdpa": {"available": True},
+                "landsat_baseline": {"available": True},
+            },
+            {
+                "ndvi_stats": [{"mean": 0.8}],
+                "ndvi_raster_paths": ["union.tif"],
+                "change_detection": {"season_changes": [{"loss_pct": 0.4}]},
+            },
+            [{"name": "A"}, {"name": "B"}],
+            per_aoi_coords=per_aoi_coords,
+            eudr_mode=True,
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=MagicMock(),
+        )
+
+        assert result["summary"]["multi_region"] is False
+        assert "determination" not in result
+        for key in (
+            "worldcover",
+            "wdpa",
+            "landsat_baseline",
+            "ndvi_stats",
+            "ndvi_raster_paths",
+            "change_detection",
+        ):
+            assert key not in result
+        mock_det.assert_not_called()
+
 
 class TestIsMultiRegion:
     """Unit tests for _is_multi_region helper (#860)."""
@@ -1547,7 +1605,7 @@ class TestMultiRegionRunEnrichment:
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
-    def test_single_region_no_flag(
+    def test_nearby_multiple_aois_skip_union_scene_evidence(
         self,
         mock_plan,
         mock_weather,
@@ -1557,7 +1615,7 @@ class TestMultiRegionRunEnrichment:
         mock_change,
         mock_enrich_aoi,
     ):
-        """Single-region runs do not set multi_region flag."""
+        """Nearby AOIs keep per-AOI work but never claim partial union scenes."""
         mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
         mock_mosaic.return_value = ([], [])
         mock_enrich_aoi.side_effect = lambda entry, **kw: {"name": entry.get("name", "")}
@@ -1584,12 +1642,42 @@ class TestMultiRegionRunEnrichment:
             output_container="out",
             storage=storage,
             per_aoi_coords=per_aoi,
+            eudr_mode=True,
         )
 
         assert result.get("multi_region") is not True
-        # Union-level mosaic and change detection were called (not skipped)
-        assert mock_mosaic.call_count >= 1
-        assert mock_change.call_count >= 1
+        assert "determination" not in result
+        assert len(result["per_aoi_enrichment"]) == 2
+        mock_eudr.assert_not_called()
+        mock_mosaic.assert_not_called()
+        mock_change.assert_not_called()
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_aoi_list_alone_disables_union_scene_evidence(
+        self, mock_plan, mock_weather, mock_flood, mock_eudr, mock_mosaic, mock_change
+    ):
+        mock_plan.return_value = [_make_frame()]
+        mock_mosaic.return_value = ([], [])
+
+        run_enrichment(
+            coords=COORDS,
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=MagicMock(),
+            aoi_list=[{"feature_name": "A"}, {"feature_name": "B"}],
+            per_aoi_coords=[{"name": "A", "coords": COORDS}],
+            eudr_mode=True,
+        )
+
+        mock_eudr.assert_not_called()
+        mock_mosaic.assert_not_called()
+        mock_change.assert_not_called()
 
     @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
     @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")

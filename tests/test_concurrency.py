@@ -432,7 +432,7 @@ class TestSafeMode:
                 {
                     "instance_id": "test-id",
                     "user_id": "u1",
-                    "per_aoi_coords": [],
+                    "per_aoi_claim_indexes": [],
                     "eudr_mode": False,
                 }
             )

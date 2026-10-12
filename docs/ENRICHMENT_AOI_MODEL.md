@@ -53,6 +53,12 @@ Run-level summary/projection fields are not substitutes for parcel evidence.
 Consumers must preserve parcel identity and use returned manifest paths rather
 than guessing evidence from aggregate values or filenames.
 
+Union-level imagery, Landsat baselines and EUDR determinations are omitted for
+any run containing multiple AOIs. AOI proximity or centroid distance does not
+prove that one selected scene covers every parcel; multi-AOI evidence is supplied
+through the per-AOI results instead. The `summary.multi_region` flag remains a
+separate distance-based label and is not a scene-coverage assertion.
+
 ## Availability and Artifact Identity
 
 SAFE_MODE and synthetic test mode can omit expensive/external observations.

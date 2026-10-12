@@ -308,11 +308,11 @@ class TestLoadAoi:
         assert result.feature_name == "farm"
         assert result.bbox == [1.0, 2.0, 3.0, 4.0]
 
-    def test_loads_from_inline_aoi(self):
+    def test_rejects_inline_aoi(self):
         from blueprints.pipeline.activities import _load_aoi
 
-        result = _load_aoi({"aoi": {"feature_name": "inline"}})
-        assert result.feature_name == "inline"
+        with pytest.raises(KeyError, match="aoi_ref"):
+            _load_aoi({"aoi": {"feature_name": "inline"}})
 
 
 # ---------------------------------------------------------------------------
@@ -789,9 +789,9 @@ class TestEnrichmentParallelFanOut:
         ctx.call_activity_with_retry.return_value = finalize_sentinel
 
         aois = [
-            {"name": "a", "coords": [[1, 2]]},
-            {"name": "b", "coords": [[3, 4]]},
-            {"name": "c", "coords": [[5, 6]]},
+            {"name": "a", "coords": [[1, 2]], "aoi_claim_index": 0},
+            {"name": "b", "coords": [[3, 4]], "aoi_claim_index": 1},
+            {"name": "c", "coords": [[5, 6]], "aoi_claim_index": 2},
         ]
 
         gen = _phase_enrichment(
@@ -813,7 +813,7 @@ class TestEnrichmentParallelFanOut:
         assert len(aoi_tasks) == 3
 
     def test_single_aoi_is_passed_to_finalize_without_per_aoi_activity(self):
-        """Single AOI should get v2 model projection without duplicate per-AOI activity work."""
+        """Single AOI should get a manifest projection without duplicate worker activity."""
         from unittest.mock import MagicMock
 
         from blueprints.pipeline.orchestrator import _phase_enrichment

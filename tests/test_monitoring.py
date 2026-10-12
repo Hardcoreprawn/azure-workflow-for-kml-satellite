@@ -467,9 +467,7 @@ class TestMonitoringEndpoints:
 
         assert monitoring_endpoint(req).status_code == 400
 
-    def test_create_monitor_rejects_nearby_multipolygon_without_scene_coverage_proof(
-        self, _mock_cosmos, _mock_auth, _mock_pro_subscription
-    ):
+    def test_create_monitor_error_explains_polygon_only_support(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
         from blueprints.monitoring import monitoring_endpoint
 
         body = {
@@ -485,7 +483,11 @@ class TestMonitoringEndpoints:
         }
         req = make_test_request("/api/monitoring", method="POST", body=body)
 
-        assert monitoring_endpoint(req).status_code == 400
+        response = monitoring_endpoint(req)
+        assert response.status_code == 400
+        response_body = response.get_body().decode()
+        assert "supported MultiPolygon" not in response_body
+        assert "valid Polygon" in response_body
 
     def test_create_monitor_rejects_polygon_outside_epsg4326_bounds(
         self, _mock_cosmos, _mock_auth, _mock_pro_subscription

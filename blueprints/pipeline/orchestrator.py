@@ -164,10 +164,6 @@ def _apply_enrichment_to_summary(summary: dict[str, Any], enrichment: dict[str, 
             summary[k] = enrichment[k]
 
 
-def _is_legacy_contract(inp: dict[str, Any]) -> bool:
-    return inp.get("durable_contract_version", 1) < 2
-
-
 @bp.orchestration_trigger(context_name="context")
 def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ignore[return-type]
     """Orchestrator with per-AOI progressive delivery (#585).
@@ -181,7 +177,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     user_id, tier = inp.get("user_id", ""), inp.get("tier", "")
     started_at = context.current_utc_datetime.isoformat()
     try:
-        ing = yield from _phase_ingestion(context, inp, instance_id, ctx, legacy_contract=_is_legacy_contract(inp))
+        ing = yield from _phase_ingestion(context, inp, instance_id, ctx)
         acq_s, ful_s = yield from _dispatch_acq_ful(context, inp, ctx, ing, instance_id)
         enrichment = yield from _phase_enrichment(
             context,
@@ -190,7 +186,6 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
             ing["all_coords"],
             ing["per_aoi_coords"],
             inp.get("output_container", DEFAULT_OUTPUT_CONTAINER),
-            contract_version=inp.get("durable_contract_version", 1),
         )
         summary = build_pipeline_summary(
             instance_id=instance_id,

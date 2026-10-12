@@ -187,15 +187,9 @@ def _enrich_single_aoi(
 
 
 def _is_multi_region(per_aoi_coords: list[dict]) -> bool:
-    """Return True when any two AOI centroids are farther apart than MULTI_REGION_THRESHOLD_KM.
-
-    When True, union-level mosaic/NDVI/change-detection and EUDR stats would
-    span continents and are geographically meaningless.  Each AOI's data is
-    still produced via the per-AOI fan-out.
-    """
+    """Label AOIs as multi-region when their centroids span the distance threshold."""
     if len(per_aoi_coords) < 2:
         return False
-
     centroids = []
     for entry in per_aoi_coords:
         coords = entry.get("coords")
@@ -209,6 +203,14 @@ def _is_multi_region(per_aoi_coords: list[dict]) -> bool:
             if _geo_haversine_km(lon1, lat1, lon2, lat2) > MULTI_REGION_THRESHOLD_KM:
                 return True
     return False
+
+
+def _union_scene_evidence_allowed(
+    per_aoi_coords: list[dict[str, Any]] | None,
+    aoi_list: list[dict[str, Any]] | None = None,
+) -> bool:
+    """Allow single-scene run-level evidence only when at most one AOI is present."""
+    return all(not entries or len(entries) == 1 for entries in (per_aoi_coords, aoi_list))
 
 
 def _eudr_projection(results: dict[str, Any]) -> dict[str, Any] | None:
@@ -385,6 +387,7 @@ def run_enrichment(
     center_lon = round((min(lons) + max(lons)) / 2, 4)
 
     multi_region = _is_multi_region(per_aoi_coords) if per_aoi_coords else False
+    union_scene_evidence_allowed = _union_scene_evidence_allowed(per_aoi_coords, aoi_list)
 
     results: dict[str, Any] = {
         "schema_version": ENRICHMENT_MANIFEST_V2_SCHEMA,
@@ -429,19 +432,18 @@ def run_enrichment(
         # 1b/1c. Flood + fire
         _run_flood_fire_phase(bbox, center_lat, center_lon, results, acc=acc)
 
-    # Detect multi-region: AOI centroids spanning > MULTI_REGION_THRESHOLD_KM mean
-    # union-level imagery and EUDR stats are geographically meaningless (#860).
+    # Keep the distance-based manifest label separate from the stricter scene-evidence gate.
     if multi_region:
         results["multi_region"] = True
         results["summary"] = _manifest_summary(per_aoi_coords, multi_region=True, frame_plan=frame_plan)
         log_phase("enrichment", "multi_region_detected", aoi_count=len(per_aoi_coords or []))
 
-    # 1d. EUDR-specific enrichments (WorldCover + WDPA) — skipped for multi-region
-    if eudr_mode and not multi_region and not safe_mode:
+    # 1d. Union EUDR evidence requires a single AOI with complete scene coverage.
+    if eudr_mode and union_scene_evidence_allowed and not safe_mode:
         _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc, geometry=effective_geometry)
 
-    # 2/3. Mosaic registration + NDVI computation — skipped for multi-region
-    if not multi_region and not safe_mode:
+    # 2/3. Union imagery requires a single AOI with complete scene coverage.
+    if union_scene_evidence_allowed and not safe_mode:
         ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
             bbox,
             coords,
@@ -456,12 +458,12 @@ def run_enrichment(
         )
     else:
         ndvi_stats, ndvi_raster_paths = [], []
-    if not multi_region and not safe_mode:
+    if union_scene_evidence_allowed and not safe_mode:
         results.setdefault("ndvi_stats", ndvi_stats)
         results.setdefault("ndvi_raster_paths", ndvi_raster_paths)
 
-    # 5. Change detection — skipped for multi-region
-    if not multi_region and not safe_mode:
+    # 5. Union change detection requires a single AOI with complete scene coverage.
+    if union_scene_evidence_allowed and not safe_mode:
         _run_change_detection_phase(
             frame_plan,
             ndvi_raster_paths,
@@ -571,10 +573,8 @@ def run_enrichment(
         results["eudr_date_start"] = date_start
 
         # Overall deforestation-free determination (#603).
-        # Skipped for multi-region runs: union-level change_detection is absent,
-        # so a top-level determination would be misleading.  Per-AOI determinations
-        # are available in per_aoi_enrichment instead.
-        if not multi_region:
+        # Multi-AOI runs have no complete union scene evidence; determinations remain per-AOI.
+        if union_scene_evidence_allowed:
             from treesight.pipeline.enrichment.determination import (
                 determine_deforestation_free,
             )
@@ -671,13 +671,14 @@ def enrich_data_sources(
     _run_flood_fire_phase(bbox, center_lat, center_lon, results, acc=acc)
 
     multi_region = _is_multi_region(per_aoi_coords) if per_aoi_coords else False
+    union_scene_evidence_allowed = _union_scene_evidence_allowed(per_aoi_coords)
     if multi_region:
         results["multi_region"] = True
 
     if eudr_mode:
         results["eudr_mode"] = True
         results["eudr_date_start"] = date_start
-        if not multi_region:
+        if union_scene_evidence_allowed:
             _run_eudr_phase(
                 bbox,
                 center_lat,
@@ -741,7 +742,7 @@ def enrich_imagery(
     acc = ResourceAccumulator()
     if per_aoi_coords and _is_multi_region(per_aoi_coords):
         results["multi_region"] = True
-    else:
+    if _union_scene_evidence_allowed(per_aoi_coords):
         _ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
             bbox,
             coords,
@@ -856,6 +857,19 @@ def enrich_finalize(
         **data_sources,
         **imagery,
     }
+    if not _union_scene_evidence_allowed(per_aoi_coords):
+        for key in (
+            "ndvi_stats",
+            "ndvi_raster_paths",
+            "change_detection",
+            "worldcover",
+            "wdpa",
+            "protected_areas",
+            "landsat_baseline",
+            "lulc_annual",
+            "alos_fnf",
+        ):
+            merged.pop(key, None)
     if not merged.get("coords") and per_aoi_coords:
         merged["coords"] = _flatten_per_aoi_coords(per_aoi_coords)
     if data_sources.get("safe_mode") or imagery.get("safe_mode"):
@@ -905,7 +919,7 @@ def enrich_finalize(
             determine_deforestation_free,
         )
 
-        if not multi_region:
+        if _union_scene_evidence_allowed(per_aoi_coords):
             merged["determination"] = determine_deforestation_free(merged)
             if per_aoi_coords and len(per_aoi_coords) == 1:
                 merged["per_aoi_enrichment"] = [_single_aoi_projection(merged, per_aoi_coords[0])]

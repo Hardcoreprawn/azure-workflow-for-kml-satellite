@@ -32,7 +32,6 @@ def _phase_enrichment(
     all_coords: list[list[float]],
     per_aoi_coords: list[dict[str, Any]],
     output_container: str,
-    contract_version: int = 2,
 ) -> _PhaseGen:
     """Fetch weather, NDVI, mosaics, and build enrichment manifest.
 
@@ -45,17 +44,13 @@ def _phase_enrichment(
     if not all_coords:
         return {}
 
-    legacy_contract = contract_version < 2
-    compact_claim_contract = contract_version >= 3
-
     enrichment_retry = df.RetryOptions(
         first_retry_interval_in_milliseconds=LONG_RETRY_FIRST_INTERVAL_MS,
         max_number_of_attempts=LONG_RETRY_MAX_ATTEMPTS,
     )
 
     project_name = ctx["project_name"]
-    if compact_claim_contract:
-        project_name = project_name[:MAX_DURABLE_PROJECT_NAME_LENGTH]
+    project_name = project_name[:MAX_DURABLE_PROJECT_NAME_LENGTH]
 
     enrichment_common = {
         "eudr_mode": inp.get("eudr_mode", False),
@@ -67,14 +62,8 @@ def _phase_enrichment(
         "timestamp": ctx["timestamp"],
         "output_container": output_container,
     }
-    if legacy_contract:
-        enrichment_common["coords"] = all_coords
-    elif compact_claim_contract:
-        enrichment_common["instance_id"] = context.instance_id
-        enrichment_common["per_aoi_claim_indexes"] = [entry["aoi_claim_index"] for entry in per_aoi_coords]
-    else:
-        enrichment_common["instance_id"] = context.instance_id
-        enrichment_common["per_aoi_coords"] = per_aoi_coords
+    enrichment_common["instance_id"] = context.instance_id
+    enrichment_common["per_aoi_claim_indexes"] = [entry["aoi_claim_index"] for entry in per_aoi_coords]
 
     # ── Step 1: data sources ∥ imagery (parallel fan-out) ─────
     context.set_custom_status({"phase": "enrichment", "step": "data_sources_and_imagery"})
@@ -96,13 +85,9 @@ def _phase_enrichment(
                 "enrich_single_aoi",
                 enrichment_retry,
                 {
-                    "aoi_entry": {"aoi_claim_index": entry["aoi_claim_index"]} if compact_claim_contract else entry,
+                    "aoi_entry": {"aoi_claim_index": entry["aoi_claim_index"]},
                     "aoi_index": idx,
-                    **{
-                        k: v
-                        for k, v in enrichment_common.items()
-                        if k not in {"coords", "per_aoi_coords", "per_aoi_claim_indexes"}
-                    },
+                    **{k: v for k, v in enrichment_common.items() if k != "per_aoi_claim_indexes"},
                 },
             )
             for idx, entry in enumerate(per_aoi_coords)
@@ -123,17 +108,13 @@ def _phase_enrichment(
         "timestamp": ctx["timestamp"],
         "output_container": output_container,
     }
-    if legacy_contract:
-        finalize_payload["per_aoi_results"] = per_aoi_results
-        finalize_payload["per_aoi_coords"] = per_aoi_coords
-    else:
-        finalize_payload.update(
-            {
-                "instance_id": context.instance_id,
-                "per_aoi_claim_indexes": [entry["aoi_claim_index"] for entry in per_aoi_coords],
-                "per_aoi_result_count": len(per_aoi_results),
-            }
-        )
+    finalize_payload.update(
+        {
+            "instance_id": context.instance_id,
+            "per_aoi_claim_indexes": [entry["aoi_claim_index"] for entry in per_aoi_coords],
+            "per_aoi_result_count": len(per_aoi_results),
+        }
+    )
 
     enrichment = cast(
         "dict[str, Any]",

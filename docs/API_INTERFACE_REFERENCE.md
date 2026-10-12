@@ -84,9 +84,8 @@ record field; a pre-existing record with the same ID and owner is insufficient.
 Malformed KML values return `400` through normal reservation cleanup. Rejected
 new submissions release admission; partial direct publication must confirm ticket
 revocation before refund, and uncertain revocation retains the reservation.
-A KML Placemark name is limited to 256 characters for newly versioned runs so
-compact Durable activity results remain bounded; longer names are rejected during
-parsing. Legacy v1 histories retain their original name-loading behavior.
+A KML Placemark name is limited to 256 characters so compact Durable activity
+results remain bounded; longer names are rejected during parsing.
 After a history or blob
 publication failure, marking history `failed` is best-effort and logged if it
 cannot be verified. A continuing storage outage can leave an uncertain record
@@ -181,16 +180,21 @@ redelivering the original blob event. Storage-native uploads without a submissio
 UUID continue to use their Event Grid event ID and do not receive this API-managed
 deduplication contract.
 
-### Durable Replay Contract Versions
+### Durable Workflow Changes
 
-New orchestrations are stamped with contract version 3. Unmarked histories replay
-the original v1 activity sequence and inline payload/result shapes; histories
-stamped v2 retain their ref-list enrichment payloads. Version 3 passes compact
-AOI claim indexes to enrichment activities, which rebuild deterministic claim
-references locally. The v3 enrichment project name is capped at 128 characters
-to bound activity inputs. Do not change a version's activity ordering, names,
-payloads, or result shapes in place; introduce a new version for incompatible
-changes so suspended instances can replay safely after long delays.
+The application is pre-live and currently has one claim-check workflow: parse
+features, prepare and claim-check AOIs, write metadata, acquire and fulfil
+imagery, enrich, and finalize. Independent activity families run in parallel
+where useful; each AOI then receives its own enrichment result. There are no
+persisted public workflow versions or compatibility branches to preserve.
+
+Before a future live workflow change, first inventory nonterminal Durable
+instances and their required input blobs. Keep the action sequence stable for
+those instances; either let them drain before deployment or isolate the new
+workflow implementation behind a separately selected orchestrator version.
+Do not add speculative legacy branches before persisted histories exist, and do
+not mutate an active history's action sequence in place. Execution inputs must
+remain available for as long as an instance may resume.
 
 ## Activity Functions and Contracts
 
@@ -203,20 +207,16 @@ optional fields live in the implementation and
 | Activity | Input Contract | Output Contract |
 | --- | --- | --- |
 | `parse_kml` | BlobEvent fields | `feature_refs`: one claim reference per parsed feature |
-| `load_offloaded_features` | `ref` | Feature dictionaries (retained helper; not used by the main claim-per-feature path) |
-| `prepare_aoi` | `feature_ref`, `instance_id`, optional `buffer_m` (`feature` is accepted for direct callers) | `aoi_ref`, stable `aoi_claim_index`, and compact AOI metadata |
-| `store_aoi_claims` | `instance_id`, `aois` | Claim references `{claim_id, ref, key}` |
-| `load_aoi_claim` | `aoi_ref` or `ref` | AOI dictionary |
+| `prepare_aoi` | `feature_ref`, `instance_id`, optional `buffer_m` | `aoi_ref`, stable `aoi_claim_index`, and compact AOI metadata |
 | `write_metadata` | AOI/claim, source, processing ID, timestamp, output container | Metadata and archive paths |
 | `acquire_imagery` | AOI/claim, provider and filters | Acquisition outcome |
 | `acquire_composite` | AOI/claim, filters, temporal count | Acquisition outcomes |
 | `check_order_status` | `order_id`, provider and source identity | Single-shot state and `is_terminal` |
 | `download_imagery` | Outcome, source asset, AOI bounds, output namespace | Download result and stored blob path |
 | `post_process_imagery` | Download result, AOI/claim, output namespace, flags | Post-process result and output path |
-| `run_enrichment` | Coordinates, per-AOI coordinates, dates, output namespace | Combined enrichment result (retained monolithic entrypoint) |
-| `enrich_data_sources` | v2: `instance_id` and per-AOI claim refs; v3: `instance_id` and compact `per_aoi_claim_indexes`; dates, cadence, EUDR mode | `result_ref` to weather/event/dataset results (or a safe-mode skip marker) |
-| `enrich_imagery` | v2: `instance_id` and per-AOI claim refs; v3: `instance_id` and compact `per_aoi_claim_indexes`; dates, output namespace | `result_ref` to imagery/NDVI/change results |
-| `enrich_single_aoi` | v2: `aoi_entry.aoi_ref`; v3: `aoi_entry.aoi_claim_index`; `aoi_index`, dates, output namespace | `result_ref` to per-AOI enrichment result |
+| `enrich_data_sources` | `instance_id` and compact `per_aoi_claim_indexes`; dates, cadence, EUDR mode | `result_ref` to weather/event/dataset results (or a safe-mode skip marker) |
+| `enrich_imagery` | `instance_id` and compact `per_aoi_claim_indexes`; dates, output namespace | `result_ref` to imagery/NDVI/change results |
+| `enrich_single_aoi` | `aoi_entry.aoi_claim_index`; `aoi_index`, dates, output namespace | `result_ref` to per-AOI enrichment result |
 | `enrich_finalize` | Data-source, imagery and per-AOI `result_ref`s; per-AOI claim refs; output namespace | Blob manifest path and compact summary with telemetry-presence flags |
 | `submit_batch_fulfilment` | Outcome, asset URL, output namespace | Batch job/task tracking dictionary |
 | `poll_batch_fulfilment` | `job_id`, `task_id` | Batch task state |
