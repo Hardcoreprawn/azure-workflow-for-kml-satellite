@@ -754,7 +754,7 @@ class TestMonitoringScheduler:
         m = create_monitor(
             user_id="user-1",
             aoi_name="No Centroid",
-            aoi_geometry={"centroid": [0.0, 0.0]},
+            aoi_geometry={},
         )
 
         from blueprints.monitoring import _process_monitor
@@ -763,6 +763,27 @@ class TestMonitoringScheduler:
             _process_monitor(m)
             mock_advance.assert_called_once()
             assert mock_advance.call_args[1]["run_id"] == "skipped-no-centroid"
+
+    def test_process_monitor_accepts_valid_null_island_centroid(self, _mock_cosmos):
+        from treesight.monitoring import create_monitor
+
+        ring = [[-0.01, -0.01], [0.01, -0.01], [0.01, 0.01], [-0.01, 0.01], [-0.01, -0.01]]
+        monitor = create_monitor(
+            user_id="user-1",
+            aoi_name="Null Island",
+            aoi_geometry={"centroid": [0.0, 0.0], "type": "Polygon", "coordinates": [ring]},
+        )
+
+        from blueprints.monitoring import _process_monitor
+
+        with (
+            patch("treesight.monitoring.advance_schedule") as advance,
+            patch("treesight.pipeline.enrichment.run_enrichment", return_value={}) as enrich,
+        ):
+            _process_monitor(monitor)
+
+        assert enrich.call_args.kwargs["coords"] == ring
+        advance.assert_called_once_with(monitor, run_id=f"monitoring-{monitor.id}")
 
     def test_process_monitor_with_enrichment(self, _mock_cosmos):
         from treesight.monitoring import create_monitor

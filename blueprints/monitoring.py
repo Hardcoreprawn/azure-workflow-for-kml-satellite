@@ -138,9 +138,9 @@ def _monitor_geometry_and_coords(
         return None, []
     coordinates = geometry["coordinates"]
     if geometry["type"] == "Polygon":
-        return geometry, [list(point) for point in coordinates[0]]
+        return geometry, [[float(point[0]), float(point[1])] for point in coordinates[0]]
     exterior_rings = [polygon[0] for polygon in coordinates]
-    return geometry, [list(point) for ring in exterior_rings for point in ring]
+    return geometry, [[float(point[0]), float(point[1])] for ring in exterior_rings for point in ring]
 
 
 def _process_monitor(monitor: Any) -> None:
@@ -160,12 +160,19 @@ def _process_monitor(monitor: Any) -> None:
 
     stored_geometry = monitor.aoi_geometry
     polygon_geometry, coords = _monitor_geometry_and_coords(stored_geometry)
-    centroid = stored_geometry.get("centroid", [0.0, 0.0])
+    centroid = stored_geometry.get("centroid")
 
-    if not centroid or centroid == [0.0, 0.0]:
+    if not (
+        isinstance(centroid, (list, tuple))
+        and len(centroid) == 2
+        and all(type(value) in {int, float} and math.isfinite(value) for value in centroid)
+        and -180 <= centroid[0] <= 180
+        and -90 <= centroid[1] <= 90
+    ):
         logger.warning("Monitor %s has no valid centroid — skipping", monitor.id)
         advance_schedule(monitor, run_id="skipped-no-centroid")
         return
+    centroid_coords = [float(centroid[0]), float(centroid[1])]
 
     if polygon_geometry is None:
         logger.warning("Monitor %s has unsupported or invalid polygon geometry — skipping", monitor.id)
@@ -173,7 +180,7 @@ def _process_monitor(monitor: Any) -> None:
         return
 
     if not coords:
-        coords = [centroid]
+        coords = [centroid_coords]
     storage = BlobStorageClient()
 
     now = datetime.now(UTC)

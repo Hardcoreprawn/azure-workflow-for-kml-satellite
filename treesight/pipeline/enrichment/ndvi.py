@@ -187,7 +187,11 @@ def compute_ndvi(
         # Read B04 (Red) windowed to bbox
         b04_data, b04_profile = _cog_band_read(scene["B04"], bbox)
         # Read B08 (NIR) windowed to bbox
-        b08_data, _b08_profile = _cog_band_read(scene["B08"], bbox)
+        b08_data, b08_profile = _cog_band_read(scene["B08"], bbox)
+
+        if not _raster_covers_geometry(geometry, b04_profile) or not _raster_covers_geometry(geometry, b08_profile):
+            log_phase("ndvi", "source_scene_does_not_cover_geometry", scene_id=scene["scene_id"])
+            return None
 
         # Ensure same shape (B04 is 10m, B08 is 10m for S2 L2A — should match)
         if b04_data.shape != b08_data.shape:
@@ -202,7 +206,10 @@ def compute_ndvi(
         scl_masked_count = 0
         if scene.get("SCL"):
             try:
-                scl_data, _scl_profile = _cog_band_read(scene["SCL"], bbox)
+                scl_data, scl_profile = _cog_band_read(scene["SCL"], bbox)
+                if not _raster_covers_geometry(geometry, scl_profile):
+                    log_phase("ndvi", "scl_scene_does_not_cover_geometry", scene_id=scene["scene_id"])
+                    return None
                 # Resample SCL (20m) to match B04/B08 (10m) via nearest-neighbour
                 if _rs is not None:
                     scl_mask = _rs.resample_nearest(
@@ -291,6 +298,7 @@ def compute_ndvi(
         ndvi_masked = np.where(valid_mask, ndvi, np.nan)
         buf = io.BytesIO()
         profile = b04_profile.copy()
+        profile.pop("_source_bounds", None)
         profile.update(
             count=1,
             dtype="float32",
@@ -427,7 +435,11 @@ def compute_landsat_ndvi(
 
     try:
         red_data, red_profile = _cog_band_read(scene["red"], bbox)
-        nir_data, _ = _cog_band_read(scene["nir"], bbox)
+        nir_data, nir_profile = _cog_band_read(scene["nir"], bbox)
+
+        if not _raster_covers_geometry(geometry, red_profile) or not _raster_covers_geometry(geometry, nir_profile):
+            log_phase("ndvi", "landsat_source_scene_does_not_cover_geometry", scene_id=scene["scene_id"])
+            return None
 
         # Ensure same shape (both 30m for Landsat OLI)
         if red_data.shape != nir_data.shape:
@@ -441,7 +453,10 @@ def compute_landsat_ndvi(
         qa_masked_count = 0
         if scene.get("qa_pixel"):
             try:
-                qa_data, _ = _cog_band_read(scene["qa_pixel"], bbox)
+                qa_data, qa_profile = _cog_band_read(scene["qa_pixel"], bbox)
+                if not _raster_covers_geometry(geometry, qa_profile):
+                    log_phase("ndvi", "landsat_qa_does_not_cover_geometry", scene_id=scene["scene_id"])
+                    return None
                 # Resample if needed (QA is same resolution as bands for Landsat)
                 if qa_data.shape != red_data.shape:
                     qa_data = _resample_scl(qa_data, red_data.shape)
@@ -486,6 +501,7 @@ def compute_landsat_ndvi(
         ndvi_masked = np.where(valid_mask, ndvi, np.nan)
         buf = io.BytesIO()
         profile = red_profile.copy()
+        profile.pop("_source_bounds", None)
         profile.update(
             count=1,
             dtype="float32",
@@ -563,8 +579,25 @@ def _cog_band_read(
             "driver": "GTiff",
             "crs": src.crs,
             "transform": src.window_transform(window),
+            "_source_bounds": tuple(src.bounds),
         }
     return data, profile
+
+
+def _raster_covers_geometry(geometry: dict[str, Any], profile: dict[str, Any]) -> bool:
+    from pyproj import Transformer
+    from shapely.geometry import box, shape
+    from shapely.ops import transform as transform_geometry
+
+    source_bounds = profile.get("_source_bounds")
+    if source_bounds is None:
+        return False
+    transformer = Transformer.from_crs("EPSG:4326", str(profile["crs"]), always_xy=True)
+    projected = transform_geometry(transformer.transform, shape(geometry))
+    transform = profile["transform"]
+    pixel_size = max(abs(transform.a), abs(transform.e))
+    coverage_bounds = box(*source_bounds).buffer(pixel_size * 1e-6)
+    return coverage_bounds.covers(shape(projected))
 
 
 def _resample_scl(

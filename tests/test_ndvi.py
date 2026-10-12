@@ -193,14 +193,15 @@ def _band_profile(rows: int = 10, cols: int = 10) -> dict[str, Any]:
     return {
         "driver": "GTiff",
         "crs": "EPSG:4326",
-        "transform": from_bounds(0, 0, cols * 10, rows * 10, cols, rows),
+        "transform": from_bounds(0, 0, 100, 100, cols, rows),
+        "_source_bounds": (0, 0, 100, 100),
     }
 
 
 def _test_geometry() -> dict[str, Any]:
     return {
         "type": "Polygon",
-        "coordinates": [[[-1, -1], [1000, -1], [1000, 1000], [-1, 1000], [-1, -1]]],
+        "coordinates": [[[0, 0], [100, 0], [100, 100], [0, 100], [0, 0]]],
     }
 
 
@@ -248,6 +249,26 @@ class TestComputeNdvi:
         assert result["std"] == 0.0  # uniform values
         assert isinstance(result["geotiff_bytes"], bytes)
         assert len(result["geotiff_bytes"]) > 0
+
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
+    def test_partial_source_coverage_returns_unavailable(self, mock_find, mock_read):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import compute_ndvi
+
+        mock_find.return_value = _s2_scene_fixture()
+        band = np.full((10, 10), 1000, dtype=np.uint16)
+        profile = _band_profile(10, 10)
+        mock_read.side_effect = [(band, profile), (band * 3, profile)]
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [[[-10, 10], [50, 10], [50, 50], [-10, 50], [-10, 10]]],
+        }
+
+        result = compute_ndvi([0, 0, 50, 50], "2024-06-01", "2024-08-31", geometry=geometry)
+
+        assert result is None
 
     @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
     @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
@@ -394,12 +415,20 @@ class TestComputeNdviWithScl:
         # SCL at 20m = half resolution: 2x2 → resampled to 4x4
         # class 4 = vegetation (valid), class 9 = cloud (masked)
         scl = np.array([[4, 9], [4, 4]], dtype=np.uint8)
+        from rasterio.transform import from_bounds
+
         profile = _band_profile(4, 4)
-        scl_profile = _band_profile(2, 2)
+        scl_profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:4326",
+            "transform": from_bounds(0, 0, 100, 100, 2, 2),
+            "_source_bounds": (0, 0, 100, 100),
+        }
 
         mock_read.side_effect = [(b04, profile), (b08, profile), (scl, scl_profile)]
 
-        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=_test_geometry())
+        geometry = {"type": "Polygon", "coordinates": [[[0, 0], [100, 0], [100, 100], [0, 100], [0, 0]]]}
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31", geometry=geometry)
 
         assert result is not None
         assert result["scl_applied"] is True
@@ -551,7 +580,14 @@ class TestComputeNdviPolygonMask:
         mock_find.return_value = _s2_scene_fixture()
         red = np.array([[1000, 0], [0, 0]], dtype=np.uint16)
         nir = np.array([[3000, 0], [0, 0]], dtype=np.uint16)
-        profile = _band_profile(2, 2)
+        from rasterio.transform import from_bounds
+
+        profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:4326",
+            "transform": from_bounds(0, 0, 20, 20, 2, 2),
+            "_source_bounds": (0, 0, 20, 20),
+        }
         mock_read.side_effect = [(red, profile), (nir, profile)]
         geometry = {
             "type": "Polygon",
@@ -581,6 +617,7 @@ class TestComputeNdviPolygonMask:
             "driver": "GTiff",
             "crs": "EPSG:3857",
             "transform": from_bounds(0, 0, 445277.96, 445640.11, 4, 4),
+            "_source_bounds": (0, 0, 445277.96, 445640.11),
         }
         mock_read.side_effect = [(red, profile), (nir, profile)]
         geometry = {
@@ -628,6 +665,7 @@ class TestComputeNdviPolygonMask:
             "driver": "GTiff",
             "crs": "EPSG:3857",
             "transform": from_bounds(0, 0, 445277.96, 445640.11, 4, 4),
+            "_source_bounds": (0, 0, 445277.96, 445640.11),
         }
         scl_profile = _band_profile(2, 2)
         mock_read.side_effect = [(red, profile), (nir, profile), (scl, scl_profile)]
@@ -690,6 +728,32 @@ class TestComputeLandsatNdviPolygonMask:
 
     @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
     @patch("treesight.pipeline.enrichment.ndvi._find_best_landsat_scene")
+    def test_partial_source_coverage_returns_unavailable(self, mock_find, mock_read):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import compute_landsat_ndvi
+
+        mock_find.return_value = {
+            "scene_id": "LC08_partial",
+            "red": "https://example.com/red.tif",
+            "nir": "https://example.com/nir.tif",
+            "cloud_cover": 5.0,
+            "datetime": "2015-07-15T10:00:00Z",
+        }
+        band = np.full((10, 10), 1000, dtype=np.uint16)
+        profile = _band_profile(10, 10)
+        mock_read.side_effect = [(band, profile), (band * 3, profile)]
+        geometry = {
+            "type": "Polygon",
+            "coordinates": [[[-10, 10], [50, 10], [50, 50], [-10, 50], [-10, 10]]],
+        }
+
+        result = compute_landsat_ndvi([0, 0, 50, 50], "2015-06-01", "2015-08-31", geometry=geometry)
+
+        assert result is None
+
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_landsat_scene")
     def test_landsat_plot_mask_excludes_outside_and_hole_pixels(self, mock_find, mock_read):
         import numpy as np
         import rasterio
@@ -713,6 +777,7 @@ class TestComputeLandsatNdviPolygonMask:
             "driver": "GTiff",
             "crs": "EPSG:3857",
             "transform": from_bounds(0, 0, 445277.96, 445640.11, 4, 4),
+            "_source_bounds": (0, 0, 445277.96, 445640.11),
         }
         mock_read.side_effect = [(red, profile), (nir, profile)]
         geometry = {
@@ -764,8 +829,14 @@ class TestComputeLandsatNdviPolygonMask:
             "driver": "GTiff",
             "crs": "EPSG:3857",
             "transform": from_bounds(0, 0, 445277.96, 445640.11, 4, 4),
+            "_source_bounds": (0, 0, 445277.96, 445640.11),
         }
-        qa_profile = _band_profile(2, 2)
+        qa_profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:3857",
+            "transform": from_bounds(0, 0, 445277.96, 445640.11, 2, 2),
+            "_source_bounds": (0, 0, 445277.96, 445640.11),
+        }
         mock_read.side_effect = [(red, profile), (nir, profile), (qa, qa_profile)]
         geometry = {
             "type": "MultiPolygon",

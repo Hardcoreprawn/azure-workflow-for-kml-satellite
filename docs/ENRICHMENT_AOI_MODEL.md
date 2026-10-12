@@ -35,9 +35,10 @@ centres (`all_touched=false`); `geometry_mask_applied`, `geometry_masked_pixels`
 stat result. Missing geometry or zero valid in-plot pixels yields unavailable
 NDVI evidence; bbox tile statistics are not used as a fallback. Source geometry
 type and declared plot area can be retained for downstream review.
-NDVI statistics require at least four valid in-plot pixel centres (a 2×2
-minimum spatial sample); smaller samples are unavailable, not a claim that
-larger samples are scientifically or legally conclusive.
+NDVI statistics require at least four valid in-plot pixel centres. This is a
+count floor, not a guarantee that the pixels form a contiguous 2×2 block;
+smaller samples are unavailable, and larger samples are not thereby proven
+scientifically or legally conclusive.
 Change-detection statistics use the same minimum on the pixels valid in both
 time-step rasters; a smaller pairwise overlap is unavailable in both the
 Python and native Rust paths.
