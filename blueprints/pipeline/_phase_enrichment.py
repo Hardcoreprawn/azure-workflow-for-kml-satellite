@@ -6,6 +6,7 @@ NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
 
+import hashlib
 import logging
 from collections.abc import Generator
 from typing import Any, cast
@@ -23,6 +24,14 @@ from treesight.constants import (
 logger = logging.getLogger(__name__)
 
 _PhaseGen = Generator[Any, Any, dict[str, Any]]
+
+
+def _bounded_project_name(project_name: str) -> str:
+    if len(project_name) <= MAX_DURABLE_PROJECT_NAME_LENGTH:
+        return project_name
+    suffix = hashlib.sha256(project_name.encode("utf-8")).hexdigest()[:12]
+    prefix_length = MAX_DURABLE_PROJECT_NAME_LENGTH - len(suffix) - 1
+    return f"{project_name[:prefix_length]}-{suffix}"
 
 
 def _phase_enrichment(
@@ -49,8 +58,7 @@ def _phase_enrichment(
         max_number_of_attempts=LONG_RETRY_MAX_ATTEMPTS,
     )
 
-    project_name = ctx["project_name"]
-    project_name = project_name[:MAX_DURABLE_PROJECT_NAME_LENGTH]
+    project_name = _bounded_project_name(ctx["project_name"])
 
     enrichment_common = {
         "eudr_mode": inp.get("eudr_mode", False),

@@ -184,6 +184,18 @@ class TestPhaseFulfilment:
 
 
 class TestPhaseEnrichment:
+    def test_long_project_names_remain_distinct_after_bounding(self):
+        from blueprints.pipeline._phase_enrichment import _bounded_project_name
+        from treesight.constants import MAX_DURABLE_PROJECT_NAME_LENGTH
+
+        prefix = "farm" * 40
+        first = _bounded_project_name(f"{prefix}-submission-a")
+        second = _bounded_project_name(f"{prefix}-submission-b")
+
+        assert len(first) <= MAX_DURABLE_PROJECT_NAME_LENGTH
+        assert len(second) <= MAX_DURABLE_PROJECT_NAME_LENGTH
+        assert first != second
+
     def test_no_coords_short_circuits(self):
         context = MagicMock()
 

@@ -252,6 +252,50 @@ class TestFindBestLandsatScene:
 
         assert result is None
 
+    def test_checks_next_candidate_until_complete_geometry_coverage(self):
+        from treesight.pipeline.enrichment.ndvi import _find_best_landsat_scene
+
+        geometry = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}
+        partial = self._make_mock_item(
+            "partial",
+            {
+                "red": MagicMock(href="partial-red"),
+                "nir08": MagicMock(href="partial-nir"),
+                "qa_pixel": MagicMock(href="partial-qa"),
+            },
+            cloud_cover=1.0,
+        )
+        complete = self._make_mock_item(
+            "complete",
+            {
+                "red": MagicMock(href="full-red"),
+                "nir08": MagicMock(href="full-nir"),
+                "qa_pixel": MagicMock(href="full-qa"),
+            },
+            cloud_cover=10.0,
+        )
+        search = MagicMock()
+        search.items.return_value = [partial, complete]
+        catalog = MagicMock()
+        catalog.search.return_value = search
+
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "planetary_computer": MagicMock(),
+                    "pystac_client": MagicMock(Client=MagicMock(open=MagicMock(return_value=catalog))),
+                },
+            ),
+            patch(
+                "treesight.pipeline.enrichment.ndvi._cog_asset_covers_geometry",
+                side_effect=[False, True, True, True],
+            ),
+        ):
+            result = _find_best_landsat_scene([0, 0, 1, 1], "2015-01-01", "2015-12-31", geometry=geometry)
+
+        assert result["scene_id"] == "complete"
+
 
 # ---------------------------------------------------------------------------
 # §4 — NDVI pipeline routes Landsat frames

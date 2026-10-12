@@ -23,7 +23,10 @@ from typing import Any, cast
 
 import httpx
 
-from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS, MIN_VALID_NDVI_PIXELS
+from treesight.constants import (
+    DEFAULT_HTTP_TIMEOUT_SECONDS,
+    MIN_VALID_NDVI_PIXELS,
+)
 from treesight.geo import transform_bbox
 from treesight.log import log_phase
 from treesight.pipeline.enrichment.mosaic import PC_API
@@ -46,8 +49,10 @@ def _find_best_s2_scene(
     date_start: str,
     date_end: str,
     max_cloud: float = 20.0,
+    *,
+    geometry: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Search STAC for the least-cloudy Sentinel-2 L2A scene in a window.
+    """Search ordered Sentinel-2 candidates for one covering the full AOI.
 
     Returns a dict with ``{"B04": url, "B08": url, "scene_id": ..., ...}``
     plus an optional ``"SCL"`` key when the Scene Classification Layer is
@@ -62,33 +67,38 @@ def _find_best_s2_scene(
         bbox=bbox,
         datetime=f"{date_start}/{date_end}",
         query={"eo:cloud_cover": {"lte": max_cloud}},
-        max_items=1,
         sortby=[{"field": "eo:cloud_cover", "direction": "asc"}],
     )
 
-    items = list(search.items())
-    if not items:
-        return None
+    for item in search.items():
+        b04 = item.assets.get("B04")
+        b08 = item.assets.get("B08")
+        scl = item.assets.get("SCL")
+        if not b04 or not b08:
+            continue
+        if geometry is not None:
+            asset_hrefs = [b04.href, b08.href]
+            if scl:
+                asset_hrefs.append(scl.href)
+            try:
+                if not all(_cog_asset_covers_geometry(href, geometry) for href in asset_hrefs):
+                    continue
+            except Exception:
+                logger.warning("Could not verify full AOI coverage for S2 item %s", item.id, exc_info=True)
+                continue
 
-    item = items[0]
-    b04 = item.assets.get("B04")
-    b08 = item.assets.get("B08")
-    scl = item.assets.get("SCL")
-    if not b04 or not b08:
-        logger.warning("S2 item %s missing B04/B08 assets", item.id)
-        return None
-
-    result: dict[str, Any] = {
-        "scene_id": item.id,
-        "B04": b04.href,
-        "B08": b08.href,
-        "cloud_cover": item.properties.get("eo:cloud_cover", 0.0),
-        "datetime": item.properties.get("datetime", ""),
-        "crs": f"EPSG:{item.properties.get('proj:epsg', 32632)}",
-    }
-    if scl:
-        result["SCL"] = scl.href
-    return result
+        result: dict[str, Any] = {
+            "scene_id": item.id,
+            "B04": b04.href,
+            "B08": b08.href,
+            "cloud_cover": item.properties.get("eo:cloud_cover", 0.0),
+            "datetime": item.properties.get("datetime", ""),
+            "crs": f"EPSG:{item.properties.get('proj:epsg', 32632)}",
+        }
+        if scl:
+            result["SCL"] = scl.href
+        return result
+    return None
 
 
 # ── COG-based NDVI computation ────────────────────────────────
@@ -171,7 +181,7 @@ def compute_ndvi(
 
     log_phase("ndvi", "search_start", bbox=bbox, window=f"{date_start}/{date_end}")
 
-    scene = _find_best_s2_scene(bbox, date_start, date_end, max_cloud)
+    scene = _find_best_s2_scene(bbox, date_start, date_end, max_cloud, geometry=geometry)
     if not scene:
         log_phase("ndvi", "no_scene_found")
         return None
@@ -339,8 +349,10 @@ def _find_best_landsat_scene(
     date_start: str,
     date_end: str,
     max_cloud: float = 30.0,
+    *,
+    geometry: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Search for the least-cloudy Landsat C2 L2 scene in a date window."""
+    """Search ordered Landsat C2 L2 candidates for one covering the full AOI."""
     import planetary_computer
     from pystac_client import Client
 
@@ -350,34 +362,38 @@ def _find_best_landsat_scene(
         bbox=bbox,
         datetime=f"{date_start}/{date_end}",
         query={"eo:cloud_cover": {"lte": max_cloud}},
-        max_items=1,
         sortby=[{"field": "eo:cloud_cover", "direction": "asc"}],
     )
 
-    items = list(search.items())
-    if not items:
-        return None
+    for item in search.items():
+        red = item.assets.get("red")
+        nir = item.assets.get("nir08")
+        qa = item.assets.get("qa_pixel")
+        if not red or not nir:
+            continue
+        if geometry is not None:
+            asset_hrefs = [red.href, nir.href]
+            if qa:
+                asset_hrefs.append(qa.href)
+            try:
+                if not all(_cog_asset_covers_geometry(href, geometry) for href in asset_hrefs):
+                    continue
+            except Exception:
+                logger.warning("Could not verify full AOI coverage for Landsat item %s", item.id, exc_info=True)
+                continue
 
-    item = items[0]
-    # Landsat 8/9: B4=Red, B5=NIR (OLI)
-    red = item.assets.get("red")
-    nir = item.assets.get("nir08")
-    qa = item.assets.get("qa_pixel")
-    if not red or not nir:
-        logger.warning("Landsat item %s missing red/nir08 assets", item.id)
-        return None
-
-    result: dict[str, Any] = {
-        "scene_id": item.id,
-        "red": red.href,
-        "nir": nir.href,
-        "cloud_cover": item.properties.get("eo:cloud_cover", 0.0),
-        "datetime": item.properties.get("datetime", ""),
-        "crs": f"EPSG:{item.properties.get('proj:epsg', 32632)}",
-    }
-    if qa:
-        result["qa_pixel"] = qa.href
-    return result
+        result: dict[str, Any] = {
+            "scene_id": item.id,
+            "red": red.href,
+            "nir": nir.href,
+            "cloud_cover": item.properties.get("eo:cloud_cover", 0.0),
+            "datetime": item.properties.get("datetime", ""),
+            "crs": f"EPSG:{item.properties.get('proj:epsg', 32632)}",
+        }
+        if qa:
+            result["qa_pixel"] = qa.href
+        return result
+    return None
 
 
 def compute_landsat_ndvi(
@@ -421,7 +437,7 @@ def compute_landsat_ndvi(
         window=f"{date_start}/{date_end}",
     )
 
-    scene = _find_best_landsat_scene(bbox, date_start, date_end, max_cloud)
+    scene = _find_best_landsat_scene(bbox, date_start, date_end, max_cloud, geometry=geometry)
     if not scene:
         log_phase("ndvi", "landsat_no_scene")
         return None
@@ -597,7 +613,19 @@ def _raster_covers_geometry(geometry: dict[str, Any], profile: dict[str, Any]) -
     transform = profile["transform"]
     pixel_size = max(abs(transform.a), abs(transform.e))
     coverage_bounds = box(*source_bounds).buffer(pixel_size * 1e-6)
-    return coverage_bounds.covers(shape(projected))
+    return coverage_bounds.covers(projected)
+
+
+def _cog_asset_covers_geometry(url: str, geometry: dict[str, Any]) -> bool:
+    import rasterio
+
+    with rasterio.open(url) as source:
+        profile = {
+            "crs": source.crs,
+            "transform": source.transform,
+            "_source_bounds": tuple(source.bounds),
+        }
+    return _raster_covers_geometry(geometry, profile)
 
 
 def _resample_scl(

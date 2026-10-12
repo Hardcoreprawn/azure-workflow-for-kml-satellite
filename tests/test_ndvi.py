@@ -205,6 +205,43 @@ def _test_geometry() -> dict[str, Any]:
     }
 
 
+class TestFindBestS2Scene:
+    def test_checks_next_candidate_until_complete_geometry_coverage(self):
+        from treesight.pipeline.enrichment.ndvi import _find_best_s2_scene
+
+        geometry = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}
+        first = MagicMock(
+            id="partial",
+            assets={"B04": MagicMock(href="partial-red"), "B08": MagicMock(href="partial-nir")},
+            properties={"eo:cloud_cover": 1.0, "datetime": "2024-01-01", "proj:epsg": 32632},
+        )
+        second = MagicMock(
+            id="complete",
+            assets={"B04": MagicMock(href="full-red"), "B08": MagicMock(href="full-nir")},
+            properties={"eo:cloud_cover": 10.0, "datetime": "2024-01-02", "proj:epsg": 32632},
+        )
+        search = MagicMock()
+        search.items.return_value = [first, second]
+        catalog = MagicMock()
+        catalog.search.return_value = search
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "planetary_computer": MagicMock(),
+                    "pystac_client": MagicMock(Client=MagicMock(open=MagicMock(return_value=catalog))),
+                },
+            ),
+            patch(
+                "treesight.pipeline.enrichment.ndvi._cog_asset_covers_geometry",
+                side_effect=[False, True, True],
+            ),
+        ):
+            result = _find_best_s2_scene([0, 0, 1, 1], "2024-01-01", "2024-12-31", geometry=geometry)
+
+        assert result["scene_id"] == "complete"
+
+
 class TestComputeNdvi:
     @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene", return_value=None)
     def test_fourth_positional_argument_remains_max_cloud(self, mock_find):
@@ -214,7 +251,7 @@ class TestComputeNdvi:
         result = compute_ndvi(bbox, "2024-06-01", "2024-08-31", 10.0, geometry=_test_geometry())
 
         assert result is None
-        mock_find.assert_called_once_with(bbox, "2024-06-01", "2024-08-31", 10.0)
+        mock_find.assert_called_once_with(bbox, "2024-06-01", "2024-08-31", 10.0, geometry=_test_geometry())
 
     @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
     def test_returns_none_when_no_scene(self, mock_find):
@@ -697,7 +734,7 @@ class TestComputeLandsatNdviPolygonMask:
         result = compute_landsat_ndvi(bbox, "2015-06-01", "2015-08-31", 12.0, geometry=_test_geometry())
 
         assert result is None
-        mock_find.assert_called_once_with(bbox, "2015-06-01", "2015-08-31", 12.0)
+        mock_find.assert_called_once_with(bbox, "2015-06-01", "2015-08-31", 12.0, geometry=_test_geometry())
 
     @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
     @patch("treesight.pipeline.enrichment.ndvi._find_best_landsat_scene")
