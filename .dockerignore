@@ -10,7 +10,8 @@
 # Development
 .venv/
 tests/
-scripts/
+scripts/*
+!scripts/local_ciam_issuer.py
 docs/
 typings/
 website/
