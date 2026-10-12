@@ -390,6 +390,23 @@ class TestTransformBbox:
         result = transform_bbox(bbox, "EPSG:4326", "EPSG:4326")
         assert result == (-0.5, 51.4, -0.4, 51.5)
 
+    def test_bounds_include_curved_projected_edges(self):
+        from pyproj import Transformer
+
+        from treesight.geo import transform_bbox
+
+        bbox = [5.0, 40.0, 20.0, 70.0]
+        result = transform_bbox(bbox, "EPSG:4326", "EPSG:32632")
+        expected = Transformer.from_crs("EPSG:4326", "EPSG:32632", always_xy=True).transform_bounds(
+            *bbox,
+            densify_pts=21,
+        )
+
+        assert result[0] <= expected[0]
+        assert result[1] <= expected[1]
+        assert result[2] >= expected[2]
+        assert result[3] >= expected[3]
+
 
 # ---------------------------------------------------------------------------
 # Tests for _resample_scl (nearest-neighbour upscaling)
