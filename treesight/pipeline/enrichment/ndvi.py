@@ -291,6 +291,15 @@ def compute_ndvi(
             logger.warning("SCL read failed for %s: %s", scene["scene_id"], scl_exc)
             return None
 
+        plot_mask = _raster_geometry_mask(geometry, b04_profile, b04_data.shape)
+        source_coverage = _source_coverage_on_grid(b04_profile, b04_profile, b04_data.shape)
+        source_coverage &= _source_coverage_on_grid(b08_profile, b04_profile, b04_data.shape)
+        source_coverage &= _source_coverage_on_grid(scl_profile, b04_profile, b04_data.shape)
+        source_coverage &= scl_mask != 0
+        if np.any(plot_mask & ~source_coverage):
+            log_phase("ndvi", "source_pixels_do_not_cover_geometry", scene_id=scene["scene_id"])
+            return None
+
         # Convert to float for band math
         red = b04_data.astype(np.float32)
         nir = b08_data.astype(np.float32)
@@ -318,7 +327,6 @@ def compute_ndvi(
                 scl_valid = np.isin(scl_mask, VALID_SCL_CLASSES)
                 valid_mask = valid_mask & scl_valid
 
-        plot_mask = _raster_geometry_mask(geometry, b04_profile, ndvi.shape)
         geometry_masked_count = int(np.count_nonzero(~plot_mask))
         if scl_mask is not None:
             scl_valid = np.isin(scl_mask, VALID_SCL_CLASSES)
@@ -368,6 +376,7 @@ def compute_ndvi(
         buf = io.BytesIO()
         profile = b04_profile.copy()
         profile.pop("_source_bounds", None)
+        profile.pop("_source_valid_mask", None)
         profile.update(
             count=1,
             dtype="float32",
@@ -402,6 +411,7 @@ def compute_ndvi(
 # Bits 0-5 mark fill, dilated cloud, cirrus, cloud, shadow, and snow.
 _LANDSAT_QA_INVALID_MASK = 0b00111111
 _LANDSAT_QA_FILL_FLAG = 1 << 0
+_LANDSAT_QA_WARP_NODATA = 0xFFFF
 _LANDSAT_SR_SCALE = 0.0000275
 _LANDSAT_SR_OFFSET = -0.2
 
@@ -521,6 +531,8 @@ def compute_landsat_ndvi(
             return None
 
         nir_data = _reproject_to_grid(nir_data, nir_profile, red_profile, red_data.shape, categorical=False)
+        source_coverage = _source_coverage_on_grid(red_profile, red_profile, red_data.shape)
+        source_coverage &= _source_coverage_on_grid(nir_profile, red_profile, red_data.shape)
 
         # QA_PIXEL cloud masking
         qa_mask = None
@@ -536,11 +548,18 @@ def compute_landsat_ndvi(
                 red_profile,
                 red_data.shape,
                 categorical=True,
-                destination_nodata=_LANDSAT_QA_FILL_FLAG,
+                destination_nodata=_LANDSAT_QA_WARP_NODATA,
             )
+            source_coverage &= _source_coverage_on_grid(qa_profile, red_profile, red_data.shape)
+            source_coverage &= (qa_data.astype(np.uint16) & _LANDSAT_QA_FILL_FLAG) == 0
             qa_mask = (qa_data.astype(np.uint16) & _LANDSAT_QA_INVALID_MASK) == 0
         except Exception:
             logger.warning("Landsat QA_PIXEL read failed for %s", scene["scene_id"], exc_info=True)
+            return None
+
+        plot_mask = _raster_geometry_mask(geometry, red_profile, red_data.shape)
+        if np.any(plot_mask & ~source_coverage):
+            log_phase("ndvi", "landsat_source_pixels_do_not_cover_geometry", scene_id=scene["scene_id"])
             return None
 
         red = red_data.astype(np.float32) * _LANDSAT_SR_SCALE + _LANDSAT_SR_OFFSET
@@ -555,7 +574,6 @@ def compute_landsat_ndvi(
         if qa_mask is not None:
             valid_mask = valid_mask & qa_mask
 
-        plot_mask = _raster_geometry_mask(geometry, red_profile, ndvi.shape)
         geometry_masked_count = int(np.count_nonzero(~plot_mask))
         if qa_mask is not None:
             qa_masked_count = int(np.count_nonzero(valid_mask_before_qa & plot_mask & ~qa_mask))
@@ -581,6 +599,7 @@ def compute_landsat_ndvi(
         buf = io.BytesIO()
         profile = red_profile.copy()
         profile.pop("_source_bounds", None)
+        profile.pop("_source_valid_mask", None)
         profile.update(
             count=1,
             dtype="float32",
@@ -660,6 +679,7 @@ def _cog_band_read(
             "transform": src.window_transform(window),
             "nodata": src.nodata,
             "_source_bounds": tuple(src.bounds),
+            "_source_valid_mask": cast(Any, src).read_masks(1, window=window).astype(bool),
         }
     return data, profile
 
@@ -698,6 +718,29 @@ def _reproject_to_grid(
         resampling=resampling,
     )
     return destination
+
+
+def _source_coverage_on_grid(
+    source_profile: dict[str, Any],
+    target_profile: dict[str, Any],
+    target_shape: tuple[int, int],
+) -> Any:
+    import numpy as np
+
+    source_valid_mask = source_profile.get("_source_valid_mask")
+    if source_valid_mask is None:
+        return np.ones(target_shape, dtype=bool)
+
+    mask_profile = {**source_profile, "nodata": None}
+    aligned_mask = _reproject_to_grid(
+        source_valid_mask.astype(np.uint8),
+        mask_profile,
+        target_profile,
+        target_shape,
+        categorical=True,
+        destination_nodata=0,
+    )
+    return aligned_mask.astype(bool)
 
 
 def _raster_covers_geometry(geometry: dict[str, Any], profile: dict[str, Any]) -> bool:
