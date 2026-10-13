@@ -252,9 +252,13 @@ class TestFindBestLandsatScene:
         assert result is None
 
     def test_checks_next_candidate_until_complete_geometry_coverage(self):
+        from pyproj import Transformer
+        from rasterio.transform import from_bounds
+
         from treesight.pipeline.enrichment.ndvi import _find_best_landsat_scene
 
-        geometry = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}
+        assert Transformer.from_crs("EPSG:4326", "EPSG:4326", always_xy=True).transform(0, 0) == (0, 0)
+        geometry = {"type": "Polygon", "coordinates": [[[0, 0], [50, 0], [50, 50], [0, 50], [0, 0]]]}
         partial = self._make_mock_item(
             "partial",
             {
@@ -277,6 +281,15 @@ class TestFindBestLandsatScene:
         search.items.return_value = [partial, complete]
         catalog = MagicMock()
         catalog.search.return_value = search
+        profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:4326",
+            "transform": from_bounds(0, 0, 100, 100, 4, 4),
+            "_source_bounds": (0, 0, 100, 100),
+            "_source_valid_mask": np.ones((4, 4), dtype=bool),
+        }
+        partial_red = np.full((4, 4), 10_000, dtype=np.uint16)
+        partial_red[2, 1] = 0
 
         with (
             patch.dict(
@@ -287,13 +300,141 @@ class TestFindBestLandsatScene:
                 },
             ),
             patch(
-                "treesight.pipeline.enrichment.ndvi._cog_asset_covers_geometry",
-                side_effect=[False, True, True, True],
+                "treesight.pipeline.enrichment.ndvi._cog_band_read",
+                side_effect=[
+                    (partial_red, profile),
+                    (np.full((4, 4), 10_000, dtype=np.uint16), profile),
+                    (np.full((4, 4), 20_000, dtype=np.uint16), profile),
+                    (np.zeros((4, 4), dtype=np.uint16), profile),
+                ],
             ),
+        ):
+            result = _find_best_landsat_scene([0, 0, 50, 50], "2015-01-01", "2015-12-31", geometry=geometry)
+
+        assert result["scene_id"] == "complete"
+
+    def test_checks_next_candidate_after_qa_fill_in_complete_red_grid(self):
+        import numpy as np
+        from rasterio.transform import from_bounds
+
+        from treesight.pipeline.enrichment.ndvi import _find_best_landsat_scene
+
+        candidates = [
+            self._make_mock_item(
+                scene_id,
+                {
+                    "red": MagicMock(href=f"{scene_id}-red"),
+                    "nir08": MagicMock(href=f"{scene_id}-nir"),
+                    "qa_pixel": MagicMock(href=f"{scene_id}-qa"),
+                },
+                cloud_cover=cloud,
+            )
+            for scene_id, cloud in (("partial-qa", 1.0), ("complete", 10.0))
+        ]
+        search = MagicMock()
+        search.items.return_value = candidates
+        catalog = MagicMock()
+        catalog.search.return_value = search
+        geometry = {"type": "Polygon", "coordinates": [[[0, 0], [100, 0], [100, 100], [0, 100], [0, 0]]]}
+        profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:4326",
+            "transform": from_bounds(0, 0, 100, 100, 4, 4),
+            "_source_bounds": (0, 0, 100, 100),
+            "_source_valid_mask": np.ones((4, 4), dtype=bool),
+        }
+        qa_profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:4326",
+            "transform": from_bounds(0, 0, 100, 100, 2, 2),
+            "_source_bounds": (0, 0, 100, 100),
+            "_source_valid_mask": np.ones((2, 2), dtype=bool),
+            "nodata": None,
+        }
+        partial_qa = np.zeros((2, 2), dtype=np.uint16)
+        partial_qa[0, 0] = 1
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "planetary_computer": MagicMock(),
+                    "pystac_client": MagicMock(Client=MagicMock(open=MagicMock(return_value=catalog))),
+                },
+            ),
+            patch(
+                "treesight.pipeline.enrichment.ndvi._cog_band_read",
+                side_effect=[
+                    (np.full((4, 4), 10_000, dtype=np.uint16), profile),
+                    (np.full((4, 4), 20_000, dtype=np.uint16), profile),
+                    (partial_qa, qa_profile),
+                    (np.full((4, 4), 10_000, dtype=np.uint16), profile),
+                    (np.full((4, 4), 20_000, dtype=np.uint16), profile),
+                    (np.zeros((2, 2), dtype=np.uint16), qa_profile),
+                ],
+            ),
+        ):
+            result = _find_best_landsat_scene([0, 0, 100, 100], "2015-01-01", "2015-12-31", geometry=geometry)
+
+        assert result is not None
+        assert result["scene_id"] == "complete"
+
+    def test_reads_reference_cog_once_per_candidate(self):
+        from pyproj import Transformer
+        from rasterio.transform import from_bounds
+
+        from treesight.pipeline.enrichment.ndvi import _find_best_landsat_scene
+
+        assert Transformer.from_crs("EPSG:4326", "EPSG:4326", always_xy=True).transform(0, 0) == (0, 0)
+        geometry = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}
+        item = self._make_mock_item(
+            "complete",
+            {
+                "red": MagicMock(href="red"),
+                "nir08": MagicMock(href="nir"),
+                "qa_pixel": MagicMock(href="qa"),
+            },
+        )
+        search = MagicMock()
+        search.items.return_value = [item]
+        catalog = MagicMock()
+        catalog.search.return_value = search
+        reference_profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:4326",
+            "transform": from_bounds(0, 0, 100, 100, 4, 4),
+            "_source_bounds": (0, 0, 100, 100),
+            "_source_valid_mask": np.ones((4, 4), dtype=bool),
+        }
+        qa_profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:4326",
+            "transform": from_bounds(0, 0, 100, 100, 2, 2),
+            "_source_bounds": (0, 0, 100, 100),
+            "_source_valid_mask": np.ones((2, 2), dtype=bool),
+        }
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "planetary_computer": MagicMock(),
+                    "pystac_client": MagicMock(Client=MagicMock(open=MagicMock(return_value=catalog))),
+                },
+            ),
+            patch(
+                "treesight.pipeline.enrichment.ndvi._cog_band_read",
+                side_effect=[
+                    (np.ones((4, 4), dtype=np.uint16) * 1000, reference_profile),
+                    (np.ones((4, 4), dtype=np.uint16) * 2000, reference_profile),
+                    (np.ones((4, 4), dtype=np.uint16) * 1000, reference_profile),
+                    (np.zeros((2, 2), dtype=np.uint16), qa_profile),
+                    (np.ones((4, 4), dtype=np.uint16) * 1000, reference_profile),
+                ],
+            ) as read,
         ):
             result = _find_best_landsat_scene([0, 0, 1, 1], "2015-01-01", "2015-12-31", geometry=geometry)
 
-        assert result["scene_id"] == "complete"
+        assert result is not None
+        assert [call.args[0] for call in read.call_args_list].count("red") == 1
 
     def test_bounds_asset_coverage_checks_when_no_candidate_covers_geometry(self):
         from treesight.constants import MAX_NDVI_SCENE_CANDIDATES
@@ -316,6 +457,15 @@ class TestFindBestLandsatScene:
         catalog.search.return_value = search
         geometry = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}
         coverage = MagicMock(return_value=False)
+        from rasterio.transform import from_bounds
+
+        profile = {
+            "driver": "GTiff",
+            "crs": "EPSG:4326",
+            "transform": from_bounds(0, 0, 100, 100, 4, 4),
+            "_source_bounds": (0, 0, 100, 100),
+            "_source_valid_mask": np.ones((4, 4), dtype=bool),
+        }
 
         with (
             patch.dict(
@@ -326,11 +476,16 @@ class TestFindBestLandsatScene:
                 },
             ),
             patch("treesight.pipeline.enrichment.ndvi._cog_asset_covers_geometry", coverage),
+            patch(
+                "treesight.pipeline.enrichment.ndvi._cog_band_read",
+                return_value=(np.ones((4, 4), dtype=np.uint16), profile),
+            ) as read,
         ):
             result = _find_best_landsat_scene([0, 0, 1, 1], "2015-01-01", "2015-12-31", geometry=geometry)
 
         assert result is None
         assert coverage.call_count == MAX_NDVI_SCENE_CANDIDATES
+        assert read.call_count == MAX_NDVI_SCENE_CANDIDATES
 
 
 # ---------------------------------------------------------------------------

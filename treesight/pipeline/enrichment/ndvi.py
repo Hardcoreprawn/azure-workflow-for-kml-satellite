@@ -59,9 +59,8 @@ def _find_best_s2_scene(
 ) -> dict[str, Any] | None:
     """Search ordered Sentinel-2 candidates for one covering the full AOI.
 
-    Returns a dict with ``{"B04": url, "B08": url, "scene_id": ..., ...}``
-    plus an optional ``"SCL"`` key when the Scene Classification Layer is
-    available, or None if nothing suitable was found.
+    Returns a dict with ``{"B04": url, "B08": url, "SCL": url, "scene_id": ...}``
+    or None if no candidate has all required assets and complete pixel coverage.
     """
     import planetary_computer
     from pystac_client import Client
@@ -82,16 +81,28 @@ def _find_best_s2_scene(
         if not b04 or not b08 or not scl:
             continue
         if geometry is not None:
-            asset_hrefs = [
-                (b04.href, "reflectance", None),
-                (b08.href, "reflectance", b04.href),
-                (scl.href, "scl", b04.href),
-            ]
             try:
-                if not all(
-                    _cog_asset_covers_geometry(href, geometry, asset_kind=asset_kind, reference_url=reference_url)
-                    for href, asset_kind, reference_url in asset_hrefs
-                ):
+                reference_data, reference_profile = _cog_band_read(b04.href, bbox)
+                reference_is_complete = _cog_asset_covers_geometry(
+                    b04.href,
+                    geometry,
+                    asset_kind="reflectance",
+                    asset_data=reference_data,
+                    asset_profile=reference_profile,
+                )
+                if not reference_is_complete:
+                    continue
+                other_assets_are_complete = all(
+                    _cog_asset_covers_geometry(
+                        href,
+                        geometry,
+                        asset_kind=asset_kind,
+                        reference_profile=reference_profile,
+                        reference_shape=reference_data.shape,
+                    )
+                    for href, asset_kind in ((b08.href, "reflectance"), (scl.href, "scl"))
+                )
+                if not other_assets_are_complete:
                     continue
             except Exception:
                 logger.warning("Could not verify full AOI coverage for S2 item %s", item.id, exc_info=True)
@@ -450,16 +461,28 @@ def _find_best_landsat_scene(
         if not red or not nir or not qa:
             continue
         if geometry is not None:
-            asset_hrefs = [
-                (red.href, "reflectance", None),
-                (nir.href, "reflectance", red.href),
-                (qa.href, "landsat_qa", red.href),
-            ]
             try:
-                if not all(
-                    _cog_asset_covers_geometry(href, geometry, asset_kind=asset_kind, reference_url=reference_url)
-                    for href, asset_kind, reference_url in asset_hrefs
-                ):
+                reference_data, reference_profile = _cog_band_read(red.href, bbox)
+                reference_is_complete = _cog_asset_covers_geometry(
+                    red.href,
+                    geometry,
+                    asset_kind="reflectance",
+                    asset_data=reference_data,
+                    asset_profile=reference_profile,
+                )
+                if not reference_is_complete:
+                    continue
+                other_assets_are_complete = all(
+                    _cog_asset_covers_geometry(
+                        href,
+                        geometry,
+                        asset_kind=asset_kind,
+                        reference_profile=reference_profile,
+                        reference_shape=reference_data.shape,
+                    )
+                    for href, asset_kind in ((nir.href, "reflectance"), (qa.href, "landsat_qa"))
+                )
+                if not other_assets_are_complete:
                     continue
             except Exception:
                 logger.warning("Could not verify full AOI coverage for Landsat item %s", item.id, exc_info=True)
@@ -773,20 +796,34 @@ def _cog_asset_covers_geometry(
     geometry: dict[str, Any],
     *,
     asset_kind: str,
-    reference_url: str | None = None,
+    asset_data: Any | None = None,
+    asset_profile: dict[str, Any] | None = None,
+    reference_profile: dict[str, Any] | None = None,
+    reference_shape: tuple[int, int] | None = None,
 ) -> bool:
     import numpy as np
     from shapely.geometry import shape
 
-    geometry_bounds = list(shape(geometry).bounds)
-    data, source_profile = _cog_band_read(url, geometry_bounds)
+    if (asset_data is None) != (asset_profile is None):
+        raise ValueError("Raster data and profile must be supplied together")
+    if asset_data is None:
+        geometry_bounds = list(shape(geometry).bounds)
+        asset_data, asset_profile = _cog_band_read(url, geometry_bounds)
+    if asset_data is None or asset_profile is None:
+        raise ValueError("Raster data and profile are unavailable")
+
+    source_profile = asset_profile
+    data = asset_data
     if not _raster_covers_geometry(geometry, source_profile):
         return False
 
-    target_data = data
     target_profile = source_profile
-    if reference_url is not None:
-        target_data, target_profile = _cog_band_read(reference_url, geometry_bounds)
+    target_shape = data.shape
+    if reference_profile is not None:
+        if reference_shape is None:
+            raise ValueError("Reference raster shape is unavailable")
+        target_profile = reference_profile
+        target_shape = reference_shape
         if not _raster_covers_geometry(geometry, target_profile):
             return False
 
@@ -800,16 +837,16 @@ def _cog_asset_covers_geometry(
     else:
         raise ValueError(f"Unsupported raster asset kind: {asset_kind}")
 
-    if reference_url is not None:
+    if reference_profile is not None:
         source_coverage = _reproject_to_grid(
             source_coverage.astype(np.uint8),
             {**source_profile, "nodata": None},
             target_profile,
-            target_data.shape,
+            target_shape,
             categorical=True,
         ).astype(bool)
 
-    plot_mask = _raster_geometry_mask(geometry, target_profile, target_data.shape)
+    plot_mask = _raster_geometry_mask(geometry, target_profile, target_shape)
     return bool(np.all(source_coverage[plot_mask]))
 
 

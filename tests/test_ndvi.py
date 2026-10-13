@@ -209,9 +209,13 @@ def _test_geometry() -> dict[str, Any]:
 
 class TestFindBestS2Scene:
     def test_checks_next_candidate_until_complete_geometry_coverage(self):
+        import numpy as np
+        from pyproj import Transformer
+
         from treesight.pipeline.enrichment.ndvi import _find_best_s2_scene
 
-        geometry = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}
+        assert Transformer.from_crs("EPSG:4326", "EPSG:4326", always_xy=True).transform(0, 0) == (0, 0)
+        geometry = {"type": "Polygon", "coordinates": [[[0, 0], [50, 0], [50, 50], [0, 50], [0, 0]]]}
         first = MagicMock(
             id="partial",
             assets={
@@ -234,6 +238,9 @@ class TestFindBestS2Scene:
         search.items.return_value = [first, second]
         catalog = MagicMock()
         catalog.search.return_value = search
+        profile = {**_band_profile(4, 4), "_source_valid_mask": np.ones((4, 4), dtype=bool)}
+        partial_red = np.full((4, 4), 1000, dtype=np.uint16)
+        partial_red[2, 1] = 0
         with (
             patch.dict(
                 "sys.modules",
@@ -243,15 +250,143 @@ class TestFindBestS2Scene:
                 },
             ),
             patch(
-                "treesight.pipeline.enrichment.ndvi._cog_asset_covers_geometry",
-                side_effect=[False, True, True, True],
+                "treesight.pipeline.enrichment.ndvi._cog_band_read",
+                side_effect=[
+                    (partial_red, profile),
+                    (np.full((4, 4), 1000, dtype=np.uint16), profile),
+                    (np.full((4, 4), 3000, dtype=np.uint16), profile),
+                    (
+                        np.full((2, 2), 4, dtype=np.uint8),
+                        {**_band_profile(2, 2), "_source_valid_mask": np.ones((2, 2), dtype=bool)},
+                    ),
+                ],
             ),
         ):
-            result = _find_best_s2_scene([0, 0, 1, 1], "2024-01-01", "2024-12-31", geometry=geometry)
+            result = _find_best_s2_scene([0, 0, 50, 50], "2024-01-01", "2024-12-31", geometry=geometry)
 
         assert result["scene_id"] == "complete"
 
+    def test_checks_next_candidate_after_scl_fill_in_complete_red_grid(self):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import _find_best_s2_scene
+
+        candidates = [
+            MagicMock(
+                id=scene_id,
+                assets={
+                    "B04": MagicMock(href=f"{scene_id}-red"),
+                    "B08": MagicMock(href=f"{scene_id}-nir"),
+                    "SCL": MagicMock(href=f"{scene_id}-scl"),
+                },
+                properties={"eo:cloud_cover": cloud, "datetime": "2024-01-01", "proj:epsg": 32632},
+            )
+            for scene_id, cloud in (("partial-scl", 1.0), ("complete", 10.0))
+        ]
+        search = MagicMock()
+        search.items.return_value = candidates
+        catalog = MagicMock()
+        catalog.search.return_value = search
+        profile = {**_band_profile(4, 4), "_source_valid_mask": np.ones((4, 4), dtype=bool)}
+        scl_profile = {**_band_profile(2, 2), "_source_valid_mask": np.ones((2, 2), dtype=bool)}
+        partial_scl = np.full((2, 2), 4, dtype=np.uint8)
+        partial_scl[0, 0] = 0
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "planetary_computer": MagicMock(),
+                    "pystac_client": MagicMock(Client=MagicMock(open=MagicMock(return_value=catalog))),
+                },
+            ),
+            patch(
+                "treesight.pipeline.enrichment.ndvi._cog_band_read",
+                side_effect=[
+                    (np.full((4, 4), 1000, dtype=np.uint16), profile),
+                    (np.full((4, 4), 3000, dtype=np.uint16), profile),
+                    (partial_scl, scl_profile),
+                    (np.full((4, 4), 1000, dtype=np.uint16), profile),
+                    (np.full((4, 4), 3000, dtype=np.uint16), profile),
+                    (np.full((2, 2), 4, dtype=np.uint8), scl_profile),
+                ],
+            ),
+        ):
+            result = _find_best_s2_scene([0, 0, 100, 100], "2024-01-01", "2024-12-31", geometry=_test_geometry())
+
+        assert result is not None
+        assert result["scene_id"] == "complete"
+
+    def test_reads_reference_cog_once_per_candidate(self):
+        import numpy as np
+        from pyproj import Transformer
+
+        from treesight.pipeline.enrichment.ndvi import _find_best_s2_scene
+
+        assert Transformer.from_crs("EPSG:4326", "EPSG:4326", always_xy=True).transform(0, 0) == (0, 0)
+        geometry = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}
+        item = MagicMock(
+            id="complete",
+            assets={
+                "B04": MagicMock(href="red"),
+                "B08": MagicMock(href="nir"),
+                "SCL": MagicMock(href="scl"),
+            },
+            properties={"eo:cloud_cover": 5.0, "datetime": "2024-01-01", "proj:epsg": 32632},
+        )
+        search = MagicMock()
+        search.items.return_value = [item]
+        catalog = MagicMock()
+        catalog.search.return_value = search
+        reference_profile = {**_band_profile(4, 4), "_source_valid_mask": np.ones((4, 4), dtype=bool)}
+        scl_profile = {**_band_profile(2, 2), "_source_valid_mask": np.ones((2, 2), dtype=bool)}
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "planetary_computer": MagicMock(),
+                    "pystac_client": MagicMock(Client=MagicMock(open=MagicMock(return_value=catalog))),
+                },
+            ),
+            patch(
+                "treesight.pipeline.enrichment.ndvi._cog_band_read",
+                side_effect=[
+                    (np.full((4, 4), 1000, dtype=np.uint16), reference_profile),
+                    (np.full((4, 4), 3000, dtype=np.uint16), reference_profile),
+                    (np.full((2, 2), 4, dtype=np.uint8), scl_profile),
+                ],
+            ) as read,
+        ):
+            result = _find_best_s2_scene([0, 0, 1, 1], "2024-01-01", "2024-12-31", geometry=geometry)
+
+        assert result is not None
+        assert [call.args[0] for call in read.call_args_list].count("red") == 1
+
+    def test_scl_remains_required_for_candidate_evidence(self):
+        from treesight.pipeline.enrichment.ndvi import _find_best_s2_scene
+
+        item = MagicMock(
+            id="without-scl",
+            assets={"B04": MagicMock(href="red"), "B08": MagicMock(href="nir")},
+            properties={"eo:cloud_cover": 5.0, "datetime": "2024-01-01", "proj:epsg": 32632},
+        )
+        search = MagicMock()
+        search.items.return_value = [item]
+        catalog = MagicMock()
+        catalog.search.return_value = search
+        with patch.dict(
+            "sys.modules",
+            {
+                "planetary_computer": MagicMock(),
+                "pystac_client": MagicMock(Client=MagicMock(open=MagicMock(return_value=catalog))),
+            },
+        ):
+            result = _find_best_s2_scene([0, 0, 1, 1], "2024-01-01", "2024-12-31")
+
+        assert result is None
+
     def test_bounds_asset_coverage_checks_when_no_candidate_covers_geometry(self):
+        import numpy as np
+
         from treesight.constants import MAX_NDVI_SCENE_CANDIDATES
         from treesight.pipeline.enrichment.ndvi import _find_best_s2_scene
 
@@ -273,6 +408,7 @@ class TestFindBestS2Scene:
         catalog.search.return_value = search
         geometry = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}
         coverage = MagicMock(return_value=False)
+        reference_profile = _band_profile(4, 4)
 
         with (
             patch.dict(
@@ -283,11 +419,16 @@ class TestFindBestS2Scene:
                 },
             ),
             patch("treesight.pipeline.enrichment.ndvi._cog_asset_covers_geometry", coverage),
+            patch(
+                "treesight.pipeline.enrichment.ndvi._cog_band_read",
+                return_value=(np.ones((4, 4), dtype=np.uint16), reference_profile),
+            ) as read,
         ):
             result = _find_best_s2_scene([0, 0, 1, 1], "2024-01-01", "2024-12-31", geometry=geometry)
 
         assert result is None
         assert coverage.call_count == MAX_NDVI_SCENE_CANDIDATES
+        assert read.call_count == MAX_NDVI_SCENE_CANDIDATES
 
 
 class TestComputeNdvi:
@@ -1470,13 +1611,14 @@ def test_coarse_mask_coverage_uses_analysis_grid(mock_read, asset_kind, fill_val
         "_source_valid_mask": np.ones((4, 4), dtype=bool),
         "nodata": None,
     }
-    mock_read.side_effect = [(coarse_data, coarse_profile), (np.ones((4, 4), dtype=np.uint16), analysis_profile)]
+    mock_read.return_value = coarse_data, coarse_profile
 
     covered = _cog_asset_covers_geometry(
         "coarse-mask",
         geometry,
         asset_kind=asset_kind,
-        reference_url="analysis-grid",
+        reference_profile=analysis_profile,
+        reference_shape=(4, 4),
     )
 
     assert covered is False
