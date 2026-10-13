@@ -19,13 +19,14 @@ import logging
 import math
 import struct
 import zlib
-from itertools import pairwise
+from itertools import islice, pairwise
 from typing import Any, cast
 
 import httpx
 
 from treesight.constants import (
     DEFAULT_HTTP_TIMEOUT_SECONDS,
+    MAX_NDVI_SCENE_CANDIDATES,
     MAX_RASTER_GEOMETRY_DENSIFICATION_DEPTH,
     MIN_VALID_NDVI_COVERAGE_FRACTION,
     MIN_VALID_NDVI_PIXELS,
@@ -74,7 +75,7 @@ def _find_best_s2_scene(
         sortby=[{"field": "eo:cloud_cover", "direction": "asc"}],
     )
 
-    for item in search.items():
+    for item in islice(search.items(), MAX_NDVI_SCENE_CANDIDATES):
         b04 = item.assets.get("B04")
         b08 = item.assets.get("B08")
         scl = item.assets.get("SCL")
@@ -426,7 +427,7 @@ def _find_best_landsat_scene(
         sortby=[{"field": "eo:cloud_cover", "direction": "asc"}],
     )
 
-    for item in search.items():
+    for item in islice(search.items(), MAX_NDVI_SCENE_CANDIDATES):
         red = item.assets.get("red")
         nir = item.assets.get("nir08")
         qa = item.assets.get("qa_pixel")

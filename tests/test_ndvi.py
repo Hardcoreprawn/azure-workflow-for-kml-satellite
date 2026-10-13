@@ -249,6 +249,44 @@ class TestFindBestS2Scene:
 
         assert result["scene_id"] == "complete"
 
+    def test_bounds_asset_coverage_checks_when_no_candidate_covers_geometry(self):
+        from treesight.constants import MAX_NDVI_SCENE_CANDIDATES
+        from treesight.pipeline.enrichment.ndvi import _find_best_s2_scene
+
+        candidates = [
+            MagicMock(
+                id=f"partial-{index}",
+                assets={
+                    "B04": MagicMock(href=f"red-{index}"),
+                    "B08": MagicMock(href=f"nir-{index}"),
+                    "SCL": MagicMock(href=f"scl-{index}"),
+                },
+                properties={"eo:cloud_cover": 1.0, "datetime": "2024-01-01", "proj:epsg": 32632},
+            )
+            for index in range(MAX_NDVI_SCENE_CANDIDATES + 5)
+        ]
+        search = MagicMock()
+        search.items.return_value = candidates
+        catalog = MagicMock()
+        catalog.search.return_value = search
+        geometry = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}
+        coverage = MagicMock(return_value=False)
+
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "planetary_computer": MagicMock(),
+                    "pystac_client": MagicMock(Client=MagicMock(open=MagicMock(return_value=catalog))),
+                },
+            ),
+            patch("treesight.pipeline.enrichment.ndvi._cog_asset_covers_geometry", coverage),
+        ):
+            result = _find_best_s2_scene([0, 0, 1, 1], "2024-01-01", "2024-12-31", geometry=geometry)
+
+        assert result is None
+        assert coverage.call_count == MAX_NDVI_SCENE_CANDIDATES
+
 
 class TestComputeNdvi:
     @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene", return_value=None)

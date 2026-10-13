@@ -507,12 +507,23 @@ def _enrichment_finalize_summary(manifest: dict[str, Any]) -> dict[str, Any]:
         "flood_events",
         "fire_hotspots",
     )
+    per_aoi_enrichment = manifest.get("per_aoi_enrichment", [])
     for key in telemetry_keys:
         value = manifest.get(key)
-        has_data = any(value) if isinstance(value, list) else bool(value)
+        has_data = _has_enrichment_data(value)
+        if not has_data and isinstance(per_aoi_enrichment, list):
+            has_data = any(
+                isinstance(entry, dict) and _has_enrichment_data(entry.get(key)) for entry in per_aoi_enrichment
+            )
         if has_data:
             summary[key] = True
     return summary
+
+
+def _has_enrichment_data(value: Any) -> bool:
+    if isinstance(value, list):
+        return any(bool(item) for item in value)
+    return bool(value)
 
 
 # ---------------------------------------------------------------------------

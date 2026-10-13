@@ -133,6 +133,16 @@ def test_owning_docs_describe_authoritative_history() -> None:
     assert "revocation" in architecture
 
 
+def test_ndvi_methodology_documents_count_and_coverage_gates() -> None:
+    aoi_contract = (ROOT / "docs/ENRICHMENT_AOI_MODEL.md").read_text()
+    website_methodology = (ROOT / "website/docs/eudr-methodology.html").read_text()
+
+    for document in (aoi_contract, website_methodology):
+        assert "four valid in-plot" in document.lower()
+        assert "50%" in document
+        assert "contiguous" in document.lower()
+
+
 def test_openapi_binds_history_and_reviews_to_originating_org() -> None:
     spec = yaml.safe_load(OPENAPI.read_text())
     history = spec["paths"]["/analysis/history"]["get"]

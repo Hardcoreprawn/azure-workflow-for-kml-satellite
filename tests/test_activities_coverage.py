@@ -893,6 +893,25 @@ class TestEnrichSingleAoi:
 
 
 class TestEnrichFinalize:
+    def test_compact_summary_reports_per_aoi_ndvi_and_change_evidence(self):
+        from blueprints.pipeline.activities import _enrichment_finalize_summary
+
+        summary = _enrichment_finalize_summary(
+            {
+                "per_aoi_enrichment": [
+                    {
+                        "ndvi_stats": [{"mean": 0.5}],
+                        "ndvi_raster_paths": ["ndvi/aoi-0.tif"],
+                        "change_detection": {"season_changes": [{"mean_delta": 0.1}]},
+                    }
+                ]
+            }
+        )
+
+        assert summary["ndvi_stats"] is True
+        assert summary["ndvi_raster_paths"] is True
+        assert summary["change_detection"] is True
+
     def test_rejects_inline_substep_results(self):
         from blueprints.pipeline._payloads import _load_enrichment_activity_result
 
