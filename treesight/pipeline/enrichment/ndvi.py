@@ -82,10 +82,16 @@ def _find_best_s2_scene(
         if not b04 or not b08 or not scl:
             continue
         if geometry is not None:
-            asset_hrefs = [b04.href, b08.href]
-            asset_hrefs.append(scl.href)
+            asset_hrefs = [
+                (b04.href, "reflectance", None),
+                (b08.href, "reflectance", b04.href),
+                (scl.href, "scl", b04.href),
+            ]
             try:
-                if not all(_cog_asset_covers_geometry(href, geometry) for href in asset_hrefs):
+                if not all(
+                    _cog_asset_covers_geometry(href, geometry, asset_kind=asset_kind, reference_url=reference_url)
+                    for href, asset_kind, reference_url in asset_hrefs
+                ):
                     continue
             except Exception:
                 logger.warning("Could not verify full AOI coverage for S2 item %s", item.id, exc_info=True)
@@ -444,10 +450,16 @@ def _find_best_landsat_scene(
         if not red or not nir or not qa:
             continue
         if geometry is not None:
-            asset_hrefs = [red.href, nir.href]
-            asset_hrefs.append(qa.href)
+            asset_hrefs = [
+                (red.href, "reflectance", None),
+                (nir.href, "reflectance", red.href),
+                (qa.href, "landsat_qa", red.href),
+            ]
             try:
-                if not all(_cog_asset_covers_geometry(href, geometry) for href in asset_hrefs):
+                if not all(
+                    _cog_asset_covers_geometry(href, geometry, asset_kind=asset_kind, reference_url=reference_url)
+                    for href, asset_kind, reference_url in asset_hrefs
+                ):
                     continue
             except Exception:
                 logger.warning("Could not verify full AOI coverage for Landsat item %s", item.id, exc_info=True)
@@ -756,16 +768,49 @@ def _raster_covers_geometry(geometry: dict[str, Any], profile: dict[str, Any]) -
     return coverage_bounds.covers(projected)
 
 
-def _cog_asset_covers_geometry(url: str, geometry: dict[str, Any]) -> bool:
-    import rasterio
+def _cog_asset_covers_geometry(
+    url: str,
+    geometry: dict[str, Any],
+    *,
+    asset_kind: str,
+    reference_url: str | None = None,
+) -> bool:
+    import numpy as np
+    from shapely.geometry import shape
 
-    with rasterio.open(url) as source:
-        profile = {
-            "crs": source.crs,
-            "transform": source.transform,
-            "_source_bounds": tuple(source.bounds),
-        }
-    return _raster_covers_geometry(geometry, profile)
+    geometry_bounds = list(shape(geometry).bounds)
+    data, source_profile = _cog_band_read(url, geometry_bounds)
+    if not _raster_covers_geometry(geometry, source_profile):
+        return False
+
+    target_data = data
+    target_profile = source_profile
+    if reference_url is not None:
+        target_data, target_profile = _cog_band_read(reference_url, geometry_bounds)
+        if not _raster_covers_geometry(geometry, target_profile):
+            return False
+
+    source_coverage = source_profile["_source_valid_mask"].copy()
+    if asset_kind == "reflectance":
+        source_coverage &= data > 0
+    elif asset_kind == "scl":
+        source_coverage &= data != 0
+    elif asset_kind == "landsat_qa":
+        source_coverage &= (data.astype(np.uint16) & _LANDSAT_QA_FILL_FLAG) == 0
+    else:
+        raise ValueError(f"Unsupported raster asset kind: {asset_kind}")
+
+    if reference_url is not None:
+        source_coverage = _reproject_to_grid(
+            source_coverage.astype(np.uint8),
+            {**source_profile, "nodata": None},
+            target_profile,
+            target_data.shape,
+            categorical=True,
+        ).astype(bool)
+
+    plot_mask = _raster_geometry_mask(geometry, target_profile, target_data.shape)
+    return bool(np.all(source_coverage[plot_mask]))
 
 
 def _resample_scl(

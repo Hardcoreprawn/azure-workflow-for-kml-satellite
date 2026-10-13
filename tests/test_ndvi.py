@@ -8,6 +8,8 @@ import zlib
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Helper: build a minimal valid PNG (RGBA, 4x4, filter type 0)
 # ---------------------------------------------------------------------------
@@ -1395,6 +1397,89 @@ def test_cog_band_read_preserves_nodata_coverage_mask(tmp_path):
     assert profile["_source_valid_mask"].shape == (4, 4)
     assert profile["_source_valid_mask"][1, 2] is np.False_
     assert profile["_source_valid_mask"][0, 0] is np.True_
+
+
+@pytest.mark.parametrize(
+    ("asset_kind", "covered_value", "uncovered_value"),
+    [
+        ("reflectance", 1000, 0),
+        ("scl", 4, 0),
+        ("landsat_qa", 0, 1),
+    ],
+)
+def test_cog_asset_coverage_rejects_internal_fill_pixels(tmp_path, asset_kind, covered_value, uncovered_value):
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    from treesight.pipeline.enrichment.ndvi import _cog_asset_covers_geometry
+
+    source_path = tmp_path / f"{asset_kind}-coverage.tif"
+    data = np.full((4, 4), covered_value, dtype=np.uint16)
+    data[0, 0] = uncovered_value
+    with rasterio.open(
+        source_path,
+        "w",
+        driver="GTiff",
+        width=4,
+        height=4,
+        count=1,
+        dtype="uint16",
+        crs="EPSG:4326",
+        transform=from_origin(0, 4, 1, 1),
+    ) as destination:
+        destination.write(data, 1)
+    geometry = {
+        "type": "Polygon",
+        "coordinates": [
+            [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]],
+        ],
+    }
+
+    assert not _cog_asset_covers_geometry(str(source_path), geometry, asset_kind=asset_kind)
+
+
+@pytest.mark.parametrize(("asset_kind", "fill_value"), [("scl", 0), ("landsat_qa", 1)])
+@patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+def test_coarse_mask_coverage_uses_analysis_grid(mock_read, asset_kind, fill_value):
+    import numpy as np
+    from rasterio.transform import from_bounds
+
+    from treesight.pipeline.enrichment.ndvi import _cog_asset_covers_geometry
+
+    geometry = {
+        "type": "Polygon",
+        "coordinates": [[[35, 60], [40, 60], [40, 70], [35, 70], [35, 60]]],
+    }
+    source_bounds = (0, 0, 100, 100)
+    coarse_data = np.full((2, 2), 4, dtype=np.uint16)
+    coarse_data[0, 0] = fill_value
+    coarse_profile = {
+        "driver": "GTiff",
+        "crs": "EPSG:4326",
+        "transform": from_bounds(*source_bounds, 2, 2),
+        "_source_bounds": source_bounds,
+        "_source_valid_mask": np.ones((2, 2), dtype=bool),
+        "nodata": None,
+    }
+    analysis_profile = {
+        "driver": "GTiff",
+        "crs": "EPSG:4326",
+        "transform": from_bounds(*source_bounds, 4, 4),
+        "_source_bounds": source_bounds,
+        "_source_valid_mask": np.ones((4, 4), dtype=bool),
+        "nodata": None,
+    }
+    mock_read.side_effect = [(coarse_data, coarse_profile), (np.ones((4, 4), dtype=np.uint16), analysis_profile)]
+
+    covered = _cog_asset_covers_geometry(
+        "coarse-mask",
+        geometry,
+        asset_kind=asset_kind,
+        reference_url="analysis-grid",
+    )
+
+    assert covered is False
 
 
 class TestReprojectToGrid:
