@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from treesight.analysis.trends import is_after_eudr_cutoff, is_valid_ndvi_stats
 from treesight.constants import EUDR_CUTOFF_DATE
 from treesight.exports.csv import _as_dict
 from treesight.exports.geojson import _aoi_eudr_value
 from treesight.exports.pdf import _safe_text
 from treesight.pipeline.enrichment.determination import as_screening_determination
-
-_EUDR_CUTOFF_YEAR = 2021  # Post-31 December 2020
 
 
 def _audit_cover_page(pdf: Any, manifest: dict[str, Any], instance_id: str) -> None:
@@ -378,7 +377,7 @@ def _audit_single_parcel(
     # NDVI timeseries
     ndvi_stats = aoi.get("ndvi_stats", [])
     frame_plan = aoi.get("frame_plan", [])
-    valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
+    valid = [s for s in ndvi_stats if is_valid_ndvi_stats(s)]
     if valid:
         means = [s["mean"] for s in valid]
         pdf.cell(
@@ -415,7 +414,7 @@ def _audit_single_parcel(
     # Data provenance (scene IDs)
     scenes = []
     for i, stat in enumerate(ndvi_stats):
-        if stat and stat.get("scene_id"):
+        if is_valid_ndvi_stats(stat) and stat.get("scene_id"):
             label = frame_plan[i].get("label", f"Frame {i}") if i < len(frame_plan) else ""
             scenes.append(f"{label}: {stat['scene_id']}")
     if scenes:
@@ -477,12 +476,13 @@ def _audit_appendix(
     frame_plan = manifest.get("frame_plan", [])
     ndvi_stats = manifest.get("ndvi_stats", [])
 
-    # Filter to post-2020 only
+    # Filter to observations after the cutoff by start date or fallback year.
     filtered: list[tuple[dict, dict | None]] = []
     for i, frame in enumerate(frame_plan):
-        year = frame.get("year", 0)
-        if year >= _EUDR_CUTOFF_YEAR:
+        if is_after_eudr_cutoff(frame.get("start"), frame.get("year")):
             ndvi = ndvi_stats[i] if i < len(ndvi_stats) else None
+            if not is_valid_ndvi_stats(ndvi):
+                ndvi = None
             filtered.append((frame, ndvi))
 
     if not filtered:

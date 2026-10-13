@@ -19,13 +19,17 @@ import logging
 import math
 import struct
 import zlib
+from itertools import pairwise
 from typing import Any, cast
 
 import httpx
 
 from treesight.constants import (
     DEFAULT_HTTP_TIMEOUT_SECONDS,
+    MAX_RASTER_GEOMETRY_DENSIFICATION_DEPTH,
+    MIN_VALID_NDVI_COVERAGE_FRACTION,
     MIN_VALID_NDVI_PIXELS,
+    RASTER_GEOMETRY_DENSIFICATION_TOLERANCE_PIXELS,
 )
 from treesight.geo import transform_bbox
 from treesight.log import log_phase
@@ -74,12 +78,11 @@ def _find_best_s2_scene(
         b04 = item.assets.get("B04")
         b08 = item.assets.get("B08")
         scl = item.assets.get("SCL")
-        if not b04 or not b08:
+        if not b04 or not b08 or not scl:
             continue
         if geometry is not None:
             asset_hrefs = [b04.href, b08.href]
-            if scl:
-                asset_hrefs.append(scl.href)
+            asset_hrefs.append(scl.href)
             try:
                 if not all(_cog_asset_covers_geometry(href, geometry) for href in asset_hrefs):
                     continue
@@ -95,8 +98,7 @@ def _find_best_s2_scene(
             "datetime": item.properties.get("datetime", ""),
             "crs": f"EPSG:{item.properties.get('proj:epsg', 32632)}",
         }
-        if scl:
-            result["SCL"] = scl.href
+        result["SCL"] = scl.href
         return result
     return None
 
@@ -118,20 +120,15 @@ def _raster_geometry_mask(
     profile: dict[str, Any],
     shape: tuple[int, int],
 ) -> Any:
-    """Rasterize EPSG:4326 plot geometry on a band's native pixel grid."""
-    from pyproj import Transformer
+    """Rasterize densified EPSG:4326 plot geometry on a band's native grid."""
     from rasterio.features import geometry_mask
-    from shapely.geometry import mapping
-    from shapely.geometry import shape as shape_geometry
-    from shapely.ops import transform as transform_geometry
 
     raster_crs = profile.get("crs")
     transform = profile.get("transform")
     if raster_crs is None or transform is None:
         raise ValueError("Raster profile is missing CRS or transform")
 
-    transformer = Transformer.from_crs("EPSG:4326", raster_crs, always_xy=True)
-    raster_geometry = mapping(transform_geometry(transformer.transform, shape_geometry(geometry)))
+    raster_geometry = _project_geometry_to_raster_crs(geometry, profile)
     return geometry_mask(
         [raster_geometry],
         out_shape=shape,
@@ -139,6 +136,77 @@ def _raster_geometry_mask(
         all_touched=False,
         invert=True,
     )
+
+
+def _project_geometry_to_raster_crs(geometry: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+    from pyproj import Transformer
+
+    raster_crs = profile.get("crs")
+    transform = profile.get("transform")
+    if raster_crs is None or transform is None:
+        raise ValueError("Raster profile is missing CRS or transform")
+
+    pixel_width = math.hypot(transform.a, transform.d)
+    pixel_height = math.hypot(transform.b, transform.e)
+    if min(pixel_width, pixel_height) <= 0:
+        raise ValueError("Raster profile has invalid pixel size")
+    tolerance = min(pixel_width, pixel_height) * RASTER_GEOMETRY_DENSIFICATION_TOLERANCE_PIXELS
+    transformer = Transformer.from_crs("EPSG:4326", raster_crs, always_xy=True)
+
+    geometry_type = geometry.get("type")
+    coordinates = geometry.get("coordinates")
+    if not isinstance(coordinates, (list, tuple)):
+        raise ValueError("Raster geometry is missing coordinates")
+    if geometry_type == "Polygon":
+        projected_coordinates = [_densified_project_ring(ring, transformer, tolerance) for ring in coordinates]
+    elif geometry_type == "MultiPolygon":
+        projected_coordinates = [
+            [_densified_project_ring(ring, transformer, tolerance) for ring in polygon] for polygon in coordinates
+        ]
+    else:
+        raise ValueError(f"Unsupported raster geometry type: {geometry_type}")
+    return {"type": geometry_type, "coordinates": projected_coordinates}
+
+
+def _densified_project_ring(
+    coordinates: list[list[float]],
+    transformer: Any,
+    tolerance: float,
+) -> list[tuple[float, float]]:
+    if len(coordinates) < 2:
+        return [transformer.transform(*point) for point in coordinates]
+
+    projected_ring = [transformer.transform(*coordinates[0])]
+    for left, right in pairwise(coordinates):
+        left_xy = transformer.transform(*left)
+        right_xy = transformer.transform(*right)
+        pending = [(left, right, left_xy, right_xy, 0)]
+        while pending:
+            segment_left, segment_right, left_projected, right_projected, depth = pending.pop()
+            fractions = (0.25, 0.5, 0.75)
+            sample_errors = []
+            for fraction in fractions:
+                source_sample = [
+                    segment_left[axis] + (segment_right[axis] - segment_left[axis]) * fraction for axis in (0, 1)
+                ]
+                projected_sample = transformer.transform(*source_sample)
+                chord_sample = tuple(
+                    left_projected[axis] + (right_projected[axis] - left_projected[axis]) * fraction for axis in (0, 1)
+                )
+                sample_errors.append(math.dist(projected_sample, chord_sample))
+
+            if max(sample_errors) <= tolerance:
+                projected_ring.append(right_projected)
+                continue
+            if depth >= MAX_RASTER_GEOMETRY_DENSIFICATION_DEPTH:
+                raise ValueError("Projected geometry edge did not meet pixel tolerance")
+
+            midpoint = [(segment_left[axis] + segment_right[axis]) / 2 for axis in (0, 1)]
+            midpoint_projected = transformer.transform(*midpoint)
+            pending.append((midpoint, segment_right, midpoint_projected, right_projected, depth + 1))
+            pending.append((segment_left, midpoint, left_projected, midpoint_projected, depth + 1))
+
+    return projected_ring
 
 
 def compute_ndvi(
@@ -203,39 +271,24 @@ def compute_ndvi(
             log_phase("ndvi", "source_scene_does_not_cover_geometry", scene_id=scene["scene_id"])
             return None
 
-        # Ensure same shape (B04 is 10m, B08 is 10m for S2 L2A — should match)
-        if b04_data.shape != b08_data.shape:
-            # Resample to smaller extent
-            min_h = min(b04_data.shape[0], b08_data.shape[0])
-            min_w = min(b04_data.shape[1], b08_data.shape[1])
-            b04_data = b04_data[:min_h, :min_w]
-            b08_data = b08_data[:min_h, :min_w]
+        b08_data = _reproject_to_grid(b08_data, b08_profile, b04_profile, b04_data.shape, categorical=False)
 
         # Read SCL band for pixel-level cloud masking (20 m → resample to 10 m)
         scl_mask = None
         scl_masked_count = 0
-        if scene.get("SCL"):
-            try:
-                scl_data, scl_profile = _cog_band_read(scene["SCL"], bbox)
-                if not _raster_covers_geometry(geometry, scl_profile):
-                    log_phase("ndvi", "scl_scene_does_not_cover_geometry", scene_id=scene["scene_id"])
-                    return None
-                # Resample SCL (20m) to match B04/B08 (10m) via nearest-neighbour
-                if _rs is not None:
-                    scl_mask = _rs.resample_nearest(
-                        scl_data.astype(np.uint8),
-                        b04_data.shape[0],
-                        b04_data.shape[1],
-                    )
-                else:
-                    scl_mask = _resample_scl(scl_data, b04_data.shape)
-                log_phase("ndvi", "scl_loaded", scene_id=scene["scene_id"])
-            except Exception as scl_exc:
-                logger.warning(
-                    "SCL read failed for %s, falling back to no pixel mask: %s",
-                    scene["scene_id"],
-                    scl_exc,
-                )
+        if not scene.get("SCL"):
+            log_phase("ndvi", "scl_unavailable", scene_id=scene["scene_id"])
+            return None
+        try:
+            scl_data, scl_profile = _cog_band_read(scene["SCL"], bbox)
+            if not _raster_covers_geometry(geometry, scl_profile):
+                log_phase("ndvi", "scl_scene_does_not_cover_geometry", scene_id=scene["scene_id"])
+                return None
+            scl_mask = _reproject_to_grid(scl_data, scl_profile, b04_profile, b04_data.shape, categorical=True)
+            log_phase("ndvi", "scl_loaded", scene_id=scene["scene_id"])
+        except Exception as scl_exc:
+            logger.warning("SCL read failed for %s: %s", scene["scene_id"], scl_exc)
+            return None
 
         # Convert to float for band math
         red = b04_data.astype(np.float32)
@@ -272,14 +325,19 @@ def compute_ndvi(
         valid_mask = valid_mask & plot_mask
 
         valid_pixels = ndvi[valid_mask]
+        total_pixels = int(np.count_nonzero(plot_mask))
+        valid_coverage = len(valid_pixels) / total_pixels if total_pixels else 0.0
 
-        if len(valid_pixels) < MIN_VALID_NDVI_PIXELS:
+        if len(valid_pixels) < MIN_VALID_NDVI_PIXELS or valid_coverage < MIN_VALID_NDVI_COVERAGE_FRACTION:
             log_phase(
                 "ndvi",
                 "insufficient_in_plot_pixels",
                 scene_id=scene["scene_id"],
                 valid_pixels=len(valid_pixels),
+                total_pixels=total_pixels,
+                valid_coverage=valid_coverage,
                 minimum_valid_pixels=MIN_VALID_NDVI_PIXELS,
+                minimum_valid_coverage=MIN_VALID_NDVI_COVERAGE_FRACTION,
             )
             return None
 
@@ -290,7 +348,7 @@ def compute_ndvi(
             "std": round(float(np.std(valid_pixels)), 4),
             "median": round(float(np.median(valid_pixels)), 4),
             "valid_pixels": len(valid_pixels),
-            "total_pixels": int(np.count_nonzero(plot_mask)),
+            "total_pixels": total_pixels,
             "scl_masked_pixels": scl_masked_count,
             "scl_applied": scl_mask is not None,
             "geometry_mask_applied": True,
@@ -339,9 +397,12 @@ def compute_ndvi(
 
 # ── Landsat NDVI for historical baseline (#609) ──────────────
 
-# Landsat QA_PIXEL bit flags (Collection 2 Level 2).
-# Bit 1 = dilated cloud, Bit 3 = cloud, Bit 4 = cloud shadow, Bit 5 = snow.
-_LANDSAT_QA_CLEAR_MASK = 0b00111010  # bits 1,3,4,5
+# Landsat QA_PIXEL bits to exclude (Collection 2 Level 2).
+# Bits 0-5 mark fill, dilated cloud, cirrus, cloud, shadow, and snow.
+_LANDSAT_QA_INVALID_MASK = 0b00111111
+_LANDSAT_QA_FILL_FLAG = 1 << 0
+_LANDSAT_SR_SCALE = 0.0000275
+_LANDSAT_SR_OFFSET = -0.2
 
 
 def _find_best_landsat_scene(
@@ -369,12 +430,11 @@ def _find_best_landsat_scene(
         red = item.assets.get("red")
         nir = item.assets.get("nir08")
         qa = item.assets.get("qa_pixel")
-        if not red or not nir:
+        if not red or not nir or not qa:
             continue
         if geometry is not None:
             asset_hrefs = [red.href, nir.href]
-            if qa:
-                asset_hrefs.append(qa.href)
+            asset_hrefs.append(qa.href)
             try:
                 if not all(_cog_asset_covers_geometry(href, geometry) for href in asset_hrefs):
                     continue
@@ -390,8 +450,7 @@ def _find_best_landsat_scene(
             "datetime": item.properties.get("datetime", ""),
             "crs": f"EPSG:{item.properties.get('proj:epsg', 32632)}",
         }
-        if qa:
-            result["qa_pixel"] = qa.href
+        result["qa_pixel"] = qa.href
         return result
     return None
 
@@ -441,6 +500,9 @@ def compute_landsat_ndvi(
     if not scene:
         log_phase("ndvi", "landsat_no_scene")
         return None
+    if not scene.get("qa_pixel"):
+        log_phase("ndvi", "landsat_qa_unavailable", scene_id=scene["scene_id"])
+        return None
 
     log_phase(
         "ndvi",
@@ -457,41 +519,36 @@ def compute_landsat_ndvi(
             log_phase("ndvi", "landsat_source_scene_does_not_cover_geometry", scene_id=scene["scene_id"])
             return None
 
-        # Ensure same shape (both 30m for Landsat OLI)
-        if red_data.shape != nir_data.shape:
-            min_h = min(red_data.shape[0], nir_data.shape[0])
-            min_w = min(red_data.shape[1], nir_data.shape[1])
-            red_data = red_data[:min_h, :min_w]
-            nir_data = nir_data[:min_h, :min_w]
+        nir_data = _reproject_to_grid(nir_data, nir_profile, red_profile, red_data.shape, categorical=False)
 
         # QA_PIXEL cloud masking
         qa_mask = None
         qa_masked_count = 0
-        if scene.get("qa_pixel"):
-            try:
-                qa_data, qa_profile = _cog_band_read(scene["qa_pixel"], bbox)
-                if not _raster_covers_geometry(geometry, qa_profile):
-                    log_phase("ndvi", "landsat_qa_does_not_cover_geometry", scene_id=scene["scene_id"])
-                    return None
-                # Resample if needed (QA is same resolution as bands for Landsat)
-                if qa_data.shape != red_data.shape:
-                    qa_data = _resample_scl(qa_data, red_data.shape)
-                # Clear = none of the cloud/shadow/snow bits are set
-                qa_mask = (qa_data.astype(np.uint16) & _LANDSAT_QA_CLEAR_MASK) == 0
-            except Exception:
-                logger.warning(
-                    "Landsat QA_PIXEL read failed for %s",
-                    scene["scene_id"],
-                    exc_info=True,
-                )
+        try:
+            qa_data, qa_profile = _cog_band_read(scene["qa_pixel"], bbox)
+            if not _raster_covers_geometry(geometry, qa_profile):
+                log_phase("ndvi", "landsat_qa_does_not_cover_geometry", scene_id=scene["scene_id"])
+                return None
+            qa_data = _reproject_to_grid(
+                qa_data,
+                qa_profile,
+                red_profile,
+                red_data.shape,
+                categorical=True,
+                destination_nodata=_LANDSAT_QA_FILL_FLAG,
+            )
+            qa_mask = (qa_data.astype(np.uint16) & _LANDSAT_QA_INVALID_MASK) == 0
+        except Exception:
+            logger.warning("Landsat QA_PIXEL read failed for %s", scene["scene_id"], exc_info=True)
+            return None
 
-        red = red_data.astype(np.float32)
-        nir = nir_data.astype(np.float32)
+        red = red_data.astype(np.float32) * _LANDSAT_SR_SCALE + _LANDSAT_SR_OFFSET
+        nir = nir_data.astype(np.float32) * _LANDSAT_SR_SCALE + _LANDSAT_SR_OFFSET
 
         denom = nir + red
         with np.errstate(invalid="ignore", divide="ignore"):
             ndvi = np.where(denom > 0, (nir - red) / denom, np.nan)
-        valid_mask = (red_data > 0) & (nir_data > 0) & np.isfinite(ndvi)
+        valid_mask = (red_data > 0) & (nir_data > 0) & np.isfinite(ndvi) & (ndvi >= -1.0) & (ndvi <= 1.0)
         valid_mask_before_qa = valid_mask.copy()
 
         if qa_mask is not None:
@@ -504,13 +561,18 @@ def compute_landsat_ndvi(
         valid_mask = valid_mask & plot_mask
 
         valid_pixels = ndvi[valid_mask]
-        if len(valid_pixels) < MIN_VALID_NDVI_PIXELS:
+        total_pixels = int(np.count_nonzero(plot_mask))
+        valid_coverage = len(valid_pixels) / total_pixels if total_pixels else 0.0
+        if len(valid_pixels) < MIN_VALID_NDVI_PIXELS or valid_coverage < MIN_VALID_NDVI_COVERAGE_FRACTION:
             log_phase(
                 "ndvi",
                 "landsat_insufficient_in_plot_pixels",
                 scene_id=scene["scene_id"],
                 valid_pixels=len(valid_pixels),
+                total_pixels=total_pixels,
+                valid_coverage=valid_coverage,
                 minimum_valid_pixels=MIN_VALID_NDVI_PIXELS,
+                minimum_valid_coverage=MIN_VALID_NDVI_COVERAGE_FRACTION,
             )
             return None
 
@@ -536,7 +598,7 @@ def compute_landsat_ndvi(
             "std": round(float(np.std(valid_pixels)), 4),
             "median": round(float(np.median(valid_pixels)), 4),
             "valid_pixels": len(valid_pixels),
-            "total_pixels": int(np.count_nonzero(plot_mask)),
+            "total_pixels": total_pixels,
             "qa_masked_pixels": qa_masked_count,
             "qa_applied": qa_mask is not None,
             "geometry_mask_applied": True,
@@ -595,21 +657,55 @@ def _cog_band_read(
             "driver": "GTiff",
             "crs": src.crs,
             "transform": src.window_transform(window),
+            "nodata": src.nodata,
             "_source_bounds": tuple(src.bounds),
         }
     return data, profile
 
 
+def _reproject_to_grid(
+    data: Any,
+    source_profile: dict[str, Any],
+    target_profile: dict[str, Any],
+    target_shape: tuple[int, int],
+    *,
+    categorical: bool,
+    destination_nodata: int | float = 0,
+) -> Any:
+    import numpy as np
+    from rasterio.warp import Resampling, reproject
+
+    source_crs = source_profile.get("crs")
+    source_transform = source_profile.get("transform")
+    target_crs = target_profile.get("crs")
+    target_transform = target_profile.get("transform")
+    if any(value is None for value in (source_crs, source_transform, target_crs, target_transform)):
+        raise ValueError("Raster profile is missing CRS or transform")
+
+    destination_dtype = data.dtype if categorical else np.float32
+    destination = np.full(target_shape, destination_nodata, dtype=destination_dtype)
+    resampling: Resampling = Resampling.nearest if categorical else Resampling.bilinear
+    reproject(
+        source=data,
+        destination=destination,
+        src_transform=source_transform,
+        src_crs=source_crs,
+        src_nodata=source_profile.get("nodata"),
+        dst_transform=target_transform,
+        dst_crs=target_crs,
+        dst_nodata=destination_nodata,
+        resampling=resampling,
+    )
+    return destination
+
+
 def _raster_covers_geometry(geometry: dict[str, Any], profile: dict[str, Any]) -> bool:
-    from pyproj import Transformer
     from shapely.geometry import box, shape
-    from shapely.ops import transform as transform_geometry
 
     source_bounds = profile.get("_source_bounds")
     if source_bounds is None:
         return False
-    transformer = Transformer.from_crs("EPSG:4326", str(profile["crs"]), always_xy=True)
-    projected = transform_geometry(transformer.transform, shape(geometry))
+    projected = shape(_project_geometry_to_raster_crs(geometry, profile))
     transform = profile["transform"]
     pixel_size = max(abs(transform.a), abs(transform.e))
     coverage_bounds = box(*source_bounds).buffer(pixel_size * 1e-6)

@@ -118,6 +118,37 @@ class TestCalculateTrendsNdvi:
         result = calculate_trends([{"mean": 0.5, "season": "summer", "year": 2022}], [])
         assert "ndvi_trajectory" not in result
 
+    def test_validity_predicate_rejects_oversized_integer_without_raising(self):
+        from treesight.analysis.trends import is_valid_ndvi_mean
+
+        assert not is_valid_ndvi_mean(10**10000)
+
+    def test_invalid_ndvi_means_are_excluded_from_all_trend_summaries(self):
+        series = [
+            self._entry(2020, "summer", 0.4),
+            self._entry(2021, "summer", 0.6),
+            self._entry(2022, "summer", 1.04),
+            self._entry(2023, "summer", float("nan")),
+            self._entry(2024, "summer", float("inf")),
+            self._entry(2025, "summer", 0.8),
+        ]
+        series[-1]["max"] = 1.3
+
+        result = calculate_trends(series, [])
+
+        assert result["ndvi_avg"] == pytest.approx(0.5)
+        assert result["ndvi_min_val"] == pytest.approx(0.4)
+        assert result["ndvi_max_val"] == pytest.approx(0.6)
+        assert result["ndvi_by_season"]["summer"]["avg"] == pytest.approx(0.5)
+        assert result["ndvi_by_season"]["summer"]["n_years"] == 2
+
+    def test_stats_validator_rejects_impossible_standard_deviation(self):
+        from treesight.analysis.trends import is_valid_ndvi_stats
+
+        stats = {"mean": 0.5, "min": 0.5, "max": 0.5, "median": 0.5, "std": 0.5}
+
+        assert not is_valid_ndvi_stats(stats)
+
 
 class TestCalculateTrendsWeather:
     def _w(self, month: str, temp: float, precip: float) -> dict:

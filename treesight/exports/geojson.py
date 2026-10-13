@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from treesight.analysis.trends import is_valid_ndvi_stats
 from treesight.exports.frame_row import FrameRow
 from treesight.pipeline.enrichment.determination import as_screening_determination
 
@@ -37,7 +38,7 @@ def _build_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
             "is_naip": frame.is_naip,
             "provenance": frame.provenance,
         }
-        if ndvi:
+        if is_valid_ndvi_stats(ndvi):
             props["ndvi_mean"] = ndvi.get("mean")
             props["ndvi_min"] = ndvi.get("min")
             props["ndvi_max"] = ndvi.get("max")
@@ -171,7 +172,7 @@ def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
 
         # NDVI summary
         ndvi_stats = aoi.get("ndvi_stats", [])
-        valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
+        valid = [s for s in ndvi_stats if is_valid_ndvi_stats(s)]
         if valid:
             props["ndvi_latest_mean"] = valid[-1]["mean"]
             props["ndvi_observations"] = len(valid)

@@ -161,8 +161,12 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential curl ca-certificates
           export RUSTUP_HOME=/tmp/rustup CARGO_HOME=/tmp/cargo
           export PATH="${CARGO_HOME}/bin:${PATH}"
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh
-          sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable
+          rustup_url="https://static.rust-lang.org/rustup/archive/1.29.1/x86_64-unknown-linux-gnu/rustup-init"
+          rustup_sha256="dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71"
+          curl --proto '=https' --tlsv1.2 -sSfL "${rustup_url}" -o /tmp/rustup-init
+          printf '%s  %s\n' "${rustup_sha256}" /tmp/rustup-init | sha256sum --check --status
+          chmod +x /tmp/rustup-init
+          /tmp/rustup-init -y --profile minimal --default-toolchain 1.99.0
           uv pip install --python /opt/venv --force-reinstall ./rust
       # Canonical test command lives in the Makefile (matches local `make test`).
       - run: make test

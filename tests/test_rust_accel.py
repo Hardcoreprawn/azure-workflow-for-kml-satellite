@@ -40,6 +40,20 @@ class TestComputeNdviArray:
         assert ndvi.shape == (512, 512)
         assert valid.dtype == bool
 
+    def test_rejects_mismatched_band_shapes(self):
+        red = np.ones((2, 2), dtype=np.float32)
+        nir = np.ones((3, 2), dtype=np.float32)
+
+        with pytest.raises(ValueError, match="matching shapes"):
+            rs.compute_ndvi_array(red, nir)
+
+    def test_rejects_empty_band_dimensions(self):
+        red = np.empty((0, 2), dtype=np.float32)
+        nir = np.empty((0, 2), dtype=np.float32)
+
+        with pytest.raises(ValueError, match="non-empty"):
+            rs.compute_ndvi_array(red, nir)
+
 
 # ---------------------------------------------------------------------------
 # §2 — ndvi_stats
@@ -71,6 +85,13 @@ class TestNdviStats:
         result = rs.ndvi_stats(ndvi, valid)
         assert result is None
 
+    def test_rejects_mismatched_value_and_mask_shapes(self):
+        ndvi = np.zeros((2, 2), dtype=np.float32)
+        valid = np.ones((2, 3), dtype=bool)
+
+        with pytest.raises(ValueError, match="matching shapes"):
+            rs.ndvi_stats(ndvi, valid)
+
 
 # ---------------------------------------------------------------------------
 # §3 — resample_nearest
@@ -98,6 +119,13 @@ class TestResampleNearest:
         out = rs.resample_nearest(src, 10, 10)
         assert out.shape == (10, 10)
         assert np.all(out == 42)
+
+    def test_rejects_empty_source_or_target_dimensions(self):
+        with pytest.raises(ValueError, match="non-empty"):
+            rs.resample_nearest(np.empty((0, 2), dtype=np.uint8), 2, 2)
+
+        with pytest.raises(ValueError, match="non-empty"):
+            rs.resample_nearest(np.ones((2, 2), dtype=np.uint8), 0, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +174,13 @@ class TestComputeChange:
         assert pytest.approx(stats["min_delta"], abs=1e-4) == -0.3
         assert pytest.approx(stats["max_delta"], abs=1e-4) == 0.4
 
+    def test_rejects_mismatched_raster_shapes(self):
+        a = np.ones((2, 2), dtype=np.float32)
+        b = np.ones((3, 2), dtype=np.float32)
+
+        with pytest.raises(ValueError, match="matching shapes"):
+            rs.compute_change(a, b, 0.01, -0.1, 0.1)
+
 
 # ---------------------------------------------------------------------------
 # §5 — apply_scl_mask
@@ -169,6 +204,13 @@ class TestApplyScLMask:
         masked_count = rs.apply_scl_mask(valid, scl, [4, 5, 6])
         assert masked_count == 0
         assert np.all(valid)
+
+    def test_rejects_mismatched_mask_shapes(self):
+        valid = np.ones((2, 2), dtype=bool)
+        scl = np.full((2, 3), 4, dtype=np.uint8)
+
+        with pytest.raises(ValueError, match="matching shapes"):
+            rs.apply_scl_mask(valid, scl, [4, 5, 6])
 
 
 # ---------------------------------------------------------------------------

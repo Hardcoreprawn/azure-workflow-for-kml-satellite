@@ -6,9 +6,16 @@ are unit-testable in isolation.
 
 from __future__ import annotations
 
+import math
 import re
 import statistics
-from typing import Any
+from datetime import date
+from numbers import Real
+from typing import Any, TypeGuard
+
+from treesight.constants import EUDR_CUTOFF_DATE
+
+_EUDR_CUTOFF_DAY = date.fromisoformat(EUDR_CUTOFF_DATE)
 
 # ---------------------------------------------------------------------------
 # Prompt-injection sanitisation
@@ -18,6 +25,84 @@ from typing import Any
 # commas, or parentheses.
 _PROMPT_SAFE_RE = re.compile(r"[^A-Za-z0-9\s\-.,()]+")
 _MAX_PROMPT_FIELD_LEN = 200
+
+
+def is_valid_ndvi_mean(value: Any) -> TypeGuard[Real]:
+    """Return whether a mean is finite and within the physical NDVI range."""
+    if not isinstance(value, Real) or isinstance(value, bool):
+        return False
+    try:
+        numeric_value = float(value)
+    except OverflowError:
+        return False
+    return math.isfinite(numeric_value) and -1.0 <= numeric_value <= 1.0
+
+
+def is_valid_ndvi_delta(value: Any) -> TypeGuard[Real]:
+    """Return whether a change between two physical NDVI values is valid."""
+    if not isinstance(value, Real) or isinstance(value, bool):
+        return False
+    try:
+        numeric_value = float(value)
+    except OverflowError:
+        return False
+    return math.isfinite(numeric_value) and -2.0 <= numeric_value <= 2.0
+
+
+def is_valid_year(value: Any) -> TypeGuard[Real]:
+    """Return whether a value is a finite integral year."""
+    if not isinstance(value, Real) or isinstance(value, bool):
+        return False
+    try:
+        numeric_value = float(value)
+    except OverflowError:
+        return False
+    return math.isfinite(numeric_value) and numeric_value.is_integer()
+
+
+def is_after_eudr_cutoff(date_value: Any, year_value: Any) -> bool:
+    """Prefer an explicit ISO date; use an integral year only when date is absent."""
+    if isinstance(date_value, str):
+        try:
+            observed_day = date.fromisoformat(date_value[:10])
+        except ValueError:
+            return False
+        return observed_day > _EUDR_CUTOFF_DAY
+    return is_valid_year(year_value) and float(year_value) > _EUDR_CUTOFF_DAY.year
+
+
+def is_valid_ndvi_stats(value: Any) -> TypeGuard[dict[str, Any]]:
+    """Return whether the available summary statistics are physically valid."""
+    if not isinstance(value, dict) or not is_valid_ndvi_mean(value.get("mean")):
+        return False
+
+    mean = float(value["mean"])
+    minimum = value.get("min")
+    maximum = value.get("max")
+    median = value.get("median")
+    standard_deviation = value.get("std")
+
+    for statistic in (minimum, maximum, median):
+        if statistic is not None and not is_valid_ndvi_mean(statistic):
+            return False
+    if minimum is not None and float(minimum) > mean:
+        return False
+    if maximum is not None and float(maximum) < mean:
+        return False
+    if minimum is not None and maximum is not None and float(minimum) > float(maximum):
+        return False
+    if median is not None and minimum is not None and float(median) < float(minimum):
+        return False
+    if median is not None and maximum is not None and float(median) > float(maximum):
+        return False
+    if standard_deviation is not None:
+        if not is_valid_ndvi_mean(standard_deviation) or float(standard_deviation) < 0.0:
+            return False
+        if minimum is not None and maximum is not None:
+            maximum_possible_std = (float(maximum) - float(minimum)) / 2.0
+            if float(standard_deviation) > maximum_possible_std + 0.0001:
+                return False
+    return True
 
 
 def sanitise_for_prompt(value: str) -> str:
@@ -67,7 +152,10 @@ def calculate_trends(
     trends: dict[str, Any] = {}
 
     if ndvi_series:
-        ndvi_means: list[float] = [float(s["mean"]) for s in ndvi_series if s.get("mean") is not None]
+        ndvi_means: list[float] = []
+        for entry in ndvi_series:
+            if is_valid_ndvi_stats(entry):
+                ndvi_means.append(float(entry["mean"]))
 
         if len(ndvi_means) >= 2:
             trends["ndvi_avg"] = round(sum(ndvi_means) / len(ndvi_means), 4)
@@ -82,11 +170,10 @@ def calculate_trends(
         # --- Year-over-year same-season comparison ---
         season_bins: dict[str, list[tuple[int, float]]] = {}
         for s in ndvi_series:
-            mean_val = s.get("mean")
             season_key = s.get("season")
             year = s.get("year")
-            if mean_val is not None and season_key and year:
-                season_bins.setdefault(season_key, []).append((int(year), float(mean_val)))
+            if is_valid_ndvi_stats(s) and season_key and is_valid_year(year):
+                season_bins.setdefault(season_key, []).append((int(float(year)), float(s["mean"])))
 
         yoy_changes: list[float] = []
         events: list[str] = []

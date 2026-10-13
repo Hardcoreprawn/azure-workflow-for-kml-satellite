@@ -93,6 +93,14 @@ class TestClassifyNdvi:
     def test_negative(self):
         assert classify_ndvi(-0.1) == "bare_soil"
 
+    def test_out_of_range_ndvi_is_unknown(self):
+        assert classify_ndvi(1.04) == "unknown"
+        assert classify_ndvi(-1.04) == "unknown"
+
+    def test_non_finite_ndvi_is_unknown(self):
+        assert classify_ndvi(float("nan")) == "unknown"
+        assert classify_ndvi(float("inf")) == "unknown"
+
 
 # ── compute_ndvi_trend ───────────────────────────────────────
 
@@ -136,6 +144,53 @@ class TestComputeNdviTrend:
         result = compute_ndvi_trend(stats)
         assert result["observations"] == 3
         assert result["direction"] == "improving"
+
+    def test_excludes_out_of_range_values_from_trend(self):
+        stats = _make_ndvi_stats([0.2, 0.4, 1.04])
+        result = compute_ndvi_trend(stats)
+
+        assert result["observations"] == 2
+        assert result["mean_ndvi"] == pytest.approx(0.3)
+        assert result["latest_mean"] is None
+        assert result["health_class"] == "unknown"
+
+    def test_excludes_invalid_companion_statistics_from_trend(self):
+        stats = _make_ndvi_stats([0.2, 0.4])
+        stats[-1]["max"] = 1.2
+        result = compute_ndvi_trend(stats)
+
+        assert result["observations"] == 1
+        assert result["latest_mean"] is None
+
+    def test_oversized_mean_is_unavailable_in_trend(self):
+        stats = _make_ndvi_stats([0.4])
+        stats.append({"mean": 10**10000})
+        result = compute_ndvi_trend(stats)
+
+        assert result["observations"] == 1
+        assert result["latest_mean"] is None
+
+    def test_excludes_non_finite_values_from_trend(self):
+        stats = _make_ndvi_stats([0.2, 0.4, float("nan")])
+        result = compute_ndvi_trend(stats)
+
+        assert result["observations"] == 2
+        assert result["mean_ndvi"] == pytest.approx(0.3)
+        assert result["latest_mean"] is None
+        assert result["health_class"] == "unknown"
+
+    def test_trend_slope_preserves_original_frame_spacing(self):
+        stats = _make_ndvi_stats([0.2, 0.4, 1.04, 0.8])
+        result = compute_ndvi_trend(stats)
+
+        assert result["slope_per_frame"] == pytest.approx(0.2)
+
+    def test_consecutive_drop_does_not_bridge_invalid_frame(self):
+        stats = _make_ndvi_stats([0.8, 0.7, 1.04, 0.4])
+        result = compute_ndvi_trend(stats)
+
+        assert result["max_consecutive_drop"] == pytest.approx(0.1)
+        assert result["max_drop_frame_index"] == 1
 
     def test_all_none_is_insufficient(self):
         stats = _make_ndvi_stats([None, None, None])
@@ -212,6 +267,25 @@ class TestComputeAoiMetrics:
         detail = result["vegetation"]["latest_detail"]
         assert detail["mean"] == pytest.approx(0.5)
         assert detail["valid_pixels"] == 10000
+
+    def test_latest_ndvi_detail_skips_out_of_range_and_non_finite_means(self):
+        stats = _make_ndvi_stats([0.4, 1.04, float("nan")])
+        result = compute_aoi_metrics(_make_aoi_data(), stats)
+
+        assert result["vegetation"]["latest_detail"]["mean"] == pytest.approx(0.4)
+
+    def test_latest_ndvi_detail_is_omitted_when_all_means_are_invalid(self):
+        stats = _make_ndvi_stats([1.04, float("nan")])
+        result = compute_aoi_metrics(_make_aoi_data(), stats)
+
+        assert "latest_detail" not in result["vegetation"]
+
+    def test_latest_ndvi_detail_skips_invalid_companion_statistics(self):
+        stats = _make_ndvi_stats([0.4, 0.5])
+        stats[-1]["max"] = 1.2
+        result = compute_aoi_metrics(_make_aoi_data(), stats)
+
+        assert result["vegetation"]["latest_detail"]["mean"] == pytest.approx(0.4)
 
     def test_no_ndvi_data(self):
         aoi = _make_aoi_data()
@@ -308,6 +382,23 @@ class TestComputeMultiAoiSummary:
         result = compute_multi_aoi_summary(metrics)
         # 100*0.6 + 10*0.2 = 62 / 110 ≈ 0.5636
         assert result["weighted_mean_ndvi"] == pytest.approx(0.5636, abs=0.01)
+
+    def test_weighted_ndvi_excludes_out_of_range_aoi(self):
+        metrics = [
+            compute_aoi_metrics(
+                _make_aoi_data(name="Valid", area_ha=90.0, perimeter_km=4.0),
+                _make_ndvi_stats([0.5]),
+            ),
+            compute_aoi_metrics(
+                _make_aoi_data(name="Invalid", index=1, area_ha=10.0, perimeter_km=1.3),
+                _make_ndvi_stats([1.04]),
+            ),
+        ]
+
+        result = compute_multi_aoi_summary(metrics)
+
+        assert result["weighted_mean_ndvi"] == pytest.approx(0.5)
+        assert result["health_distribution"]["unknown"] == 1
 
     def test_health_distribution(self):
         metrics = [

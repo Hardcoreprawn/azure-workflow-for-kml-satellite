@@ -137,6 +137,26 @@ class TestPromptBuilders:
         assert "Weather data" in prompt
         assert trends["ndvi_trajectory"] == "Improving"
 
+    def test_timelapse_prompt_omits_invalid_ndvi_samples(self):
+        prompt, trends = build_timelapse_prompt(
+            {
+                "ndvi_timeseries": [
+                    {"mean": 0.4, "season": "summer", "year": 2020},
+                    {"mean": 0.6, "season": "summer", "year": 2021},
+                    {"mean": 1.04, "season": "summer", "year": 2022},
+                    {"mean": float("nan"), "season": "summer", "year": 2023},
+                    {"mean": float("inf"), "season": "summer", "year": 2024},
+                ],
+            }
+        )
+
+        assert trends["ndvi_avg"] == pytest.approx(0.5)
+        assert "NDVI Average: 0.500" in prompt
+        assert "1.040" not in prompt
+        assert "nan" not in prompt.lower()
+        assert "inf" not in prompt.lower()
+        assert "Usable NDVI observations: 2 of 5 frames" in prompt
+
     def test_eudr_prompt_omits_invalid_location(self):
         prompt, trends, post_cutoff = build_eudr_prompt(
             {
@@ -152,6 +172,37 @@ class TestPromptBuilders:
         assert "Location:" not in prompt
         assert trends["ndvi_avg"] == pytest.approx(0.45)
         assert len(post_cutoff) == 2
+
+    def test_eudr_prompt_counts_only_valid_ndvi_observations(self):
+        prompt, trends, post_cutoff = build_eudr_prompt(
+            {
+                "ndvi_timeseries": [
+                    {"date": "2021-06-01", "mean": 0.4},
+                    {"date": "2022-06-01", "mean": 1.04},
+                    {"date": "2023-06-01", "mean": float("nan")},
+                    {"date": "2024-06-01", "mean": 0.5, "max": 1.2},
+                ],
+                "weather_timeseries": [],
+            }
+        )
+
+        assert len(post_cutoff) == 1
+        assert "(1 observations)" in prompt
+        assert "ndvi_avg" not in trends
+
+    def test_eudr_prompt_prefers_date_and_rejects_non_finite_year_fallback(self):
+        _prompt, _trends, post_cutoff = build_eudr_prompt(
+            {
+                "ndvi_timeseries": [
+                    {"date": "2020-06-01", "year": 2021, "mean": 0.4},
+                    {"year": float("inf"), "season": "summer", "mean": 0.6},
+                    {"year": 2022, "season": "summer", "mean": 0.8},
+                ],
+                "weather_timeseries": [],
+            }
+        )
+
+        assert post_cutoff == [{"year": 2022, "season": "summer", "mean": 0.8}]
 
     def test_eudr_prompt_returns_empty_result_before_cutoff(self):
         assert build_eudr_prompt({"ndvi_timeseries": [{"date": "2020-01-01"}]}) == (None, None, None)
