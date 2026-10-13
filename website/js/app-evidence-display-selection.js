@@ -96,11 +96,19 @@
     try {
       let allBounds = L.latLngBounds([]);
       perAoi.forEach(function (aoi) {
-        if (!aoi.coords || !aoi.coords.length) return;
-        aoi.coords.forEach(function (c) { allBounds.extend([c[1], c[0]]); });
+        let geometry = aoi.geometry;
+        let coords = geometry && geometry.type === 'Polygon' && Array.isArray(geometry.coordinates)
+          ? geometry.coordinates[0]
+          : aoi.coords;
+        if (!Array.isArray(coords)) return;
+        coords.forEach(function (c) { allBounds.extend([c[1], c[0]]); });
       });
-      if (!allBounds.isValid() && manifest.coords && manifest.coords.length) {
-        manifest.coords.forEach(function (c) { allBounds.extend([c[1], c[0]]); });
+      let geometry = manifest.geometry;
+      let coords = geometry && geometry.type === 'Polygon' && Array.isArray(geometry.coordinates)
+        ? geometry.coordinates[0]
+        : manifest.coords;
+      if (!allBounds.isValid() && Array.isArray(coords)) {
+        coords.forEach(function (c) { allBounds.extend([c[1], c[0]]); });
       }
       if (allBounds.isValid()) {
         beforeMap.fitBounds(allBounds.pad(0.1));

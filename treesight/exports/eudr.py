@@ -73,6 +73,16 @@ def _plot_geolocation(aoi: dict[str, Any], *, is_cattle: bool) -> dict[str, Any]
     """
     center = aoi.get("center", {})
     point = [center.get("lon"), center.get("lat")]
+    geometry = aoi.get("geometry")
+    if (
+        isinstance(geometry, dict)
+        and geometry.get("type") == "Polygon"
+        and isinstance(geometry.get("coordinates"), list)
+        and geometry["coordinates"]
+    ):
+        polygon_coordinates = geometry["coordinates"]
+    else:
+        polygon_coordinates = list(aoi.get("coords", []))
 
     if is_cattle:
         return {"geolocation_type": "point", "coordinates": point}
@@ -81,13 +91,13 @@ def _plot_geolocation(aoi: dict[str, Any], *, is_cattle: bool) -> dict[str, Any]
     if source_geometry_type == "Point":
         return {"geolocation_type": "point", "coordinates": point}
     if source_geometry_type == "Polygon":
-        return {"geolocation_type": "polygon", "coordinates": list(aoi.get("coords", []))}
+        return {"geolocation_type": "polygon", "coordinates": polygon_coordinates}
 
     # Legacy fallback: derive from buffer area when source_geometry_type is absent.
     area_ha = aoi.get("area_ha", 0.0)
     if area_ha <= 4.0:
         return {"geolocation_type": "point", "coordinates": point}
-    return {"geolocation_type": "polygon", "coordinates": list(aoi.get("coords", []))}
+    return {"geolocation_type": "polygon", "coordinates": polygon_coordinates}
 
 
 def _production_block(manifest: dict[str, Any]) -> dict[str, Any]:

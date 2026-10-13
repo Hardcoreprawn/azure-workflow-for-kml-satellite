@@ -186,13 +186,21 @@ def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
         props["change_trajectory"] = summary.get("trajectory", "unknown")
         props["change_comparisons"] = summary.get("comparisons", 0)
 
-        # Build polygon geometry
-        coords = aoi.get("coords", [])
-        ring = list(coords)
-        if ring and ring[0] != ring[-1]:
-            ring.append(ring[0])
-
-        geometry: dict[str, Any] | None = {"type": "Polygon", "coordinates": [ring]} if ring else None
+        # Prefer canonical geometry so interior rings are not lost.
+        stored_geometry = aoi.get("geometry")
+        if (
+            isinstance(stored_geometry, dict)
+            and stored_geometry.get("type") == "Polygon"
+            and isinstance(stored_geometry.get("coordinates"), list)
+            and stored_geometry["coordinates"]
+        ):
+            geometry: dict[str, Any] | None = stored_geometry
+        else:
+            coords = aoi.get("coords", [])
+            ring = list(coords)
+            if ring and ring[0] != ring[-1]:
+                ring.append(ring[0])
+            geometry = {"type": "Polygon", "coordinates": [ring]} if ring else None
 
         features.append({"type": "Feature", "geometry": geometry, "properties": props})
 

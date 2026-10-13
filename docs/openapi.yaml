@@ -508,6 +508,9 @@ paths:
         are per-parcel EUDR due-diligence exports. `eudr-dds` is a DRAFT export
         structured to Regulation (EU) 2023/1115 Annex II — it is not a submission
         to EU TRACES NT; the operator must review and submit it themselves.
+        Polygon geolocation coordinates use GeoJSON ring nesting: the exterior
+        ring followed by any interior rings, with coordinates in longitude/latitude
+        order.
         Current members of the selected originating organisation may retrieve
         evidence even after its creator leaves. Omit org_id to use the authenticated
         active organisation. An explicit org_id selects an organisation only after
@@ -659,8 +662,10 @@ paths:
                   type: object
                   description: >-
                     Polygon AOI geometry in EPSG:4326 with centroid, bbox, and
-                    exterior_coords. MultiPolygon monitoring is rejected because
-                    complete scene coverage across components is not yet proven.
+                    exterior_coords. Optional interior_coords contains polygon
+                    hole rings and is retained for monitoring. MultiPolygon
+                    monitoring is rejected because complete scene coverage
+                    across components is not yet proven.
                 cadence_days:
                   type: integer
                   minimum: 1

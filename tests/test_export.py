@@ -823,6 +823,17 @@ class TestBuildEudrGeoJson:
         ring = result["features"][0]["geometry"]["coordinates"][0]
         assert ring[0] == ring[-1]
 
+    def test_polygon_preserves_interior_rings_from_geometry(self, eudr_manifest):
+        rings = [
+            [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]],
+            [[36.802, -1.302], [36.804, -1.302], [36.803, -1.304], [36.802, -1.302]],
+        ]
+        eudr_manifest["per_aoi_enrichment"][0]["geometry"] = {"type": "Polygon", "coordinates": rings}
+
+        result = _build_eudr_geojson(eudr_manifest)
+
+        assert result["features"][0]["geometry"] == {"type": "Polygon", "coordinates": rings}
+
     def test_eudr_properties_present(self, eudr_manifest):
         result = _build_eudr_geojson(eudr_manifest)
         props = result["features"][0]["properties"]
@@ -1360,6 +1371,24 @@ class TestPlotGeolocationProvenance:
         assert result["geolocation_type"] == "polygon"
         assert result["coordinates"] == coords
 
+    def test_polygon_geolocation_preserves_interior_rings_from_geometry(self):
+        rings = [
+            [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]],
+            [[36.802, -1.302], [36.804, -1.302], [36.803, -1.304], [36.802, -1.302]],
+        ]
+        aoi = {
+            "source_geometry_type": "Polygon",
+            "area_ha": 1.2,
+            "center": {"lat": -1.3, "lon": 36.8},
+            "geometry": {"type": "Polygon", "coordinates": rings},
+            "coords": rings[0],
+        }
+
+        result = _plot_geolocation(aoi, is_cattle=False)
+
+        assert result["geolocation_type"] == "polygon"
+        assert result["coordinates"] == rings
+
     def test_cattle_always_returns_point_regardless_of_source_geometry_type(self):
         """is_cattle overrides source_geometry_type."""
         coords = [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31], [36.8, -1.3]]
@@ -1428,6 +1457,30 @@ class TestPlotGeolocationProvenance:
         plot = result["dds_annex_ii"]["3_production"]["plots"][0]
         assert plot["geolocation_type"] == "polygon"
         assert plot["coordinates"] == coords
+
+    def test_dds_export_preserves_polygon_holes(self):
+        rings = [
+            [[2.34, 48.85], [2.36, 48.85], [2.36, 48.87], [2.34, 48.85]],
+            [[2.345, 48.855], [2.35, 48.855], [2.348, 48.86], [2.345, 48.855]],
+        ]
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Plot with pond",
+                    "source_geometry_type": "Polygon",
+                    "area_ha": 8.0,
+                    "center": {"lat": 48.86, "lon": 2.35},
+                    "geometry": {"type": "Polygon", "coordinates": rings},
+                    "coords": rings[0],
+                }
+            ]
+        }
+
+        result = _build_eudr_dds(manifest)
+
+        plot = result["dds_annex_ii"]["3_production"]["plots"][0]
+        assert plot["geolocation_type"] == "polygon"
+        assert plot["coordinates"] == rings
 
 
 class TestDispatchEudrExport:

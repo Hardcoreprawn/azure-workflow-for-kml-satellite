@@ -190,6 +190,20 @@ def test_successful_history_org_id_is_not_nullable():
     assert not schema.get("nullable", False)
 
 
+def test_monitor_openapi_documents_polygon_interior_rings():
+    geometry = yaml.safe_load(OPENAPI.read_text())["paths"]["/monitoring"]["post"]["requestBody"]["content"][
+        "application/json"
+    ]["schema"]["properties"]["aoi_geometry"]
+    assert "interior_coords" in geometry["description"]
+    assert "hole" in geometry["description"].lower()
+
+
+def test_eudr_dds_openapi_documents_polygon_ring_coordinates():
+    description = yaml.safe_load(OPENAPI.read_text())["paths"]["/export/{instance_id}/{format}"]["get"]["description"]
+    assert re.search(r"exterior\s+ring", description, re.IGNORECASE)
+    assert "interior rings" in description.lower()
+
+
 @pytest.mark.parametrize("path", ["/export/{instance_id}/{format}", "/timelapse-data/{instance_id}"])
 def test_shared_evidence_contract_requires_org_access_and_explicit_outages(path):
     operation = yaml.safe_load(OPENAPI.read_text())["paths"][path]["get"]

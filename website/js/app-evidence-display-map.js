@@ -23,6 +23,32 @@
     return 0;
   }
 
+  function aoiLatLngRings(aoi) {
+    let geometry = aoi && aoi.geometry;
+    if (geometry && geometry.type === 'Polygon' && Array.isArray(geometry.coordinates)) {
+      return geometry.coordinates.map(function (ring) {
+        return ring.map(function (coordinate) { return [coordinate[1], coordinate[0]]; });
+      });
+    }
+
+    let coords = aoi && Array.isArray(aoi.coords) ? aoi.coords : [];
+    let rings = [];
+    let ringStart = 0;
+    for (let index = 3; index < coords.length; index++) {
+      if (Math.abs(coords[index][0] - coords[ringStart][0]) < 1e-5 &&
+        Math.abs(coords[index][1] - coords[ringStart][1]) < 1e-5) {
+        rings.push(coords.slice(ringStart, index + 1));
+        ringStart = index + 1;
+        index = ringStart + 2;
+      }
+    }
+    if (ringStart < coords.length) rings.push(coords.slice(ringStart));
+    if (!rings.length && coords.length) rings.push(coords);
+    return rings.map(function (ring) {
+      return ring.map(function (coordinate) { return [coordinate[1], coordinate[0]]; });
+    });
+  }
+
   function syncEvidenceLayerButtons(state, frame) {
     let rgbBtn = document.getElementById('app-map-btn-rgb');
     let ndviBtn = document.getElementById('app-map-btn-ndvi');
@@ -239,8 +265,8 @@
       try {
         let allBounds = L.latLngBounds([]);
         perAoi.forEach(function (aoi, idx) {
-          if (!aoi.coords || !aoi.coords.length) return;
-          let ll = aoi.coords.map(function (c) { return [c[1], c[0]]; });
+          let ll = aoiLatLngRings(aoi);
+          if (!ll.length) return;
           let poly = L.polygon(ll, {
             color: 'rgba(88,166,255,.7)',
             weight: 2,
@@ -255,28 +281,17 @@
         });
         if (allBounds.isValid()) state.map.fitBounds(allBounds.pad(0.1));
       } catch (e) { /* skip polygon */ }
-    } else if (manifest.coords && Array.isArray(manifest.coords)) {
+    } else {
       try {
-        let rings = [];
-        let ringStart = 0;
-        for (let ci = ringStart + 3; ci < manifest.coords.length; ci++) {
-          if (Math.abs(manifest.coords[ci][0] - manifest.coords[ringStart][0]) < 1e-5 &&
-            Math.abs(manifest.coords[ci][1] - manifest.coords[ringStart][1]) < 1e-5) {
-            rings.push(manifest.coords.slice(ringStart, ci + 1));
-            ringStart = ci + 1;
-            ci = ringStart + 2;
-          }
-        }
-        if (ringStart < manifest.coords.length) rings.push(manifest.coords.slice(ringStart));
-        if (!rings.length) rings.push(manifest.coords);
-
+        let aoi = perAoi.length === 1 ? perAoi[0] : manifest;
+        let rings = aoiLatLngRings(aoi);
+        if (!rings.length && aoi !== manifest) rings = aoiLatLngRings(manifest);
         let singleBounds = L.latLngBounds([]);
-        rings.forEach(function (ring) {
-          let ll = ring.map(function (c) { return [c[1], c[0]]; });
-          L.polygon(ll, { color: 'rgba(88,166,255,.7)', weight: 2, fillOpacity: 0.05 }).addTo(state.map);
-          singleBounds.extend(L.polygon(ll).getBounds());
-        });
-        state.map.fitBounds(singleBounds.pad(0.1));
+        if (rings.length) {
+          let polygon = L.polygon(rings, { color: 'rgba(88,166,255,.7)', weight: 2, fillOpacity: 0.05 }).addTo(state.map);
+          singleBounds.extend(polygon.getBounds());
+          state.map.fitBounds(singleBounds.pad(0.1));
+        }
       } catch (e) { /* skip polygon */ }
     }
 
