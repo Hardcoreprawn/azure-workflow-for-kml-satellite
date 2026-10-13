@@ -2166,6 +2166,15 @@ class TestCIFeedbackHygiene:
 
         assert "healthcheck" in orch, "orch service must define a healthcheck like func"
 
+    def test_compose_auth_settings_are_overridable_for_api_only_verification(self):
+        compose = yaml.safe_load(COMPOSE_YML.read_text())
+        for service_name in ("func", "orch"):
+            environment = compose["services"][service_name]["environment"]
+            assert environment["CIAM_AUTHORITY"] == "${CIAM_AUTHORITY:-https://ciam.example.com}"
+            assert environment["CIAM_TENANT_ID"] == "${CIAM_TENANT_ID:-local-dev-tenant}"
+            assert environment["CIAM_API_AUDIENCE"] == "${CIAM_API_AUDIENCE:-api://local-dev-audience}"
+            assert environment["REQUIRE_AUTH"] == "${REQUIRE_AUTH:-false}"
+
     def test_cosmos_key_never_referenced_in_production_infra(self):
         """COSMOS_KEY must stay a local-dev-only concept — a real deployment
         that ever set it would silently bypass managed identity."""

@@ -19,11 +19,12 @@ compose=(docker compose --project-name "$COMPOSE_PROJECT_NAME" --project-directo
 if [[ "${CANOPEX_DEV_GPU:-0}" == "1" ]]; then
     compose+=(-f "$root/.devcontainer/docker-compose.gpu.yml")
 fi
+api_verifier_compose=("${compose[@]}" -f "$root/docker-compose.api-verifier.yml")
 
 action="${1:-status}"
 case "$action" in
-    prepare|up|rebuild|storage|down|clean|status|logs|config) ;;
-    *) echo "Usage: bash scripts/dev_stack.sh {prepare|up|rebuild|storage|down|clean|status|logs|config}" >&2; exit 2 ;;
+    prepare|up|rebuild|storage|down|clean|status|logs|config|api-verifier) ;;
+    *) echo "Usage: bash scripts/dev_stack.sh {prepare|up|rebuild|storage|down|clean|status|logs|config|api-verifier}" >&2; exit 2 ;;
 esac
 if [[ "$action" == "config" ]]; then
     exec "${compose[@]}" config --quiet
@@ -127,4 +128,51 @@ case "$action" in
         ;;
     status) "${compose[@]}" ps --all ;;
     logs) "${compose[@]}" logs --follow --tail=50 "${services[@]}" ;;
+    api-verifier)
+        if [[ "${CANOPEX_DEVCONTAINER:-}" != "1" ]]; then
+            relay_image="$("${api_verifier_compose[@]}" config --images event-grid-relay 2>/dev/null || true)"
+            if [[ -n "$relay_image" ]] && ! docker image inspect "$relay_image" >/dev/null 2>&1; then
+                "${api_verifier_compose[@]}" build event-grid-relay
+            fi
+        fi
+        verifier_active=0
+        restore_api_verifier() {
+            result=$?
+            trap - EXIT INT TERM
+            if [[ "$verifier_active" == 1 ]]; then
+                "${api_verifier_compose[@]}" stop --timeout 10 local-ciam || result=1
+                "${api_verifier_compose[@]}" rm --force local-ciam || result=1
+                echo "Restoring the standard development auth configuration."
+                if ! "${compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate orch event-grid-relay; then
+                    echo "ERROR: Could not restore the standard func/orch services." >&2
+                    result=1
+                fi
+            fi
+            exit "$result"
+        }
+        verifier_active=1
+        trap restore_api_verifier EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        "${api_verifier_compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" local-ciam func
+        "${api_verifier_compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate orch
+            "${api_verifier_compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate func
+        "${compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate event-grid-relay
+        if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" ]]; then
+            verifier_compute_base="http://func:80"
+            verifier_orch_base="http://orch:80"
+            verifier_web_base="http://web:4280"
+            verifier_token_url="http://local-ciam:8080/tokens"
+        else
+            verifier_compute_base="http://localhost:7071"
+            verifier_orch_base="http://localhost:7072"
+            verifier_web_base="http://localhost:4280"
+            verifier_token_url="http://localhost:7073/tokens"
+        fi
+        VERIFY_COMPUTE_BASE="$verifier_compute_base" \
+            VERIFY_ORCH_BASE="$verifier_orch_base" \
+            VERIFY_WEB_BASE="$verifier_web_base" \
+            VERIFY_LOCAL_CIAM_TOKEN_URL="$verifier_token_url" \
+            uv run python scripts/verify_local_stack.py --api-only
+        ;;
 esac

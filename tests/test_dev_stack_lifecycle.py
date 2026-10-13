@@ -127,8 +127,22 @@ def docker_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "    sys.exit(int(os.environ.get('DOCKER_STOP_EXIT', '0')))\n"
     )
     docker.chmod(0o755)
+    uv = tmp_path / "uv"
+    uv.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['UV_API_ENV_LOG']).write_text(json.dumps({\n"
+        "    name: os.environ.get(name) for name in (\n"
+        "        'VERIFY_COMPUTE_BASE', 'VERIFY_ORCH_BASE', 'VERIFY_WEB_BASE', 'VERIFY_LOCAL_CIAM_TOKEN_URL'\n"
+        "    )\n"
+        "}))\n"
+        "sys.exit(int(os.environ.get('UV_API_EXIT', '0')))\n"
+    )
+    uv.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
     monkeypatch.setenv("DOCKER_CALL_LOG", str(log))
+    monkeypatch.setenv("UV_API_ENV_LOG", str(tmp_path / "uv-api-env.json"))
     monkeypatch.setenv("COMPOSE_PROJECT_NAME", "lifecycle-test")
     monkeypatch.delenv("CANOPEX_DEVCONTAINER", raising=False)
     monkeypatch.delenv("DEV_WORKSPACE", raising=False)
@@ -279,6 +293,73 @@ def test_failed_start_cleans_up_and_keeps_failure(docker_environment: Path, monk
     assert any("logs" in call for call in calls)
     assert any("down" in call for call in calls)
     assert not any("--volumes" in call for call in calls)
+
+
+def test_api_verifier_restores_normal_auth_configuration_after_journey_failure(
+    docker_environment: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("UV_API_EXIT", "17")
+
+    result = run_stack("api-verifier")
+
+    assert result.returncode == 17, result.stderr
+    calls = docker_calls(docker_environment)
+    start_calls = [call for call in calls if "up" in call]
+    assert len(start_calls) == 5
+    assert "func" in start_calls[0] and "local-ciam" in start_calls[0]
+    assert "orch" in start_calls[1] and "--force-recreate" in start_calls[1]
+    assert "func" in start_calls[2] and "--force-recreate" in start_calls[2]
+    assert start_calls[3][-1] == "event-grid-relay"
+    assert "local-ciam" not in start_calls[4]
+    assert "orch" in start_calls[4] and "event-grid-relay" in start_calls[4]
+    cleanup_indexes = [
+        index for index, call in enumerate(calls) if "local-ciam" in call and ("stop" in call or "rm" in call)
+    ]
+    assert cleanup_indexes
+    assert max(cleanup_indexes) < calls.index(start_calls[4])
+
+
+@pytest.mark.parametrize(
+    "in_devcontainer,expected_hosts",
+    [
+        (
+            False,
+            ("http://localhost:7071", "http://localhost:7072", "http://localhost:4280", "http://localhost:7073/tokens"),
+        ),
+        (True, ("http://func:80", "http://orch:80", "http://web:4280", "http://local-ciam:8080/tokens")),
+    ],
+)
+def test_api_verifier_starts_relay_and_uses_reachable_urls(
+    docker_environment: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    in_devcontainer: bool,
+    expected_hosts: tuple[str, str, str, str],
+) -> None:
+    if in_devcontainer:
+        monkeypatch.setenv("CANOPEX_DEVCONTAINER", "1")
+        monkeypatch.setenv("DEV_WORKSPACE", str(ROOT))
+
+    result = run_stack("api-verifier")
+
+    assert result.returncode == 0, result.stderr
+    calls = docker_calls(docker_environment)
+    start_calls = [call for call in calls if "up" in call]
+    assert len(start_calls) >= 4
+    assert "local-ciam" in start_calls[0] and "func" in start_calls[0]
+    assert "orch" in start_calls[1] and "--force-recreate" in start_calls[1]
+    assert "func" in start_calls[2] and "--force-recreate" in start_calls[2]
+    assert "event-grid-relay" in start_calls[3] and "--force-recreate" in start_calls[3]
+    uv_environment = json.loads(Path(os.environ["UV_API_ENV_LOG"]).read_text())
+    assert tuple(uv_environment.values()) == expected_hosts
+
+
+def test_api_verifier_overlay_authenticates_only_orchestrator() -> None:
+    overlay = yaml.safe_load((ROOT / "docker-compose.api-verifier.yml").read_text())
+
+    assert "func" not in overlay["services"]
+    assert overlay["services"]["orch"]["environment"]["REQUIRE_AUTH"] == "true"
+    assert "local-ciam" in overlay["services"]["orch"]["depends_on"]
 
 
 def test_editor_shutdown_keeps_editor_alive(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:
