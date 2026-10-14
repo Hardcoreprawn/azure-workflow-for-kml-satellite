@@ -82,7 +82,8 @@ def _plot_geolocation(aoi: dict[str, Any], *, is_cattle: bool) -> dict[str, Any]
     ):
         polygon_coordinates = geometry["coordinates"]
     else:
-        polygon_coordinates = list(aoi.get("coords", []))
+        exterior_ring = list(aoi.get("coords", []))
+        polygon_coordinates = [exterior_ring] if exterior_ring else []
 
     if is_cattle:
         return {"geolocation_type": "point", "coordinates": point}

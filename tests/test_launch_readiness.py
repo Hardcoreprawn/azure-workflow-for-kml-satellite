@@ -2190,6 +2190,14 @@ class TestCIFeedbackHygiene:
         assert 'prefix_match = ["pipeline-payloads/claims/"]' not in policy
         assert 'prefix_match = ["pipeline-payloads/payloads/"]' not in policy
 
+        pid = (ROOT / "docs" / "PID.md").read_text()
+        lifecycle = pid.split("### 10.2 Lifecycle Policies\n", 1)[1].split("\n---", 1)[0]
+        assert "Delete temporary payloads" not in lifecycle
+        assert "pipeline-payloads/payloads/" in lifecycle
+        assert "pipeline-payloads/claims/" in lifecycle
+        assert "no age-based deletion" in lifecycle.lower()
+        assert "replay" in lifecycle.lower()
+
     def test_compose_func_passes_through_canopex_test_mode(self):
         """func's environment must pass CANOPEX_TEST_MODE through from the
         invoking shell (default unset — real Planetary Computer imagery),

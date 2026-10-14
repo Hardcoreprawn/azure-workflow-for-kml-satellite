@@ -1263,7 +1263,8 @@ class TestBuildEudrDds:
         plots = result["dds_annex_ii"]["3_production"]["plots"]
         farm_a = next(p for p in plots if p["name"] == "Farm A")  # area_ha=12.5
         assert farm_a["geolocation_type"] == "polygon"
-        assert len(farm_a["coordinates"]) > 1
+        assert len(farm_a["coordinates"]) == 1
+        assert len(farm_a["coordinates"][0]) > 1
 
     def test_geolocation_uses_point_for_small_plots(self):
         manifest = {
@@ -1369,7 +1370,20 @@ class TestPlotGeolocationProvenance:
         }
         result = _plot_geolocation(aoi, is_cattle=False)
         assert result["geolocation_type"] == "polygon"
-        assert result["coordinates"] == coords
+        assert result["coordinates"] == [coords]
+
+    def test_legacy_polygon_coordinates_are_nested_as_exterior_ring(self):
+        coords = [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]]
+        aoi = {
+            "source_geometry_type": "Polygon",
+            "center": {"lat": -1.3, "lon": 36.8},
+            "coords": coords,
+        }
+
+        result = _plot_geolocation(aoi, is_cattle=False)
+
+        assert result["geolocation_type"] == "polygon"
+        assert result["coordinates"] == [coords]
 
     def test_polygon_geolocation_preserves_interior_rings_from_geometry(self):
         rings = [
@@ -1410,6 +1424,7 @@ class TestPlotGeolocationProvenance:
         }
         result = _plot_geolocation(aoi, is_cattle=False)
         assert result["geolocation_type"] == "polygon"
+        assert result["coordinates"] == [aoi["coords"]]
 
     def test_legacy_fallback_area_under_4ha_returns_point(self):
         """Without source_geometry_type, area <= 4 ha falls back to point."""
@@ -1456,7 +1471,7 @@ class TestPlotGeolocationProvenance:
         result = _build_eudr_dds(manifest)
         plot = result["dds_annex_ii"]["3_production"]["plots"][0]
         assert plot["geolocation_type"] == "polygon"
-        assert plot["coordinates"] == coords
+        assert plot["coordinates"] == [coords]
 
     def test_dds_export_preserves_polygon_holes(self):
         rings = [
