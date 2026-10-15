@@ -29,6 +29,14 @@ in the schema/model, not a duplicated Markdown field specification. Current
 weather values can be dictionaries or lists; NDVI entries/paths can be null.
 Some nested blocks allow additional fields and are not fully constrained schemas.
 
+Each frame's provenance separates `display_source` from `analysis_source`.
+NDVI prefers the frame's multispectral collection and tries the other supported
+COG sensor if the preferred COG computation returns no result. NAIP is display-only; its NDVI
+uses Sentinel-2 first and Landsat as fallback. Tile-stat fallback uses
+Sentinel-2, and its returned statistics identify that source. The scheduled
+frame plan has no same-year Landsat/Sentinel pair, so a sensor transition alone
+must not be interpreted as a vegetation-change signal.
+
 Run-level summary/projection fields are not substitutes for parcel evidence.
 Consumers must preserve parcel identity and use returned manifest paths rather
 than guessing evidence from aggregate values or filenames.

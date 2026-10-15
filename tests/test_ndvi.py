@@ -137,6 +137,7 @@ class TestFetchNdviStat:
         assert "mean" in result
         assert "min" in result
         assert "max" in result
+        assert result["source"] == "sentinel-2-l2a"
         assert isinstance(result["mean"], float)
         assert -0.2 <= result["mean"] <= 0.8
 
@@ -226,6 +227,7 @@ class TestComputeNdvi:
 
         assert result is not None
         assert result["scene_id"] == "S2A_test"
+        assert result["source"] == "sentinel-2-l2a"
         assert abs(result["mean"] - 0.5) < 0.01
         assert result["valid_pixels"] == 100
         assert result["std"] == 0.0  # uniform values

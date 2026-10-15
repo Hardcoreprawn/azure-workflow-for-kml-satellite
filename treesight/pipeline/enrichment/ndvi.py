@@ -1,15 +1,22 @@
-"""NDVI computation from Sentinel-2 COGs and PC tile sampling.
+"""NDVI computation from Landsat/Sentinel COGs and PC tile sampling.
 
-Design decision: Sentinel-2 L2A is the sole NDVI source.  NAIP is used only
-for high-resolution visual context (before/after comparison).  NAIP imagery
-may be 3-band (RGB) in some states/years; if NAIP NDVI is added later, the
-caller must verify that the scene has ≥4 bands (RGBN) before computing.
+Design decision: NDVI is multi-sensor and selected per planned frame, not
+Sentinel-2-only. The current frame plan uses Landsat C2 L2 for 2013-2017 and
+Sentinel-2 L2A from 2018 onward. The frame's sensor is preferred, and the
+runner tries the other supported multispectral COG source if that computation
+returns no result. NAIP currently supplies visual context only. A future NAIP
+NDVI path must verify red and NIR bands (at least four bands, RGBN) and
+suitable radiometry; 3-band RGB cannot produce NDVI.
 
-Two approaches available:
-- ``compute_ndvi``: proper band-math from B04/B08 COGs via rasterio (accurate,
-  produces GeoTIFFs for downstream change detection)
-- ``fetch_ndvi_stat``: lightweight PC tile-based sampling via PNG parsing (fast,
-  used for enrichment timeline overview)
+The current frame plan has no Landsat/Sentinel overlap frames: Landsat ends in
+2017 and Sentinel-2 starts in 2018. Do not interpret that sensor transition as
+a direct NDVI change without an overlap period or harmonized calibration. Keep
+the analysis source distinct from the display source in per-frame provenance.
+
+Three paths are available:
+- ``compute_ndvi``: Sentinel-2 B04/B08 band math via rasterio.
+- ``compute_landsat_ndvi``: Landsat C2 L2 red/NIR band math via rasterio.
+- ``fetch_ndvi_stat``: lightweight PC tile sampling via PNG parsing for timeline overview.
 """
 
 from __future__ import annotations
@@ -221,6 +228,7 @@ def compute_ndvi(
             return None
 
         stats = {
+            "source": "sentinel-2-l2a",
             "mean": round(float(np.mean(valid_pixels)), 4),
             "min": round(float(np.min(valid_pixels)), 4),
             "max": round(float(np.max(valid_pixels)), 4),
@@ -514,7 +522,7 @@ def fetch_ndvi_stat(
     search_id: str,
     coords: list[list[float]],
     client: httpx.Client | None = None,
-) -> dict[str, float] | None:
+) -> dict[str, Any] | None:
     """Sample NDVI from a single PC tile at z12 — mirrors frontend logic.
 
     Uses the PC statistics endpoint instead of pixel-level tile parsing,
@@ -559,6 +567,7 @@ def fetch_ndvi_stat(
             "mean": round(mean_v, 3),
             "min": round(min(mapped), 3),
             "max": round(max(mapped), 3),
+            "source": "sentinel-2-l2a",
         }
     except Exception as exc:
         logger.warning("NDVI stat fetch failed for %s: %s", search_id, exc)

@@ -426,6 +426,13 @@ class TestLandsatFrameLabelling:
 class TestCrossSensorTimeline:
     """Full frame plan should give continuous coverage from 2013 to present."""
 
+    def test_scheduled_landsat_and_sentinel_frames_have_no_same_year_overlap(self):
+        frames = build_frame_plan(KENYA_COORDS)
+        landsat_years = {f["year"] for f in frames if f["collection"] == "landsat-c2-l2"}
+        sentinel_years = {f["year"] for f in frames if f["collection"] == "sentinel-2-l2a"}
+
+        assert landsat_years.isdisjoint(sentinel_years)
+
     def test_no_gap_between_landsat_and_sentinel(self):
         frames = build_frame_plan(KENYA_COORDS)
         years_by_collection: dict[str, set[int]] = {}
