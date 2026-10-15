@@ -62,7 +62,7 @@ def _annotate_display_metadata(
     annotated: list[dict[str, Any]] = []
 
     for frame in frames:
-        collection = str(frame["collection"])
+        collection = str(frame.get("display_collection") or frame["collection"])
         # Older NAIP acquisitions (≤ 2014) were collected at 1 m/px, not 0.6 m/px.
         if collection.startswith("naip") and int(frame.get("year", 9999)) <= NAIP_LEGACY_MAX_YEAR:
             display_gsd_m = float(NAIP_LEGACY_GSD_M)
@@ -220,6 +220,8 @@ def build_frame_plan(
     if has_naip and cadence != "monthly":
         summer = SEASONS[2]
         for yr in NAIP_ONLY_YEARS:
+            if yr in LANDSAT_YEARS:
+                continue
             w = _season_window(yr, summer)
             frames.append(
                 {
@@ -236,7 +238,13 @@ def build_frame_plan(
     if cadence == "monthly":
         frames.extend(_build_monthly_frames())
     else:
-        frames.extend(_build_landsat_frames())
+        landsat_frames = _build_landsat_frames()
+        if has_naip:
+            for frame in landsat_frames:
+                if frame["year"] in NAIP_ONLY_YEARS and frame["season"] == "summer":
+                    frame["display_collection"] = "naip"
+                    frame["is_naip"] = True
+        frames.extend(landsat_frames)
         frames.extend(_build_seasonal_frames(has_naip))
 
     # Apply date range filter

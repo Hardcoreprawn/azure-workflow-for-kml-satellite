@@ -175,6 +175,69 @@ class TestDetectChanges:
         assert result["summary"]["comparisons"] == 2
         assert result["summary"]["trajectory"] == "Improving"  # +0.1 > 0.02 threshold
 
+    def test_skips_cross_sensor_change_comparison(self):
+        from treesight.pipeline.enrichment.change_detection import detect_changes
+
+        frames = [
+            {"year": 2017, "season": "summer", "provenance": {"analysis_source": "landsat-c2-l2"}},
+            {"year": 2018, "season": "summer", "provenance": {"analysis_source": "sentinel-2-l2a"}},
+            {"year": 2019, "season": "summer", "provenance": {"analysis_source": "sentinel-2-l2a"}},
+        ]
+        paths = ["2017.tif", "2018.tif", "2019.tif"]
+        raster = _make_ndvi_tiff(np.full((3, 3), 0.5, dtype=np.float32))
+        storage = MagicMock()
+        storage.download_bytes.return_value = raster
+
+        result = detect_changes(frames, paths, "c", "p", "t", storage)
+
+        assert [(change["year_from"], change["year_to"]) for change in result["season_changes"]] == [(2018, 2019)]
+
+    def test_deduplicates_same_source_frame_for_same_observation_window(self):
+        from treesight.pipeline.enrichment.change_detection import detect_changes
+
+        frames = [
+            {
+                "year": 2013,
+                "season": "summer",
+                "start": "2013-06-01",
+                "end": "2013-08-31",
+                "provenance": {"analysis_source": "landsat-c2-l2"},
+            },
+            {
+                "year": 2014,
+                "season": "summer",
+                "start": "2014-06-01",
+                "end": "2014-08-31",
+                "provenance": {"analysis_source": "landsat-c2-l2"},
+            },
+            {
+                "year": 2014,
+                "season": "summer",
+                "start": "2014-06-01",
+                "end": "2014-08-31",
+                "display_source": "naip",
+                "provenance": {"analysis_source": "landsat-c2-l2"},
+            },
+            {
+                "year": 2015,
+                "season": "summer",
+                "start": "2015-06-01",
+                "end": "2015-08-31",
+                "provenance": {"analysis_source": "landsat-c2-l2"},
+            },
+        ]
+        paths = ["2013.tif", "2014.tif", "2014.tif", "2015.tif"]
+        raster = _make_ndvi_tiff(np.full((3, 3), 0.5, dtype=np.float32))
+        storage = MagicMock()
+        storage.download_bytes.return_value = raster
+
+        result = detect_changes(frames, paths, "c", "p", "t", storage)
+
+        assert [(change["year_from"], change["year_to"]) for change in result["season_changes"]] == [
+            (2013, 2014),
+            (2014, 2015),
+        ]
+
     def test_aoi_index_scopes_change_map_path_to_avoid_collision(self):
         """Two AOIs sharing the same project_name/timestamp (#1425) must not write
         their change-detection diff GeoTIFF to the same blob path."""

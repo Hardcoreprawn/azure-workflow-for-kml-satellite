@@ -287,6 +287,7 @@ class TestMosaicNdviParallel:
         assert provenance["display_search_id"] == "sid-sentinel-2-l2a"
         assert provenance["ndvi_scene_id"] == "S2A_123"
         assert provenance["resolution_m"] == 10.0
+        assert provenance["analysis_resolution_m"] == 10.0
         assert stats[0]["source"] == "sentinel-2-l2a"
 
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
@@ -304,6 +305,29 @@ class TestMosaicNdviParallel:
         assert provenance["analysis_source"] == "sentinel-2-l2a"
         assert provenance["collection"] == "naip"
         assert stats[0]["source"] == "sentinel-2-l2a"
+
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_landsat_analysis_frame_can_use_naip_display(self, mock_mosaic, mock_s2_ndvi, mock_landsat_ndvi):
+        frames = [
+            {
+                **_make_frame(year=2016, collection="landsat-c2-l2", is_naip=True),
+                "display_collection": "naip",
+            }
+        ]
+        mock_mosaic.side_effect = lambda collection, *_args: f"sid-{collection}"
+        mock_landsat_ndvi.return_value = {"mean": 0.4, "scene_id": "LC09_2016"}
+        results: dict = {}
+
+        stats, _ = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", MagicMock(), results)
+
+        assert "naip" in [call.args[0] for call in mock_mosaic.call_args_list]
+        mock_landsat_ndvi.assert_called_once()
+        mock_s2_ndvi.assert_not_called()
+        assert frames[0]["provenance"]["display_source"] == "naip"
+        assert frames[0]["provenance"]["analysis_source"] == "landsat-c2-l2"
+        assert stats[0]["source"] == "landsat-c2-l2"
 
     @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")

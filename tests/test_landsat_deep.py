@@ -433,6 +433,19 @@ class TestCrossSensorTimeline:
 
         assert landsat_years.isdisjoint(sentinel_years)
 
+    def test_naip_summer_display_reuses_matching_landsat_frame(self):
+        frames = build_frame_plan(US_COORDS)
+
+        for year in (2014, 2016):
+            summer_frames = [frame for frame in frames if frame["year"] == year and frame["season"] == "summer"]
+            assert len(summer_frames) == 1
+            assert summer_frames[0]["collection"] == "landsat-c2-l2"
+            assert summer_frames[0]["display_collection"] == "naip"
+            assert summer_frames[0]["is_naip"] is True
+
+        observation_keys = [(frame["year"], frame["season"], frame["start"], frame["end"]) for frame in frames]
+        assert len(observation_keys) == len(set(observation_keys))
+
     def test_no_gap_between_landsat_and_sentinel(self):
         frames = build_frame_plan(KENYA_COORDS)
         years_by_collection: dict[str, set[int]] = {}
