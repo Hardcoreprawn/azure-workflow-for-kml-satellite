@@ -118,6 +118,21 @@ class TestComputeNdviTrend:
         assert result["overall_change"] > 0
         assert result["overall_change_pct"] > 0
 
+    def test_trend_uses_latest_single_analysis_source(self):
+        stats = [
+            {"mean": 0.2, "source": "landsat-c2-l2"},
+            {"mean": 0.3, "source": "landsat-c2-l2"},
+            {"mean": 0.7, "source": "sentinel-2-l2a"},
+            {"mean": 0.8, "source": "sentinel-2-l2a"},
+        ]
+
+        result = compute_ndvi_trend(stats)
+
+        assert result["source"] == "sentinel-2-l2a"
+        assert result["observations"] == 2
+        assert result["earliest_mean"] == pytest.approx(0.7)
+        assert result["latest_mean"] == pytest.approx(0.8)
+
     def test_declining_trend(self):
         stats = _make_ndvi_stats([0.5, 0.45, 0.4, 0.35, 0.3])
         result = compute_ndvi_trend(stats)

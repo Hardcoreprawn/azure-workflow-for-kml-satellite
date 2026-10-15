@@ -206,7 +206,7 @@ class TestFramePlanIntegrity:
         assert len(naip_frames) > 0
         for f in naip_frames:
             assert f["season"] == "summer"
-            assert f["collection"] == "naip"
+            assert f.get("display_collection", f["collection"]) == "naip"
 
     def test_frame_dates_are_chronological(self):
         """Frame start dates should be monotonically increasing."""

@@ -191,7 +191,7 @@ class TestMosaicNdviParallel:
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_naip_rgb_falls_back_to_sentinel_when_naip_missing(self, mock_mosaic, mock_ndvi):
         """If NAIP has no RGB mosaic for a frame, Sentinel-2 should be used for display."""
-        frames = [_make_frame(collection="naip", is_naip=True)]
+        frames = [{**_make_frame(collection="naip", is_naip=True), "display_resolution_m": 0.6}]
 
         def _mosaic_side_effect(coll, start, end, bbox, extra, cl):
             if coll == "naip":
@@ -208,6 +208,8 @@ class TestMosaicNdviParallel:
         assert results["search_ids"][0] == "sid-sentinel-2-l2a"
         assert results["display_collections"][0] == "sentinel-2-l2a"
         assert frames[0]["display_collection"] == "sentinel-2-l2a"
+        assert frames[0]["display_resolution_m"] == 10.0
+        assert frames[0]["provenance"]["resolution_m"] == 10.0
 
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
@@ -275,14 +277,146 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        stats, _ = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
 
         provenance = frames[0].get("provenance")
         assert provenance is not None
         assert provenance["collection"] == "sentinel-2-l2a"
+        assert provenance["display_source"] == "sentinel-2-l2a"
+        assert provenance["analysis_source"] == "sentinel-2-l2a"
         assert provenance["display_search_id"] == "sid-sentinel-2-l2a"
         assert provenance["ndvi_scene_id"] == "S2A_123"
         assert provenance["resolution_m"] == 10.0
+        assert provenance["analysis_resolution_m"] == 10.0
+        assert stats[0]["source"] == "sentinel-2-l2a"
+
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_naip_display_keeps_sentinel_analysis_source_distinct(self, mock_mosaic, mock_ndvi):
+        frames = [_make_frame(year=2016, collection="naip", is_naip=True)]
+        mock_mosaic.side_effect = lambda collection, *_args: f"sid-{collection}"
+        mock_ndvi.return_value = {"mean": 0.5, "scene_id": "S2A_2016"}
+        results: dict = {}
+
+        stats, _ = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", MagicMock(), results)
+
+        provenance = frames[0]["provenance"]
+        assert provenance["display_source"] == "naip"
+        assert provenance["analysis_source"] == "sentinel-2-l2a"
+        assert provenance["collection"] == "naip"
+        assert stats[0]["source"] == "sentinel-2-l2a"
+
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_landsat_analysis_frame_can_use_naip_display(self, mock_mosaic, mock_s2_ndvi, mock_landsat_ndvi):
+        frames = [
+            {
+                **_make_frame(year=2016, collection="landsat-c2-l2", is_naip=True),
+                "display_collection": "naip",
+            }
+        ]
+        mock_mosaic.side_effect = lambda collection, *_args: f"sid-{collection}"
+        mock_landsat_ndvi.return_value = {"mean": 0.4, "scene_id": "LC09_2016"}
+        results: dict = {}
+
+        stats, _ = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", MagicMock(), results)
+
+        assert "naip" in [call.args[0] for call in mock_mosaic.call_args_list]
+        mock_landsat_ndvi.assert_called_once()
+        mock_s2_ndvi.assert_not_called()
+        assert frames[0]["provenance"]["display_source"] == "naip"
+        assert frames[0]["provenance"]["analysis_source"] == "landsat-c2-l2"
+        assert stats[0]["source"] == "landsat-c2-l2"
+
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_naip_frame_falls_back_to_landsat_if_sentinel_has_no_result(
+        self, mock_mosaic, mock_s2_ndvi, mock_landsat_ndvi
+    ):
+        frames = [_make_frame(year=2016, collection="naip", is_naip=True)]
+        mock_mosaic.side_effect = lambda collection, *_args: f"sid-{collection}"
+        mock_s2_ndvi.return_value = None
+        mock_landsat_ndvi.return_value = {"mean": 0.4, "scene_id": "LC09_2016"}
+        results: dict = {}
+
+        stats, _ = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", MagicMock(), results)
+
+        mock_s2_ndvi.assert_called_once()
+        mock_landsat_ndvi.assert_called_once()
+        assert stats[0]["source"] == "landsat-c2-l2"
+        assert frames[0]["provenance"]["display_source"] == "naip"
+        assert frames[0]["provenance"]["analysis_source"] == "landsat-c2-l2"
+
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_landsat_frame_falls_back_to_sentinel_cog(self, mock_mosaic, mock_landsat_ndvi, mock_s2_ndvi):
+        frames = [_make_frame(year=2016, collection="landsat-c2-l2", is_naip=False)]
+        mock_mosaic.side_effect = lambda collection, *_args: f"sid-{collection}"
+        mock_landsat_ndvi.return_value = None
+        mock_s2_ndvi.return_value = {"mean": 0.4, "scene_id": "S2A_fallback"}
+        results: dict = {}
+
+        stats, _ = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", MagicMock(), results)
+
+        mock_landsat_ndvi.assert_called_once()
+        mock_s2_ndvi.assert_called_once()
+        assert stats[0]["source"] == "sentinel-2-l2a"
+        assert frames[0]["provenance"]["display_source"] == "landsat-c2-l2"
+        assert frames[0]["provenance"]["analysis_source"] == "sentinel-2-l2a"
+
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_sentinel_frame_falls_back_to_landsat_cog(self, mock_mosaic, mock_landsat_ndvi, mock_s2_ndvi):
+        frames = [_make_frame(year=2024, collection="sentinel-2-l2a", is_naip=False)]
+        mock_mosaic.return_value = "sid-sentinel-2-l2a"
+        mock_s2_ndvi.return_value = None
+        mock_landsat_ndvi.return_value = {"mean": 0.4, "scene_id": "LC09_fallback"}
+        results: dict = {}
+
+        stats, _ = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", MagicMock(), results)
+
+        mock_s2_ndvi.assert_called_once()
+        mock_landsat_ndvi.assert_called_once()
+        assert stats[0]["source"] == "landsat-c2-l2"
+        assert frames[0]["provenance"]["display_source"] == "sentinel-2-l2a"
+        assert frames[0]["provenance"]["analysis_source"] == "landsat-c2-l2"
+
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_source_error_falls_back_to_alternate_cog(self, mock_mosaic, mock_landsat_ndvi, mock_s2_ndvi):
+        frames = [_make_frame(year=2024, collection="sentinel-2-l2a", is_naip=False)]
+        mock_mosaic.return_value = "sid-sentinel-2-l2a"
+        mock_s2_ndvi.side_effect = RuntimeError("Sentinel-2 catalog unavailable")
+        mock_landsat_ndvi.return_value = {"mean": 0.4, "scene_id": "LC09_fallback"}
+        results: dict = {}
+
+        stats, _ = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", MagicMock(), results)
+
+        mock_landsat_ndvi.assert_called_once()
+        assert stats[0]["source"] == "landsat-c2-l2"
+        assert frames[0]["provenance"]["analysis_source"] == "landsat-c2-l2"
+
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_landsat_source_error_falls_back_to_sentinel(self, mock_mosaic, mock_landsat_ndvi, mock_s2_ndvi):
+        frames = [_make_frame(year=2016, collection="landsat-c2-l2", is_naip=False)]
+        mock_mosaic.side_effect = lambda collection, *_args: f"sid-{collection}"
+        mock_landsat_ndvi.side_effect = RuntimeError("Landsat catalog unavailable")
+        mock_s2_ndvi.return_value = {"mean": 0.4, "scene_id": "S2A_fallback"}
+        results: dict = {}
+
+        stats, _ = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", MagicMock(), results)
+
+        mock_landsat_ndvi.assert_called_once()
+        mock_s2_ndvi.assert_called_once()
+        assert stats[0]["source"] == "sentinel-2-l2a"
+        assert frames[0]["provenance"]["analysis_source"] == "sentinel-2-l2a"
 
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
@@ -358,20 +492,24 @@ class TestMosaicNdviParallel:
 
     @patch("treesight.pipeline.enrichment._phase_runners.fetch_ndvi_stat")
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
-    def test_fallback_to_tile_when_cog_returns_none(self, mock_mosaic, mock_ndvi, mock_fetch_stat):
-        """When compute_ndvi returns None, fall back to tile-based fetch_ndvi_stat."""
-        frames = [_make_frame()]
-        mock_mosaic.return_value = "sid-1"
-        mock_ndvi.return_value = None
+    def test_landsat_tile_fallback_uses_sentinel_search_id(
+        self, mock_mosaic, mock_landsat_ndvi, mock_s2_ndvi, mock_fetch_stat
+    ):
+        frames = [_make_frame(collection="landsat-c2-l2", is_naip=False)]
+        mock_mosaic.side_effect = lambda collection, *_args: f"sid-{collection}"
+        mock_landsat_ndvi.return_value = None
+        mock_s2_ndvi.return_value = None
         mock_fetch_stat.return_value = {"mean": 0.4}
         storage = MagicMock()
         results: dict = {}
 
         stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
 
-        mock_fetch_stat.assert_called_once()
-        assert stats[0] == {"mean": 0.4}
+        assert mock_fetch_stat.call_args.args[0] == "sid-sentinel-2-l2a"
+        assert stats[0]["mean"] == 0.4
+        assert stats[0]["source"] == "sentinel-2-l2a"
         assert raster_paths[0] is None
 
     @patch("treesight.pipeline.enrichment._phase_runners.fetch_ndvi_stat")

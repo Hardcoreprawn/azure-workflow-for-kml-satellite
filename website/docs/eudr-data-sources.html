@@ -97,8 +97,8 @@ li strong{color:var(--c-text)}
         </tr>
         </thead>
         <tbody>
-        <tr><td>Sentinel-2 L2A</td><td>10 m</td><td>5 days</td><td>Global, 2017+</td><td>Primary NDVI &amp; change detection</td></tr>
-        <tr><td>Landsat C2 L2</td><td>30 m</td><td>16 days</td><td>Global, 1982+</td><td>Pre-2017 historical baseline</td></tr>
+        <tr><td>Sentinel-2 L2A</td><td>10 m</td><td>5 days</td><td>Global, 2017+</td><td>Preferred NDVI source for 2018+ frames; multispectral fallback</td></tr>
+        <tr><td>Landsat C2 L2</td><td>30 m</td><td>16 days</td><td>Global, 1982+</td><td>Preferred NDVI source for 2013–2017 frames; multispectral fallback</td></tr>
         <tr><td>ESA WorldCover</td><td>10 m</td><td>Annual</td><td>Global</td><td>Land classification</td></tr>
         <tr><td>IO Annual LULC</td><td>10 m</td><td>Annual</td><td>Global, 2017+</td><td>Year-over-year land use change</td></tr>
         <tr><td>ALOS PALSAR FNF</td><td>25 m</td><td>Annual</td><td>Global</td><td>Radar-based forest classification</td></tr>
@@ -144,7 +144,7 @@ li strong{color:var(--c-text)}
     <!-- Landsat -->
     <section class="ds-section">
       <h2>Landsat Collection 2 Level 2</h2>
-      <p>Landsat extends the satellite record back to the 1980s. For EUDR purposes, Landsat is critical for establishing a <strong>pre-2017 baseline</strong> showing land use in the years before Sentinel-2 coverage began.</p>
+      <p>Landsat extends the satellite archive back to the 1980s. In Canopex's scheduled NDVI frame plan, Landsat C2 L2 is the preferred source for 2013–2017 frames; Sentinel-2 is preferred from 2018 onward. If the preferred COG computation returns no result, the other supported multispectral sensor is tried.</p>
 
       <div class="source-card">
         <h4>Key characteristics</h4>
@@ -158,8 +158,8 @@ li strong{color:var(--c-text)}
 
       <h3>What Canopex uses it for</h3>
       <ul>
-        <li><strong>Historical NDVI baseline (2013–2017)</strong> — establishes vegetation state before the EUDR cutoff period, giving auditors evidence that land was already cleared (or forested) years before the regulation applies</li>
-        <li><strong>Cross-sensor validation</strong> — Landsat and Sentinel-2 overlap in 2017–2018, providing independent verification</li>
+        <li><strong>Preferred historical NDVI source (2013–2017)</strong> — Landsat C2 L2 establishes vegetation state before the EUDR cutoff period; Sentinel-2 is preferred from 2018 onward</li>
+        <li><strong>Per-frame fallback</strong> — if the preferred sensor has no usable COG observation, Canopex tries the other supported multispectral sensor and records the actual analysis source separately from display imagery</li>
       </ul>
 
       <h3>QA_PIXEL cloud masking</h3>
@@ -281,7 +281,7 @@ li strong{color:var(--c-text)}
 
       <div class="info-card">
         <h4>Cross-sensor timeline</h4>
-        <p>Landsat provides NDVI data from 2013. Sentinel-2 takes over from 2017. The two sensors overlap in 2017–2018, creating a continuous vegetation record spanning 13+ years — from well before the EUDR cutoff date through to the present day.</p>
+        <p>The current frame plan prefers Landsat for 2013–2017 and Sentinel-2 from 2018 onward. Although the sensor archives overlap in availability, the plan does not create same-year paired observations. A missing preferred-source observation can fall back to the other sensor, but a sensor transition alone is not evidence of vegetation change; cross-sensor comparisons require overlap data or harmonized calibration.</p>
       </div>
     </section>
 

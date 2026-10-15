@@ -48,7 +48,7 @@ def classify_ndvi(mean: float) -> str:
     return "dense_vegetation"
 
 
-def compute_ndvi_trend(ndvi_stats: list[dict[str, float] | None]) -> dict[str, Any]:
+def compute_ndvi_trend(ndvi_stats: list[dict[str, Any] | None]) -> dict[str, Any]:
     """Compute NDVI trend statistics from a time series.
 
     Takes the enrichment frame_plan's ndvi_stat list and computes:
@@ -59,11 +59,17 @@ def compute_ndvi_trend(ndvi_stats: list[dict[str, float] | None]) -> dict[str, A
     """
     # Filter to frames with valid NDVI data
     valid = [(i, s) for i, s in enumerate(ndvi_stats) if s and s.get("mean") is not None]
+    sources = {stat.get("source") for _, stat in valid}
+    if len(sources) > 1:
+        latest_source = valid[-1][1].get("source")
+        valid = [(i, stat) for i, stat in valid if stat.get("source") == latest_source]
+    analysis_source = valid[-1][1].get("source") if valid else None
     if len(valid) < 2:
         latest = valid[0][1]["mean"] if valid else None
         return {
             "direction": "insufficient_data",
             "observations": len(valid),
+            "source": analysis_source,
             "latest_mean": latest,
             "health_class": classify_ndvi(latest) if latest is not None else "unknown",
         }
@@ -107,6 +113,7 @@ def compute_ndvi_trend(ndvi_stats: list[dict[str, float] | None]) -> dict[str, A
         "direction": direction,
         "slope_per_frame": round(slope, 5),
         "observations": n,
+        "source": analysis_source,
         "earliest_mean": round(earliest_mean, 4),
         "latest_mean": round(latest_mean, 4),
         "overall_change": round(overall_change, 4),
@@ -122,7 +129,7 @@ def compute_ndvi_trend(ndvi_stats: list[dict[str, float] | None]) -> dict[str, A
 
 def compute_aoi_metrics(
     aoi_data: dict[str, Any],
-    ndvi_stats: list[dict[str, float] | None],
+    ndvi_stats: list[dict[str, Any] | None],
     weather_daily: dict[str, Any] | None = None,
     change_detection: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
