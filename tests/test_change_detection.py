@@ -62,6 +62,34 @@ class TestComputeChangeMap:
         assert result["gain_pct"] == 100.0
         assert result["gain_ha"] > 0
 
+    def test_rejects_same_index_pixels_from_non_overlapping_grids(self):
+        from treesight.pipeline.enrichment.change_detection import compute_change_map
+
+        before = np.full((4, 4), 0.5, dtype=np.float32)
+        after = np.full((4, 4), 0.8, dtype=np.float32)
+
+        result = compute_change_map(
+            _make_ndvi_tiff(before, bounds=(0, 0, 100, 100)),
+            _make_ndvi_tiff(after, bounds=(1000, 0, 1100, 100)),
+        )
+
+        assert result is None
+
+    def test_aligns_different_resolutions_on_same_ground_extent(self):
+        from treesight.pipeline.enrichment.change_detection import compute_change_map
+
+        before = np.full((4, 4), 0.5, dtype=np.float32)
+        after = np.full((2, 2), 0.7, dtype=np.float32)
+
+        result = compute_change_map(
+            _make_ndvi_tiff(before, bounds=(0, 0, 100, 100)),
+            _make_ndvi_tiff(after, bounds=(0, 0, 100, 100)),
+        )
+
+        assert result is not None
+        assert result["valid_pixels"] == 16
+        assert result["mean_delta"] == 0.2
+
     def test_mixed_change(self):
         from treesight.pipeline.enrichment.change_detection import compute_change_map
 
@@ -86,9 +114,24 @@ class TestComputeChangeMap:
         tiff_b = _make_ndvi_tiff(after)
 
         result = compute_change_map(tiff_a, tiff_b)
-        assert result is not None
-        # Only pixels valid in BOTH rasters count
-        assert result["valid_pixels"] == 2
+        assert result is None
+
+    def test_requires_minimum_pairwise_valid_pixel_overlap(self):
+        from treesight.pipeline.enrichment.change_detection import compute_change_map
+
+        before = np.array([[0.5, 0.5], [np.nan, np.nan]], dtype=np.float32)
+        after = np.array([[0.6, 0.4], [0.5, np.nan]], dtype=np.float32)
+
+        assert compute_change_map(_make_ndvi_tiff(before), _make_ndvi_tiff(after)) is None
+
+    def test_python_fallback_requires_minimum_pairwise_valid_pixel_overlap(self, monkeypatch):
+        from treesight.pipeline.enrichment.change_detection import compute_change_map
+
+        monkeypatch.setattr("treesight.pipeline.enrichment.change_detection._rs", None)
+        before = np.array([[0.5, 0.5], [np.nan, np.nan]], dtype=np.float32)
+        after = np.array([[0.6, 0.4], [0.5, np.nan]], dtype=np.float32)
+
+        assert compute_change_map(_make_ndvi_tiff(before), _make_ndvi_tiff(after)) is None
 
     def test_returns_none_all_nan(self):
         from treesight.pipeline.enrichment.change_detection import compute_change_map

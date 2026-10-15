@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from treesight.analysis.trends import is_valid_ndvi_stats
 from treesight.exports.frame_row import FrameRow
 from treesight.pipeline.enrichment.determination import as_screening_determination
 
@@ -37,7 +38,7 @@ def _build_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
             "is_naip": frame.is_naip,
             "provenance": frame.provenance,
         }
-        if ndvi:
+        if is_valid_ndvi_stats(ndvi):
             props["ndvi_mean"] = ndvi.get("mean")
             props["ndvi_min"] = ndvi.get("min")
             props["ndvi_max"] = ndvi.get("max")
@@ -171,7 +172,7 @@ def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
 
         # NDVI summary
         ndvi_stats = aoi.get("ndvi_stats", [])
-        valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
+        valid = [s for s in ndvi_stats if is_valid_ndvi_stats(s)]
         if valid:
             props["ndvi_latest_mean"] = valid[-1]["mean"]
             props["ndvi_observations"] = len(valid)
@@ -185,13 +186,21 @@ def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
         props["change_trajectory"] = summary.get("trajectory", "unknown")
         props["change_comparisons"] = summary.get("comparisons", 0)
 
-        # Build polygon geometry
-        coords = aoi.get("coords", [])
-        ring = list(coords)
-        if ring and ring[0] != ring[-1]:
-            ring.append(ring[0])
-
-        geometry: dict[str, Any] | None = {"type": "Polygon", "coordinates": [ring]} if ring else None
+        # Prefer canonical geometry so interior rings are not lost.
+        stored_geometry = aoi.get("geometry")
+        if (
+            isinstance(stored_geometry, dict)
+            and stored_geometry.get("type") == "Polygon"
+            and isinstance(stored_geometry.get("coordinates"), list)
+            and stored_geometry["coordinates"]
+        ):
+            geometry: dict[str, Any] | None = stored_geometry
+        else:
+            coords = aoi.get("coords", [])
+            ring = list(coords)
+            if ring and ring[0] != ring[-1]:
+                ring.append(ring[0])
+            geometry = {"type": "Polygon", "coordinates": [ring]} if ring else None
 
         features.append({"type": "Feature", "geometry": geometry, "properties": props})
 

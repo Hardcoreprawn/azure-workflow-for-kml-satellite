@@ -30,16 +30,14 @@ else:
 
 
 def _load_aoi(payload: dict[str, Any], storage: Any = None) -> Any:
-    """Resolve AOI from claim-check ref or inline ``aoi`` dict."""
+    """Resolve an AOI from its claim-check reference."""
     from treesight.models.aoi import AOI
     from treesight.storage.client import BlobStorageClient
     from treesight.storage.offload import PayloadOffloader
 
-    if payload.get("aoi_ref"):
-        s = storage or BlobStorageClient()
-        data = PayloadOffloader(s).load_claim(payload["aoi_ref"])
-        return AOI.model_validate(data)
-    return AOI.model_validate(payload["aoi"])
+    s = storage or BlobStorageClient()
+    data = PayloadOffloader(s).load_claim(payload["aoi_ref"])
+    return AOI.model_validate(data)
 
 
 def _finalize_and_release_admission(
@@ -75,12 +73,12 @@ def _finalize_and_release_admission(
 
 
 @bp.activity_trigger(input_name="payload")
-def parse_kml(payload: _Payload) -> list[dict[str, Any]] | dict[str, Any]:
+def parse_kml(payload: _Payload) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise TypeError(f"parse_kml expects dict payload, got {type(payload).__name__}")
 
     from treesight.models.blob_event import BlobEvent
-    from treesight.pipeline.ingestion import parse_kml_from_blob
+    from treesight.pipeline.ingestion import enforce_aoi_limit, parse_kml_from_blob
     from treesight.storage.client import BlobStorageClient
     from treesight.storage.offload import PayloadOffloader
 
@@ -98,39 +96,63 @@ def parse_kml(payload: _Payload) -> list[dict[str, Any]] | dict[str, Any]:
     features = parse_kml_from_blob(blob_event, storage)
     logger.info("parse_kml: got features=%d", len(features))
 
-    from treesight.constants import MAX_FEATURES_PER_KML
+    from treesight.constants import MAX_AOI_NAME_LENGTH, MAX_FEATURES_PER_KML
 
     if len(features) > MAX_FEATURES_PER_KML:
         raise ValueError(f"KML contains {len(features)} features, exceeding the limit of {MAX_FEATURES_PER_KML}")
 
-    feature_dicts = [f.model_dump() for f in features]
-
     offloader = PayloadOffloader(storage)
-    if offloader.should_offload(feature_dicts):
-        return offloader.offload(blob_event.correlation_id, feature_dicts)
+    feature_dicts = [feature.model_dump() for feature in features]
+    enforce_aoi_limit(feature_count=len(features), tier=payload.get("tier"))
+    for feature in feature_dicts:
+        name = feature.get("name", "")
+        if isinstance(name, str) and len(name) > MAX_AOI_NAME_LENGTH:
+            raise ValueError(f"Feature name exceeds {MAX_AOI_NAME_LENGTH} characters")
 
-    return feature_dicts
-
-
-@bp.activity_trigger(input_name="payload")
-def load_offloaded_features(payload: _Payload) -> list[dict[str, Any]]:
-    """Load features from offloaded blob storage (§7.5)."""
-    from treesight.storage.client import BlobStorageClient
-    from treesight.storage.offload import PayloadOffloader
-
-    storage = BlobStorageClient()
-    offloader = PayloadOffloader(storage)
-    return offloader.load_all(payload["ref"])
+    feature_refs = [
+        offloader.store_claim(blob_event.correlation_id, f"feature_{index}", feature_dict)
+        for index, feature_dict in enumerate(feature_dicts)
+    ]
+    return {"feature_refs": feature_refs}
 
 
 @bp.activity_trigger(input_name="payload")
 def prepare_aoi(payload: _Payload) -> dict[str, Any]:
     from treesight.geo import prepare_aoi as _prepare
     from treesight.models.feature import Feature
+    from treesight.storage.client import BlobStorageClient
+    from treesight.storage.offload import PayloadOffloader
 
-    feature = Feature.model_validate(payload["feature"])
+    storage = BlobStorageClient()
+    offloader = PayloadOffloader(storage)
+    feature_dict = offloader.load_claim(payload["feature_ref"])
+    feature = Feature.model_validate(feature_dict)
     aoi = _prepare(feature, buffer_m=payload.get("buffer_m"))
-    return aoi.model_dump()
+    aoi_data = aoi.model_dump()
+    from treesight.constants import MAX_AOI_NAME_LENGTH
+
+    if len(aoi.feature_name) > MAX_AOI_NAME_LENGTH:
+        raise ValueError(f"Feature name exceeds {MAX_AOI_NAME_LENGTH} characters")
+    aoi_claim_index = payload.get("feature_index", aoi.feature_index)
+    aoi_ref = offloader.store_claim(
+        payload["instance_id"],
+        f"aoi_{aoi_claim_index}",
+        aoi_data,
+    )
+    return {
+        "aoi_ref": aoi_ref,
+        "aoi_claim_index": aoi_claim_index,
+        "feature_name": aoi.feature_name,
+        "feature_index": aoi.feature_index,
+        "bbox": aoi.bbox,
+        "buffered_bbox": aoi.buffered_bbox,
+        "area_ha": aoi.area_ha,
+        "perimeter_km": aoi.perimeter_km,
+        "centroid": aoi.centroid,
+        "buffer_m": aoi.buffer_m,
+        "crs": aoi.crs,
+        "area_warning": aoi.area_warning,
+    }
 
 
 @bp.activity_trigger(input_name="payload")
@@ -165,30 +187,6 @@ def write_metadata(payload: _Payload) -> dict[str, Any]:
         storage=storage,
         kml_bytes=kml_bytes,
     )
-
-
-@bp.activity_trigger(input_name="payload")
-def store_aoi_claims(payload: _Payload) -> list[dict[str, str]]:
-    """Claim-check: store AOIs in blob storage, return lightweight refs."""
-    from treesight.storage.client import BlobStorageClient
-    from treesight.storage.offload import PayloadOffloader
-
-    offloader = PayloadOffloader(BlobStorageClient())
-    return offloader.store_claims_batch(
-        instance_id=payload["instance_id"],
-        items=payload["aois"],
-        key_field="feature_name",
-    )
-
-
-@bp.activity_trigger(input_name="payload")
-def load_aoi_claim(payload: _Payload) -> dict[str, Any]:
-    """Claim-check: retrieve a single AOI by blob ref."""
-    from treesight.storage.client import BlobStorageClient
-    from treesight.storage.offload import PayloadOffloader
-
-    offloader = PayloadOffloader(BlobStorageClient())
-    return offloader.load_claim(payload.get("aoi_ref") or payload["ref"])
 
 
 # ---------------------------------------------------------------------------
@@ -314,33 +312,6 @@ def post_process_imagery(payload: _Payload) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Enrichment activity
-# ---------------------------------------------------------------------------
-
-
-@bp.activity_trigger(input_name="payload")
-def run_enrichment(payload: _Payload) -> dict[str, Any]:
-    """Phase 4 activity: fetch weather, register mosaics, sample NDVI, store manifest."""
-    from treesight.pipeline.enrichment import run_enrichment as _enrich
-    from treesight.storage.client import BlobStorageClient
-
-    storage = BlobStorageClient()
-    return _enrich(
-        coords=payload["coords"],
-        project_name=payload["project_name"],
-        timestamp=payload["timestamp"],
-        output_container=payload.get("output_container", DEFAULT_OUTPUT_CONTAINER),
-        storage=storage,
-        per_aoi_coords=payload.get("per_aoi_coords"),
-        eudr_mode=payload.get("eudr_mode", False),
-        date_start=payload.get("date_start"),
-        date_end=payload.get("date_end"),
-        cadence=payload.get("cadence", "maximum"),
-        max_history_years=payload.get("max_history_years"),
-    )
-
-
-# ---------------------------------------------------------------------------
 # Enrichment sub-step activities (#574 — parallel fan-out)
 # ---------------------------------------------------------------------------
 
@@ -360,14 +331,35 @@ def enrich_data_sources(payload: _Payload) -> dict[str, Any]:
         return {"safe_mode": True, "skipped": ["weather", "flood_fire", "eudr_datasets"]}
 
     from treesight.pipeline.enrichment import enrich_data_sources as _enrich_ds
+    from treesight.storage.client import BlobStorageClient
 
-    return _enrich_ds(
-        payload["coords"],
+    from ._payloads import (
+        _collect_per_aoi_enrichment_coords,
+        _hydrate_per_aoi_enrichment_coords,
+        _per_aoi_claim_refs,
+        _store_enrichment_activity_result,
+    )
+
+    storage = BlobStorageClient()
+    per_aoi_refs = _per_aoi_claim_refs(payload["instance_id"], payload["per_aoi_claim_indexes"])
+    per_aoi_coords = _hydrate_per_aoi_enrichment_coords(per_aoi_refs, storage)
+    coords = _collect_per_aoi_enrichment_coords(per_aoi_coords)
+
+    results = _enrich_ds(
+        coords,
+        per_aoi_coords=per_aoi_coords,
         eudr_mode=payload.get("eudr_mode", False),
         date_start=payload.get("date_start"),
         date_end=payload.get("date_end"),
         cadence=payload.get("cadence", "maximum"),
         max_history_years=payload.get("max_history_years"),
+    )
+    results.pop("coords", None)
+    return _store_enrichment_activity_result(
+        results,
+        storage,
+        payload["instance_id"],
+        "enrichment_data_sources",
     )
 
 
@@ -377,9 +369,20 @@ def enrich_imagery(payload: _Payload) -> dict[str, Any]:
     from treesight.pipeline.enrichment import enrich_imagery as _enrich_img
     from treesight.storage.client import BlobStorageClient
 
+    from ._payloads import (
+        _collect_per_aoi_enrichment_coords,
+        _hydrate_per_aoi_enrichment_coords,
+        _per_aoi_claim_refs,
+        _store_enrichment_activity_result,
+    )
+
     storage = BlobStorageClient()
-    return _enrich_img(
-        payload["coords"],
+    per_aoi_refs = _per_aoi_claim_refs(payload["instance_id"], payload["per_aoi_claim_indexes"])
+    per_aoi_coords = _hydrate_per_aoi_enrichment_coords(per_aoi_refs, storage)
+    coords = _collect_per_aoi_enrichment_coords(per_aoi_coords)
+    result = _enrich_img(
+        coords,
+        per_aoi_coords=per_aoi_coords,
         eudr_mode=payload.get("eudr_mode", False),
         date_start=payload.get("date_start"),
         date_end=payload.get("date_end"),
@@ -390,6 +393,7 @@ def enrich_imagery(payload: _Payload) -> dict[str, Any]:
         output_container=payload.get("output_container", DEFAULT_OUTPUT_CONTAINER),
         storage=storage,
     )
+    return _store_enrichment_activity_result(result, storage, payload["instance_id"], "enrichment_imagery")
 
 
 @bp.activity_trigger(input_name="payload")
@@ -397,10 +401,37 @@ def enrich_single_aoi(payload: _Payload) -> dict[str, Any]:
     """Enrichment sub-step 3a: per-AOI enrichment (fan-out one per AOI)."""
     from treesight.pipeline.enrichment import enrich_single_aoi_step as _enrich_aoi
     from treesight.storage.client import BlobStorageClient
+    from treesight.storage.offload import PayloadOffloader
+
+    from ._payloads import _aoi_coords, _store_enrichment_activity_result
 
     storage = BlobStorageClient()
-    return _enrich_aoi(
-        payload["aoi_entry"],
+    aoi_entry = payload["aoi_entry"]
+    aoi_ref = PayloadOffloader.claim_ref(payload["instance_id"], f"aoi_{aoi_entry['aoi_claim_index']}")
+    aoi = _load_aoi({"aoi_ref": aoi_ref}, storage)
+    source_coords = aoi.exterior_coords
+    hydrated_aoi_entry = {
+        **aoi_entry,
+        "name": aoi.feature_name,
+        "area_ha": aoi.area_ha,
+        "coords": source_coords or aoi_entry.get("coords") or _aoi_coords(aoi.model_dump()),
+        "interior_coords": aoi.interior_coords if source_coords else None,
+    }
+    source_geometry_type = aoi.metadata.get("source_geometry_type", "")
+    if source_geometry_type:
+        hydrated_aoi_entry["source_geometry_type"] = source_geometry_type
+    plot_area_ha = aoi.metadata.get("plot_area_ha", "")
+    if plot_area_ha:
+        try:
+            hydrated_aoi_entry["plot_area_ha"] = float(plot_area_ha)
+        except ValueError:
+            logger.warning(
+                "Could not parse plot_area_ha %r for AOI %r; field omitted",
+                plot_area_ha,
+                aoi.feature_name,
+            )
+    result = _enrich_aoi(
+        hydrated_aoi_entry,
         date_start=payload.get("date_start"),
         date_end=payload.get("date_end"),
         cadence=payload.get("cadence", "maximum"),
@@ -412,20 +443,45 @@ def enrich_single_aoi(payload: _Payload) -> dict[str, Any]:
         storage=storage,
         aoi_index=payload.get("aoi_index"),
     )
+    return _store_enrichment_activity_result(
+        result,
+        storage,
+        payload["instance_id"],
+        f"enrichment_aoi_{payload.get('aoi_index', 0)}",
+    )
 
 
 @bp.activity_trigger(input_name="payload")
 def enrich_finalize(payload: _Payload) -> dict[str, Any]:
-    """Enrichment sub-step 4: merge parallel results + store manifest."""
+    """Enrichment sub-step 4: store the manifest and return a compact summary."""
     from treesight.pipeline.enrichment import enrich_finalize as _finalize
     from treesight.storage.client import BlobStorageClient
 
     storage = BlobStorageClient()
-    return _finalize(
-        payload["data_sources"],
-        payload["imagery"],
-        payload.get("per_aoi_results", []),
-        per_aoi_coords=payload.get("per_aoi_coords"),
+    from treesight.storage.offload import PayloadOffloader
+
+    from ._payloads import _hydrate_per_aoi_enrichment_coords, _load_enrichment_activity_result
+
+    offloader = PayloadOffloader(storage)
+    instance_id = payload.get("instance_id", "")
+    aoi_claim_indexes = payload.get("per_aoi_claim_indexes", [])
+    per_aoi_refs = [
+        {"aoi_ref": offloader.claim_ref(instance_id, f"aoi_{claim_index}")} for claim_index in aoi_claim_indexes
+    ]
+    per_aoi_coords = _hydrate_per_aoi_enrichment_coords(per_aoi_refs, storage)
+    data_sources = _load_enrichment_activity_result(payload["data_sources"], storage)
+    imagery = _load_enrichment_activity_result(payload["imagery"], storage)
+    per_aoi_results = [
+        _load_enrichment_activity_result(
+            {"result_ref": offloader.claim_ref(instance_id, f"enrichment_aoi_{index}")}, storage
+        )
+        for index in range(payload.get("per_aoi_result_count", 0))
+    ]
+    manifest = _finalize(
+        data_sources,
+        imagery,
+        per_aoi_results,
+        per_aoi_coords=per_aoi_coords,
         eudr_mode=payload.get("eudr_mode", False),
         date_start=payload.get("date_start"),
         project_name=payload["project_name"],
@@ -433,6 +489,41 @@ def enrich_finalize(payload: _Payload) -> dict[str, Any]:
         output_container=payload.get("output_container", DEFAULT_OUTPUT_CONTAINER),
         storage=storage,
     )
+    return _enrichment_finalize_summary(manifest)
+
+
+def _enrichment_finalize_summary(manifest: dict[str, Any]) -> dict[str, Any]:
+    summary_keys = ("manifest_path", "resource_usage", "estimated_cost_pence", "enrichment_duration_seconds")
+    summary = {key: manifest[key] for key in summary_keys if key in manifest}
+    telemetry_keys = (
+        "ndvi_stats",
+        "ndvi_raster_paths",
+        "ndvi_search_ids",
+        "weather_daily",
+        "weather_monthly",
+        "search_ids",
+        "display_collections",
+        "change_detection",
+        "flood_events",
+        "fire_hotspots",
+    )
+    per_aoi_enrichment = manifest.get("per_aoi_enrichment", [])
+    for key in telemetry_keys:
+        value = manifest.get(key)
+        has_data = _has_enrichment_data(value)
+        if not has_data and isinstance(per_aoi_enrichment, list):
+            has_data = any(
+                isinstance(entry, dict) and _has_enrichment_data(entry.get(key)) for entry in per_aoi_enrichment
+            )
+        if has_data:
+            summary[key] = True
+    return summary
+
+
+def _has_enrichment_data(value: Any) -> bool:
+    if isinstance(value, list):
+        return any(bool(item) for item in value)
+    return bool(value)
 
 
 # ---------------------------------------------------------------------------

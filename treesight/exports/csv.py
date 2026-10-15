@@ -6,6 +6,7 @@ import csv
 import io
 from typing import Any
 
+from treesight.analysis.trends import is_valid_ndvi_delta, is_valid_ndvi_stats
 from treesight.exports.frame_row import FrameRow
 from treesight.exports.geojson import _aoi_eudr_value, _toplevel_as_single_aoi
 from treesight.pipeline.enrichment.determination import as_screening_determination
@@ -34,6 +35,13 @@ _EUDR_CSV_FIELDS = [
 def _as_dict(value: Any) -> dict[str, Any]:
     """Return *value* if it's a dict, otherwise {} — guards against malformed Cosmos data."""
     return value if isinstance(value, dict) else {}
+
+
+def _valid_ndvi_delta(change: dict[str, Any] | None) -> float | None:
+    delta = change.get("mean_delta") if change else None
+    if not is_valid_ndvi_delta(delta):
+        return None
+    return float(delta)
 
 
 def _build_csv(manifest: dict[str, Any]) -> str:
@@ -98,6 +106,8 @@ def _build_csv(manifest: dict[str, Any]) -> str:
 
     for frame in frames:
         ndvi = ndvi_stats[frame.frame_index] if frame.frame_index < len(ndvi_stats) else None
+        if not is_valid_ndvi_stats(ndvi):
+            ndvi = None
 
         # Weather aggregation for the frame's date range
         mean_temp = None
@@ -118,7 +128,7 @@ def _build_csv(manifest: dict[str, Any]) -> str:
 
         # Change detection delta
         change = change_lookup.get((frame.season, int(frame.year) if frame.year else 0))
-        ndvi_delta = change.get("mean_delta") if change else None
+        ndvi_delta = _valid_ndvi_delta(change)
 
         prov = frame.provenance
         row = {
@@ -187,6 +197,8 @@ def _build_bulk_csv(manifest: dict[str, Any]) -> str:
         geo = m.get("geometry", {})
         veg = m.get("vegetation", {})
         latest = veg.get("latest_detail", {})
+        if not is_valid_ndvi_stats(latest):
+            latest = {}
         change = m.get("change", {})
         weather = m.get("weather", {})
 
@@ -251,7 +263,7 @@ def _build_eudr_csv(
         lc = wc.get("land_cover", {}) if wc.get("available") else {}
         wdpa = _aoi_eudr_value(aoi, "wdpa") or {}
         ndvi_stats = aoi.get("ndvi_stats", [])
-        valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
+        valid = [s for s in ndvi_stats if is_valid_ndvi_stats(s)]
         change_detection = aoi.get("change_detection") or {}
         cd_summary = change_detection.get("summary", {})
         review = _as_dict(parcel_reviews.get(str(idx)))

@@ -2184,6 +2184,20 @@ class TestCIFeedbackHygiene:
                 "uses DefaultAzureCredential (managed identity)"
             )
 
+    def test_resumable_durable_inputs_have_no_age_based_deletion(self):
+        policy = (INFRA / "main.tf").read_text()
+
+        assert 'prefix_match = ["pipeline-payloads/claims/"]' not in policy
+        assert 'prefix_match = ["pipeline-payloads/payloads/"]' not in policy
+
+        pid = (ROOT / "docs" / "PID.md").read_text()
+        lifecycle = pid.split("### 10.2 Lifecycle Policies\n", 1)[1].split("\n---", 1)[0]
+        assert "Delete temporary payloads" not in lifecycle
+        assert "pipeline-payloads/payloads/" in lifecycle
+        assert "pipeline-payloads/claims/" in lifecycle
+        assert "no age-based deletion" in lifecycle.lower()
+        assert "replay" in lifecycle.lower()
+
     def test_compose_func_passes_through_canopex_test_mode(self):
         """func's environment must pass CANOPEX_TEST_MODE through from the
         invoking shell (default unset — real Planetary Computer imagery),
@@ -2424,6 +2438,25 @@ class TestDiffCoverRequiredGate:
         assert measurement < gate
         assert steps[gate]["if"] == "github.event_name == 'pull_request'"
         assert steps[gate]["env"]["BASE_REF"] == "${{ github.base_ref }}"
+
+    def test_ci_rebuilds_rust_extension_when_rust_sources_change(self) -> None:
+        workflow = yaml.safe_load(CI_YML.read_text())
+        steps = next(job["steps"] for job in workflow["jobs"].values() if job.get("name") == "Test")
+        rebuild_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Rebuild Rust extension when Rust sources change"
+        )
+        test_index = next(index for index, step in enumerate(steps) if step.get("run", "").strip() == "make test")
+        rebuild = steps[rebuild_index]
+
+        assert rebuild_index < test_index
+        assert rebuild["if"] == "github.event_name != 'workflow_dispatch'"
+        assert rebuild["shell"] == "bash"
+        assert "origin/${BASE_REF}" in rebuild["run"]
+        assert 'compare_base="${EVENT_BEFORE}"' in rebuild["run"]
+        assert "rust/" in rebuild["run"]
+        assert "uv pip install --python /opt/venv --force-reinstall ./rust" in rebuild["run"]
 
     def test_diff_cover_step_sets_safe_directory(self):
         """The Test job runs in a container (different UID than the checkout),

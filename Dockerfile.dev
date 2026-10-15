@@ -23,11 +23,17 @@
 #                   bloating every other job/devcontainer.
 # ─────────────────────────────────────────────────────────────
 ARG UV_VERSION=0.12.15
+ARG RUST_VERSION=1.99.0
+ARG RUSTUP_VERSION=1.29.1
+ARG RUSTUP_INIT_SHA256=dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71
 ARG BASE_IMAGE=ghcr.io/hardcoreprawn/treesight-base:latest
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 # ── Stage 1: build the treesight_rs wheel ───────────────────
 FROM ${BASE_IMAGE} AS rust-build
+ARG RUST_VERSION
+ARG RUSTUP_VERSION
+ARG RUSTUP_INIT_SHA256
 COPY --from=uv /uv /usr/local/bin/uv
 # Pin the interpreter to the base runtime's CPython so the wheel is ABI-tagged
 # for the same Python the final image (and production) runs, and uv never
@@ -42,8 +48,12 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends build-essential curl ca-certificates; \
     rm -rf /var/lib/apt/lists/*; \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --profile minimal --default-toolchain stable
+    curl --proto '=https' --tlsv1.2 -sSfL \
+        "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/x86_64-unknown-linux-gnu/rustup-init" \
+        -o /tmp/rustup-init; \
+    printf '%s  %s\n' "${RUSTUP_INIT_SHA256}" /tmp/rustup-init | sha256sum --check --status; \
+    chmod +x /tmp/rustup-init; \
+    /tmp/rustup-init -y --profile minimal --default-toolchain "${RUST_VERSION}"
 COPY rust/ /build/rust/
 RUN uv build --wheel --out-dir /wheels /build/rust
 

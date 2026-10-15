@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from treesight.analysis.trends import calculate_trends, sanitise_for_prompt
+from treesight.analysis.trends import (
+    calculate_trends,
+    is_after_eudr_cutoff,
+    is_valid_ndvi_stats,
+    sanitise_for_prompt,
+)
 from treesight.constants import EUDR_CUTOFF_DATE
 
 _EUDR_CUTOFF = EUDR_CUTOFF_DATE
@@ -37,7 +42,9 @@ def build_timelapse_prompt(context: dict[str, Any]) -> tuple[str, dict[str, Any]
         context_lines.append(f"Location: {context['latitude']:.2f}, {context['longitude']:.2f}")
 
     n_frames = context.get("frame_count", len(ndvi_series))
-    context_lines.append(f"\nObservations: {n_frames} satellite frames analyzed")
+    valid_ndvi_observations = sum(1 for sample in ndvi_series if is_valid_ndvi_stats(sample))
+    context_lines.append(f"\nFrames analyzed: {n_frames} satellite frames")
+    context_lines.append(f"Usable NDVI observations: {valid_ndvi_observations} of {n_frames} frames")
 
     context_lines.append("\n=== NDVI Vegetation Analysis ===")
     if trend_info.get("ndvi_avg") is not None:
@@ -147,10 +154,9 @@ def build_eudr_prompt(
     ndvi_ts = context.get("ndvi_timeseries", [])
 
     post_cutoff = [
-        s
-        for s in ndvi_ts
-        if (isinstance(s.get("date"), str) and s["date"] > _EUDR_CUTOFF)
-        or (isinstance(s.get("year"), (int, float)) and s["year"] > 2020)
+        sample
+        for sample in ndvi_ts
+        if is_valid_ndvi_stats(sample) and is_after_eudr_cutoff(sample.get("date"), sample.get("year"))
     ]
     if not post_cutoff:
         return None, None, None

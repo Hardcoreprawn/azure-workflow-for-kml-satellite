@@ -175,7 +175,6 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     instance_id = context.instance_id
     ctx = derive_project_context(inp.get("blob_name", ""), context.current_utc_datetime)
     user_id, tier = inp.get("user_id", ""), inp.get("tier", "")
-    output_container = inp.get("output_container", DEFAULT_OUTPUT_CONTAINER)
     started_at = context.current_utc_datetime.isoformat()
     try:
         ing = yield from _phase_ingestion(context, inp, instance_id, ctx)
@@ -186,7 +185,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
             ctx,
             ing["all_coords"],
             ing["per_aoi_coords"],
-            output_container,
+            inp.get("output_container", DEFAULT_OUTPUT_CONTAINER),
         )
         summary = build_pipeline_summary(
             instance_id=instance_id,

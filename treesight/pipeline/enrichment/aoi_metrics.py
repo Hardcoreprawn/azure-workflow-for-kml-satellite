@@ -16,6 +16,7 @@ import logging
 import math
 from typing import Any
 
+from treesight.analysis.trends import is_valid_ndvi_mean, is_valid_ndvi_stats
 from treesight.constants import METRES_PER_DEGREE_LATITUDE
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,8 @@ NDVI_THRESHOLDS = {
 
 def classify_ndvi(mean: float) -> str:
     """Classify NDVI mean into a human-readable vegetation health label."""
+    if not math.isfinite(mean) or mean < -1.0 or mean > 1.0:
+        return "unknown"
     if mean < NDVI_THRESHOLDS["bare_soil"]:
         return "bare_soil"
     if mean < NDVI_THRESHOLDS["sparse"]:
@@ -57,25 +60,28 @@ def compute_ndvi_trend(ndvi_stats: list[dict[str, float] | None]) -> dict[str, A
     - Maximum observed drop between consecutive observations
     - Overall stability assessment
     """
-    # Filter to frames with valid NDVI data
-    valid = [(i, s) for i, s in enumerate(ndvi_stats) if s and s.get("mean") is not None]
+    # Trend and health thresholds assume physical NDVI values in [-1, 1].
+    observed = [(i, s) for i, s in enumerate(ndvi_stats) if s and s.get("mean") is not None]
+    valid = [(i, s) for i, s in observed if is_valid_ndvi_stats(s)]
+    latest_stats = observed[-1][1] if observed else None
+    latest_mean = latest_stats["mean"] if is_valid_ndvi_stats(latest_stats) else None
     if len(valid) < 2:
-        latest = valid[0][1]["mean"] if valid else None
         return {
             "direction": "insufficient_data",
             "observations": len(valid),
-            "latest_mean": latest,
-            "health_class": classify_ndvi(latest) if latest is not None else "unknown",
+            "latest_mean": latest_mean,
+            "health_class": classify_ndvi(float(latest_mean)) if latest_mean is not None else "unknown",
         }
 
     means = [s["mean"] for _, s in valid]
+    frame_indices = [index for index, _ in valid]
     n = len(means)
 
     # Simple linear regression: y = a + bx
-    x_mean = (n - 1) / 2.0
+    x_mean = sum(frame_indices) / n
     y_mean = sum(means) / n
-    numerator = sum((i - x_mean) * (m - y_mean) for i, m in enumerate(means))
-    denominator = sum((i - x_mean) ** 2 for i in range(n))
+    numerator = sum((frame_indices[i] - x_mean) * (mean - y_mean) for i, mean in enumerate(means))
+    denominator = sum((index - x_mean) ** 2 for index in frame_indices)
     slope = numerator / denominator if denominator != 0 else 0.0
 
     # Classify trend
@@ -90,25 +96,27 @@ def compute_ndvi_trend(ndvi_stats: list[dict[str, float] | None]) -> dict[str, A
     max_drop = 0.0
     max_drop_idx = -1
     for i in range(1, n):
+        if frame_indices[i] != frame_indices[i - 1] + 1:
+            continue
         drop = means[i - 1] - means[i]
         if drop > max_drop:
             max_drop = drop
-            max_drop_idx = valid[i][0]  # original frame index
+            max_drop_idx = frame_indices[i]
 
     # Coefficient of variation (stability indicator)
     std = math.sqrt(sum((m - y_mean) ** 2 for m in means) / n) if n > 1 else 0.0
     cv = std / y_mean if y_mean > 0 else 0.0
 
     earliest_mean = means[0]
-    latest_mean = means[-1]
-    overall_change = latest_mean - earliest_mean
+    latest_valid_mean = means[-1]
+    overall_change = latest_valid_mean - earliest_mean
 
     return {
         "direction": direction,
         "slope_per_frame": round(slope, 5),
         "observations": n,
         "earliest_mean": round(earliest_mean, 4),
-        "latest_mean": round(latest_mean, 4),
+        "latest_mean": round(latest_mean, 4) if latest_mean is not None else None,
         "overall_change": round(overall_change, 4),
         "overall_change_pct": round(overall_change / earliest_mean * 100, 1) if earliest_mean else 0.0,
         "max_consecutive_drop": round(max_drop, 4),
@@ -116,7 +124,7 @@ def compute_ndvi_trend(ndvi_stats: list[dict[str, float] | None]) -> dict[str, A
         "coefficient_of_variation": round(cv, 3),
         "mean_ndvi": round(y_mean, 4),
         "std_ndvi": round(std, 4),
-        "health_class": classify_ndvi(latest_mean),
+        "health_class": classify_ndvi(float(latest_mean)) if latest_mean is not None else "unknown",
     }
 
 
@@ -173,7 +181,7 @@ def compute_aoi_metrics(
     metrics["vegetation"] = ndvi_trend
 
     # Latest NDVI detail
-    valid_stats = [s for s in ndvi_stats if s and s.get("mean") is not None]
+    valid_stats = [s for s in ndvi_stats if is_valid_ndvi_stats(s)]
     if valid_stats:
         latest = valid_stats[-1]
         metrics["vegetation"]["latest_detail"] = {
@@ -239,8 +247,9 @@ def compute_multi_aoi_summary(
     ndvi_values = []
     area_weights = []
     for m in aoi_metrics_list:
-        if m["vegetation"].get("latest_mean") is not None:
-            ndvi_values.append(m["vegetation"]["latest_mean"])
+        latest_mean = m["vegetation"].get("latest_mean")
+        if is_valid_ndvi_mean(latest_mean):
+            ndvi_values.append(float(latest_mean))
             area_weights.append(m["geometry"]["area_ha"])
 
     weighted_ndvi = None

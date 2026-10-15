@@ -6,6 +6,7 @@ NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
 
+import hashlib
 import logging
 from collections.abc import Generator
 from typing import Any, cast
@@ -17,11 +18,20 @@ from treesight.constants import (
     ACTIVITY_RETRY_MAX_ATTEMPTS,
     LONG_RETRY_FIRST_INTERVAL_MS,
     LONG_RETRY_MAX_ATTEMPTS,
+    MAX_DURABLE_PROJECT_NAME_LENGTH,
 )
 
 logger = logging.getLogger(__name__)
 
 _PhaseGen = Generator[Any, Any, dict[str, Any]]
+
+
+def _bounded_project_name(project_name: str) -> str:
+    if len(project_name) <= MAX_DURABLE_PROJECT_NAME_LENGTH:
+        return project_name
+    suffix = hashlib.sha256(project_name.encode("utf-8")).hexdigest()[:12]
+    prefix_length = MAX_DURABLE_PROJECT_NAME_LENGTH - len(suffix) - 1
+    return f"{project_name[:prefix_length]}-{suffix}"
 
 
 def _phase_enrichment(
@@ -48,17 +58,20 @@ def _phase_enrichment(
         max_number_of_attempts=LONG_RETRY_MAX_ATTEMPTS,
     )
 
+    project_name = _bounded_project_name(ctx["project_name"])
+
     enrichment_common = {
-        "coords": all_coords,
         "eudr_mode": inp.get("eudr_mode", False),
         "date_start": inp.get("date_start"),
         "date_end": inp.get("date_end"),
         "cadence": inp.get("cadence", "maximum"),
         "max_history_years": inp.get("max_history_years"),
-        "project_name": ctx["project_name"],
+        "project_name": project_name,
         "timestamp": ctx["timestamp"],
         "output_container": output_container,
     }
+    enrichment_common["instance_id"] = context.instance_id
+    enrichment_common["per_aoi_claim_indexes"] = [entry["aoi_claim_index"] for entry in per_aoi_coords]
 
     # ── Step 1: data sources ∥ imagery (parallel fan-out) ─────
     context.set_custom_status({"phase": "enrichment", "step": "data_sources_and_imagery"})
@@ -80,9 +93,9 @@ def _phase_enrichment(
                 "enrich_single_aoi",
                 enrichment_retry,
                 {
-                    "aoi_entry": entry,
+                    "aoi_entry": {"aoi_claim_index": entry["aoi_claim_index"]},
                     "aoi_index": idx,
-                    **{k: v for k, v in enrichment_common.items() if k != "coords"},
+                    **{k: v for k, v in enrichment_common.items() if k != "per_aoi_claim_indexes"},
                 },
             )
             for idx, entry in enumerate(per_aoi_coords)
@@ -94,23 +107,30 @@ def _phase_enrichment(
 
     # ── Step 3: merge + manifest (sequential) ────────────────
     context.set_custom_status({"phase": "enrichment", "step": "finalizing"})
+    finalize_payload: dict[str, Any] = {
+        "data_sources": data_sources,
+        "imagery": imagery,
+        "eudr_mode": inp.get("eudr_mode", False),
+        "date_start": inp.get("date_start"),
+        "project_name": project_name,
+        "timestamp": ctx["timestamp"],
+        "output_container": output_container,
+    }
+    finalize_payload.update(
+        {
+            "instance_id": context.instance_id,
+            "per_aoi_claim_indexes": [entry["aoi_claim_index"] for entry in per_aoi_coords],
+            "per_aoi_result_count": len(per_aoi_results),
+        }
+    )
+
     enrichment = cast(
         "dict[str, Any]",
         (
             yield context.call_activity_with_retry(
                 "enrich_finalize",
                 enrichment_retry,
-                {
-                    "data_sources": data_sources,
-                    "imagery": imagery,
-                    "per_aoi_results": per_aoi_results,
-                    "per_aoi_coords": per_aoi_coords,
-                    "eudr_mode": inp.get("eudr_mode", False),
-                    "date_start": inp.get("date_start"),
-                    "project_name": ctx["project_name"],
-                    "timestamp": ctx["timestamp"],
-                    "output_container": output_container,
-                },
+                finalize_payload,
             )
         ),
     )

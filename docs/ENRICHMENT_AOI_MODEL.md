@@ -19,8 +19,33 @@ parsing. Old record types or retained projections do not define new writes.
 ## Parcel Evidence
 
 Each per-AOI entry identifies `aoi_index`, `name`, `area_ha`, `coords`, `bbox`
-and named `center.lat`/`center.lon`. Geometry arrays use longitude/latitude order.
-Source geometry type and declared plot area can be retained for downstream review.
+and named `center.lat`/`center.lon`. Durable enrichment entries carry the AOI
+claim ref plus compact metadata, not coordinate rings; each activity hydrates
+the existing claim locally. Workers reconstruct the full GeoJSON Polygon,
+including interior rings, before raster masking. Persisted per-AOI `coords`
+retains the exterior ring and `geometry` retains the complete Polygon in
+EPSG:4326. The KML parser treats each Polygon in a
+placemark MultiGeometry as a separate AOI; the run-level mask combines those
+AOI polygons as a MultiPolygon without filling the spaces between them.
+
+NDVI screening transforms geometry to the raster CRS and masks pixels outside
+the plot and inside holes before calculating statistics. The mask uses pixel
+centres (`all_touched=false`); `geometry_mask_applied`, `geometry_masked_pixels`,
+`geometry_mask_method` and `aoi_geometry_type` record that method in each NDVI
+stat result. Missing geometry or zero valid in-plot pixels yields unavailable
+NDVI evidence; bbox tile statistics are not used as a fallback. Source geometry
+type and declared plot area can be retained for downstream review.
+Scene selection checks at most 20 cloud-ordered candidates per sensor and
+window; if none covers the complete AOI in the required bands and masks, NDVI
+evidence is unavailable.
+NDVI statistics require both at least four valid in-plot pixel centres and at
+least 50% valid coverage of pixel centres inside the rasterized plot. The four-
+pixel rule is a count floor, not a guarantee that the pixels form a contiguous
+2×2 block. Failure of either threshold makes the sample unavailable; passing
+them does not prove scientific accuracy or legal compliance.
+Change-detection statistics use the same minimum on the pixels valid in both
+time-step rasters; a smaller pairwise overlap is unavailable in both the
+Python and native Rust paths.
 One-parcel and multi-parcel runs use the same per-AOI contract.
 
 Other fields include frame plans, weather, NDVI statistics/raster references,
@@ -32,6 +57,12 @@ Some nested blocks allow additional fields and are not fully constrained schemas
 Run-level summary/projection fields are not substitutes for parcel evidence.
 Consumers must preserve parcel identity and use returned manifest paths rather
 than guessing evidence from aggregate values or filenames.
+
+Union-level imagery, Landsat baselines and EUDR determinations are omitted for
+any run containing multiple AOIs. AOI proximity or centroid distance does not
+prove that one selected scene covers every parcel; multi-AOI evidence is supplied
+through the per-AOI results instead. The `summary.multi_region` flag remains a
+separate distance-based label and is not a scene-coverage assertion.
 
 ## Availability and Artifact Identity
 

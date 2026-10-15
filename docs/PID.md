@@ -1060,11 +1060,16 @@ Storage Account: sttreesight
 
 | Rule | Condition | Action |
 | --- | --- | --- |
-| Delete temporary payloads | Blob age > 7 days | Delete |
+| Retain Durable pipeline payloads and claims | `pipeline-payloads/payloads/` and `pipeline-payloads/claims/`; no age-based deletion while Durable histories may be replayed | No automatic deletion; owner-approved cleanup only after associated histories are retired |
 | Archive old raw imagery | Blob age > 180 days | Move to Cool tier |
 | Archive old raw imagery | Blob age > 365 days | Move to Archive tier |
 | Delete processing logs | Blob age > 730 days | Delete |
 | Retain metadata | Indefinite | No action (metadata is small) |
+
+Durable workflow inputs are retained indefinitely unless the owner deliberately
+retires the associated history and confirms no running or suspended instance
+requires replay. Do not apply a generic age-based deletion rule to these
+prefixes; see the [pipeline payload retention runbook](OPERATIONS_RUNBOOK.md#pipeline-payload-retention).
 
 ---
 
