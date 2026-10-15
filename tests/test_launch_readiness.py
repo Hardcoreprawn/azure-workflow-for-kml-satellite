@@ -2452,6 +2452,7 @@ class TestDiffCoverRequiredGate:
 
         assert rebuild_index < test_index
         assert rebuild["if"] == "github.event_name != 'workflow_dispatch'"
+        assert rebuild["shell"] == "bash"
         assert "origin/${BASE_REF}" in rebuild["run"]
         assert 'compare_base="${EVENT_BEFORE}"' in rebuild["run"]
         assert "rust/" in rebuild["run"]

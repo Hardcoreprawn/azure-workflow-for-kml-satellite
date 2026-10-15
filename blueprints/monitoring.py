@@ -100,9 +100,9 @@ def _validated_monitor_polygon(stored_geometry: dict[str, Any]) -> dict[str, Any
 
     geometry_type = stored_geometry.get("type")
     coordinates = stored_geometry.get("coordinates")
-    if geometry_type not in {None, "Polygon"}:
-        return None
     try:
+        if geometry_type is not None and geometry_type != "Polygon":
+            return None
         if geometry_type == "Polygon":
             geometry = shape({"type": geometry_type, "coordinates": coordinates})
         else:

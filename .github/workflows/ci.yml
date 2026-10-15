@@ -140,6 +140,7 @@ jobs:
         run: uv sync --all-extras --inexact
       - name: Rebuild Rust extension when Rust sources change
         if: github.event_name != 'workflow_dispatch'
+        shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
           EVENT_BEFORE: ${{ github.event.before }}

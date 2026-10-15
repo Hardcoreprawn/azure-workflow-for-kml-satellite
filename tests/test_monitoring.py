@@ -447,6 +447,27 @@ class TestMonitoringEndpoints:
 
         assert monitoring_endpoint(req).status_code == 400
 
+    @pytest.mark.parametrize("geometry_type", [[], {}], ids=["list", "object"])
+    def test_create_monitor_rejects_unhashable_geometry_type(
+        self, geometry_type, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Unhashable geometry type",
+            "aoi_geometry": {
+                "centroid": [0.5, 0.5],
+                "type": geometry_type,
+                "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]]],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        response = monitoring_endpoint(req)
+
+        assert response.status_code == 400
+        assert "valid Polygon" in response.get_body().decode()
+
     def test_create_monitor_rejects_multipolygon_beyond_supported_span(
         self, _mock_cosmos, _mock_auth, _mock_pro_subscription
     ):
@@ -682,6 +703,28 @@ class TestMonitoringScheduler:
 
         assert geometry is None
         assert coords == []
+
+    @pytest.mark.parametrize("geometry_type", [[], {}], ids=["list", "object"])
+    def test_process_monitor_skips_legacy_unhashable_geometry_type(self, geometry_type, _mock_cosmos):
+        from treesight.monitoring import create_monitor
+
+        ring = [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]]
+        monitor = create_monitor(
+            user_id="user-1",
+            aoi_name="Malformed geometry type",
+            aoi_geometry={"centroid": [36.8, -1.3], "type": geometry_type, "coordinates": [ring]},
+        )
+
+        from blueprints.monitoring import _process_monitor
+
+        with (
+            patch("treesight.monitoring.advance_schedule") as advance,
+            patch("treesight.pipeline.enrichment.run_enrichment") as enrich,
+        ):
+            _process_monitor(monitor)
+
+        enrich.assert_not_called()
+        advance.assert_called_once_with(monitor, run_id="skipped-unavailable-geometry")
 
     def test_disjoint_legacy_multipolygon_is_unavailable(self):
         from blueprints.monitoring import _monitor_geometry_and_coords
