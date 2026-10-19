@@ -31,9 +31,10 @@ def test_dev_image_runtime_contract_is_uid_remap_safe() -> None:
     dockerfile = (ROOT / "Dockerfile.dev").read_text()
     assert "ENV HOME=/home/vscode" in dockerfile
     assert "RUN set -eux; \\\n    uv pip install --python /opt/venv /tmp/wheels/*.whl;" in dockerfile
-    assert "chown -R vscode:vscode /workspace /opt/venv /home/vscode" in dockerfile
-    assert "chmod -R a+rwX /opt/venv" in dockerfile
-    assert "CI runs with UV_NO_SYNC" in dockerfile
+    assert "install -d -o vscode -g vscode /workspace /opt/venv /home/vscode" in dockerfile
+    assert "chmod -R a+rwX" not in dockerfile
+    assert "WORKDIR /workspace\nUSER vscode" in dockerfile
+    assert "COPY --chown=vscode:vscode pyproject.toml uv.lock ./" in dockerfile
     assert "USER vscode\nWORKDIR /workspace" in dockerfile
 
 
@@ -65,9 +66,10 @@ def test_ci_gate_uses_explicit_caller_identity() -> None:
     assert compose["services"]["ci-gate"]["user"] == "${CI_GATE_USER:-1000:1000}"
     assert compose["services"]["ci-gate"]["environment"]["HOME"] == "/tmp"
     workflow = (ROOT / ".github/workflows/ci.yml").read_text()
-    assert 'CI_GATE_USER="$(id -u):$(id -g)"' in workflow
-    assert "export CI_GATE_USER" in workflow
-    assert "run --rm --user root ci-gate" in workflow
+    preparation = (ROOT / ".github/actions/prepare-ci-gate/action.yml").read_text()
+    assert 'echo "CI_GATE_USER=$(id -u):$(id -g)"' in preparation
+    assert '>> "${GITHUB_ENV}"' in preparation
+    assert "run --rm --user root ci-gate" not in workflow
     assert "run --rm ci-gate make test-int" in workflow
 
 

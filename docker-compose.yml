@@ -78,6 +78,8 @@ services:
   ci-gate:
     image: ${CI_GATE_IMAGE:-treesight-dev:${COMPOSE_PROJECT_NAME:-canopex-dev}}
     user: ${CI_GATE_USER:-1000:1000}
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
     profiles: ["ci"]
     depends_on:
       azurite:
@@ -95,6 +97,10 @@ services:
       UV_NO_SYNC: "1"
       AZURITE_BLOB_HOST: azurite
       AzureWebJobsStorage: "UseDevelopmentStorage=true"  # pragma: allowlist secret
+      DEMO_VALET_TOKEN_SECRET: "ci-test-secret"  # pragma: allowlist secret
+      CIAM_AUTHORITY: "https://canopex.ciamlogin.com"
+      CIAM_TENANT_ID: "ci-test-tenant"
+      CIAM_API_AUDIENCE: "api://ci-test-audience"
     command: ["make", "test-int"]
 
   func:

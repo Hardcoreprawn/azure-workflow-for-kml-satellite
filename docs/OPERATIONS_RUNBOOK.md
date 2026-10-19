@@ -421,6 +421,29 @@ placeholders are not substitutes.
 The required `Pipeline e2e (local gate)` also runs after lint and test for
 every supported CI event. Website-only changes do not bypass this gate.
 
+Lint, unit tests, changed-lines coverage and Azurite integration tests use the
+`ci-gate` Compose service with the host checkout owner's numeric UID/GID.
+Checkout and artifact upload run on the non-root hosted runner. Gate containers
+drop all Linux capabilities, disallow privilege escalation, and do not mount
+the Docker socket or registry credentials. Gate checkouts do not persist GitHub
+credentials; this public repository needs none for the coverage base-ref fetch.
+Git ownership checks remain enabled;
+the gates do not change checkout ownership or add `safe.directory` exceptions.
+
+Each job uses the resolved published dev-image digest when its dependency and
+recipe labels match; recipe inputs include `.dockerignore`, since it controls
+which sources enter the build. A missing recipe label is treated as stale.
+A stale image triggers a job-local `Dockerfile.dev`
+`--target dev` build, including the current Rust extension, against a resolved
+base-image digest. Package installation privileges are confined to image-build
+stages, not test execution. Root is used only for OS-package installation and
+owned-directory preparation. Rustup, Rust compilation, dependency installation,
+and wheel installation run as `vscode`; the environment is not world-writable.
+These CI-only images are not pushed or deployed;
+build or gate failure blocks the PR. Reverting the workflow/action/Compose
+change rolls back this execution model without changing any deployed image.
+Workflow changes still require owner review before merge.
+
 `make test` writes workspace-wide runtime Python coverage to `coverage.xml`,
 including `treesight`, HTTP blueprints, operational scripts and root entrypoints.
 Namespace discovery includes never-imported runtime modules as uncovered.

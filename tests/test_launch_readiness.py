@@ -1973,6 +1973,26 @@ class TestAgentDeliveryContracts:
 class TestCIFeedbackHygiene:
     """PR CI should give fast feedback: cache deps + cancel superseded runs."""
 
+    def test_dev_image_build_commands_use_minimum_required_user(self):
+        dockerfile = (ROOT / "Dockerfile.dev").read_text()
+        user = "root"
+        checked = 0
+        for instruction in dockerfile.replace("\\\n", " ").splitlines():
+            if instruction.startswith("FROM "):
+                user = "root" if " AS rust-build" in instruction or " AS dev" in instruction else "vscode"
+            elif instruction.startswith("USER "):
+                user = instruction.split()[1]
+            elif instruction.startswith("RUN "):
+                if "apt-get" in instruction:
+                    assert user == "root"
+                if any(
+                    command in instruction for command in ("rustup-init -y", "uv build", "uv sync", "uv pip install")
+                ):
+                    assert user == "vscode", instruction
+                    checked += 1
+        assert checked == 4
+        assert "chmod -R a+rwX" not in dockerfile
+
     def test_pr_workflows_cancel_superseded_runs(self):
         for wf in (CI_YML, SECURITY_YML, CODEQL_YML, PREVIEW_SITE_YML):
             text = wf.read_text()
@@ -2007,17 +2027,17 @@ class TestCIFeedbackHygiene:
         workflow = yaml.safe_load(CI_YML.read_text())
         jobs = workflow["jobs"]
         assert "resolve-image" in jobs, "ci.yml must define a resolve-image job that pins the dev image digest"
-        # lint/test run directly as container jobs (job container == dev image).
+        # Host checkout and the container gates share the runner's UID/GID.
         for job_id in ("lint", "test"):
             job = jobs[job_id]
             needs = job.get("needs")
             needs = [needs] if isinstance(needs, str) else (needs or [])
             assert "resolve-image" in needs, f"{job_id} must depend on resolve-image for the pinned digest"
-            container = job.get("container") or {}
-            assert "needs.resolve-image.outputs.image" in str(container.get("image", "")), (
-                f"{job_id} must run inside the resolved dev image (by digest)"
-            )
+            assert "container" not in job, "checkout must run as the host runner, not an image-specific UID"
             steps_text = yaml.dump(job.get("steps"))
+            assert "needs.resolve-image.outputs.image" in steps_text
+            assert "./.github/actions/prepare-ci-gate" in steps_text
+            assert "docker compose --profile ci run --rm --no-deps ci-gate make" in steps_text
             assert "astral-sh/setup-uv" not in steps_text, (
                 f"{job_id} must not provision uv — deps are baked into the dev image"
             )
@@ -2034,6 +2054,7 @@ class TestCIFeedbackHygiene:
             "integration must run the gate inside the resolved dev image "
             "(passed to the ci-gate service via CI_GATE_IMAGE)"
         )
+        assert "./.github/actions/prepare-ci-gate" in integ_text
         assert "docker compose" in integ_text and "ci-gate" in integ_text, (
             "integration must drive the azurite + ci-gate compose services "
             "(Azurite needs --skipApiVersionCheck, unavailable to a services: container)"
@@ -2041,6 +2062,97 @@ class TestCIFeedbackHygiene:
         assert "astral-sh/setup-uv" not in integ_text, (
             "integration must not provision uv — deps are baked into the dev image"
         )
+
+    def test_ci_gate_identity_and_privileges_are_scoped(self):
+        compose = yaml.safe_load(COMPOSE_YML.read_text())
+        gate = compose["services"]["ci-gate"]
+        assert gate["user"] == "${CI_GATE_USER:-1000:1000}"
+        assert gate["cap_drop"] == ["ALL"]
+        assert gate["security_opt"] == ["no-new-privileges:true"]
+        assert not any("docker.sock" in str(volume) for volume in gate["volumes"])
+        preparation = ROOT / ".github" / "actions" / "prepare-ci-gate" / "action.yml"
+        action = yaml.safe_load(preparation.read_text())
+        commands = "\n".join(step.get("run", "") for step in action["runs"]["steps"])
+        assert "CI_GATE_USER=$(id -u):$(id -g)" in commands
+        assert '[[ "$(id -u)" == "0" ]]' in commands
+        assert "docker build" in commands and "--target dev" in commands
+        assert "docker push" not in commands
+        assert "--user root" not in CI_YML.read_text()
+        assert "apt-get" not in CI_YML.read_text()
+        assert "chown" not in CI_YML.read_text()
+        workflow = yaml.safe_load(CI_YML.read_text())
+        for job_id in ("lint", "test", "integration"):
+            checkout = workflow["jobs"][job_id]["steps"][0]
+            assert checkout["with"]["persist-credentials"] is False
+
+    @pytest.mark.parametrize("stale", ["true", "false"])
+    def test_ci_gate_preparation_selects_current_image_without_mutating_checkout(self, tmp_path, stale):
+        action = yaml.safe_load((ROOT / ".github/actions/prepare-ci-gate/action.yml").read_text())
+        script = action["runs"]["steps"][0]["run"]
+        commands = tmp_path / "docker-commands"
+        docker = tmp_path / "docker"
+        docker.write_text(
+            '#!/bin/sh\nprintf "%s\\n" "$*" >> "$DOCKER_COMMANDS"\n'
+            'if [ "$1 $2" = "image inspect" ]; then\n'
+            '  printf "%s\\n" "ghcr.io/test/base@sha256:abc123"\n'
+            "fi\n"
+        )
+        docker.chmod(0o755)
+        identity = tmp_path / "id"
+        identity.write_text('#!/bin/sh\ncase "$1" in -u) echo 12345 ;; -g) echo 23456 ;; esac\n')
+        identity.chmod(0o755)
+        environment_file = tmp_path / "github-env"
+        environment = {
+            **os.environ,
+            "PATH": f"{tmp_path}:{os.environ['PATH']}",
+            "DOCKER_COMMANDS": str(commands),
+            "GITHUB_ENV": str(environment_file),
+            "GITHUB_REPOSITORY_OWNER": "Test",
+            "GITHUB_RUN_ID": "42",
+            "GITHUB_RUN_ATTEMPT": "2",
+            "GITHUB_JOB": "test",
+            "PUBLISHED_IMAGE": "ghcr.io/test/dev@sha256:def456",
+            "STALE": stale,
+        }
+        result = subprocess.run(
+            ["bash", "-e", "-o", "pipefail", "-c", script],
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        exported = environment_file.read_text()
+        assert "CI_GATE_USER=12345:23456\n" in exported
+        invocation = commands.read_text()
+        if stale == "true":
+            assert "build -f Dockerfile.dev --target dev" in invocation
+            assert "--build-arg BASE_IMAGE=ghcr.io/test/base@sha256:abc123" in invocation
+            assert "CI_GATE_IMAGE=canopex-ci-gate:42-2-test\n" in exported
+        else:
+            assert invocation == "pull ghcr.io/test/dev@sha256:def456\n"
+            assert "CI_GATE_IMAGE=ghcr.io/test/dev@sha256:def456\n" in exported
+
+    def test_ci_gate_preparation_rejects_root_before_running_docker(self, tmp_path):
+        action = yaml.safe_load((ROOT / ".github/actions/prepare-ci-gate/action.yml").read_text())
+        identity = tmp_path / "id"
+        identity.write_text("#!/bin/sh\necho 0\n")
+        identity.chmod(0o755)
+        environment_file = tmp_path / "github-env"
+        result = subprocess.run(
+            ["bash", "-e", "-o", "pipefail", "-c", action["runs"]["steps"][0]["run"]],
+            cwd=ROOT,
+            env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "GITHUB_ENV": str(environment_file)},
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert result.returncode != 0
+        assert "::error::CI gates require a non-root checkout owner." in result.stdout
+        assert not environment_file.exists()
 
     def test_compose_azurite_skips_api_version_check(self):
         """The azurite service must keep --skipApiVersionCheck (and --loose):
@@ -2433,41 +2545,37 @@ class TestDiffCoverRequiredGate:
     def test_ci_runs_canonical_measurement_before_pr_gate(self) -> None:
         workflow = yaml.safe_load(CI_YML.read_text())
         steps = next(job["steps"] for job in workflow["jobs"].values() if job.get("name") == "Test")
-        measurement = next(index for index, step in enumerate(steps) if step.get("run", "").strip() == "make test")
+        measurement = next(
+            index for index, step in enumerate(steps) if step.get("run", "").strip().endswith("ci-gate make test")
+        )
         gate = next(index for index, step in enumerate(steps) if "make coverage-check" in step.get("run", ""))
         assert measurement < gate
         assert steps[gate]["if"] == "github.event_name == 'pull_request'"
         assert steps[gate]["env"]["BASE_REF"] == "${{ github.base_ref }}"
 
-    def test_ci_rebuilds_rust_extension_when_rust_sources_change(self) -> None:
+    def test_ci_rebuilds_stale_image_before_running_tests(self) -> None:
         workflow = yaml.safe_load(CI_YML.read_text())
         steps = next(job["steps"] for job in workflow["jobs"].values() if job.get("name") == "Test")
         rebuild_index = next(
-            index
-            for index, step in enumerate(steps)
-            if step.get("name") == "Rebuild Rust extension when Rust sources change"
+            index for index, step in enumerate(steps) if step.get("uses") == "./.github/actions/prepare-ci-gate"
         )
-        test_index = next(index for index, step in enumerate(steps) if step.get("run", "").strip() == "make test")
+        test_index = next(
+            index for index, step in enumerate(steps) if step.get("run", "").strip().endswith("ci-gate make test")
+        )
         rebuild = steps[rebuild_index]
 
         assert rebuild_index < test_index
-        assert rebuild["if"] == "github.event_name != 'workflow_dispatch'"
-        assert rebuild["shell"] == "bash"
-        assert "origin/${BASE_REF}" in rebuild["run"]
-        assert 'compare_base="${EVENT_BEFORE}"' in rebuild["run"]
-        assert "rust/" in rebuild["run"]
-        assert "uv pip install --python /opt/venv --force-reinstall ./rust" in rebuild["run"]
+        assert rebuild["with"]["image"] == "${{ needs.resolve-image.outputs.image }}"
+        assert rebuild["with"]["stale"] == "${{ needs.resolve-image.outputs.stale }}"
+        preparation = (ROOT / ".github" / "actions" / "prepare-ci-gate" / "action.yml").read_text()
+        assert 'if [[ "${STALE}" == "true" ]]' in preparation
+        dockerfile = (ROOT / "Dockerfile.dev").read_text()
+        assert "COPY --chown=vscode:vscode rust/ /build/rust/" in dockerfile
+        assert "uv build --wheel --out-dir /wheels /build/rust" in dockerfile
 
-    def test_diff_cover_step_sets_safe_directory(self):
-        """The Test job runs in a container (different UID than the checkout),
-        so git refuses to touch the repo ('dubious ownership') unless marked
-        safe — diff-cover shells out to git and crashes without this."""
-        makefile = MAKEFILE.read_text()
-        assert "safe.directory" in makefile, (
-            "the changed-lines coverage step must configure "
-            "`git config --global --add safe.directory` before invoking "
-            "diff-cover, or every PR fails with a dubious-ownership crash"
-        )
+    def test_diff_cover_does_not_bypass_checkout_ownership(self):
+        assert "safe.directory" not in MAKEFILE.read_text()
+        assert "safe.directory" not in CI_YML.read_text()
 
     def test_diff_cover_base_fetch_is_not_shallow(self):
         """The base-ref fetch must not use --depth — the checkout step already
