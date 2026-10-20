@@ -19,14 +19,36 @@ from tests.conftest import TEST_ORIGIN, encode_test_principal, make_test_request
 _SAMPLE_GEOMETRY: dict[str, Any] = {
     "centroid": [36.805, -1.305],
     "bbox": [36.8, -1.31, 36.81, -1.3],
-    "exterior_coords": [
-        [36.8, -1.3],
-        [36.81, -1.3],
-        [36.81, -1.31],
-        [36.8, -1.31],
-        [36.8, -1.3],
-    ],
+    "geometry": {
+        "parts": [
+            {
+                "outer": [
+                    [36.8, -1.3],
+                    [36.81, -1.3],
+                    [36.81, -1.31],
+                    [36.8, -1.31],
+                    [36.8, -1.3],
+                ],
+                "inners": [],
+            }
+        ],
+        "crs": "EPSG:4326",
+    },
 }
+
+
+def test_openapi_monitoring_requires_canonical_geometry() -> None:
+    from pathlib import Path
+
+    import yaml
+
+    document = yaml.safe_load((Path(__file__).parents[1] / "docs/openapi.yaml").read_text())
+    body = document["paths"]["/monitoring"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+    aoi = body["properties"]["aoi_geometry"]
+    assert set(aoi["required"]) == {"centroid", "geometry"}
+    part = aoi["properties"]["geometry"]["properties"]["parts"]["items"]
+    assert part["required"] == ["outer"]
+    assert "inners" in part["properties"]
 
 
 @pytest.fixture()
@@ -629,11 +651,13 @@ class TestMonitoringScheduler:
             patch(
                 "treesight.pipeline.enrichment.run_enrichment",
                 return_value=mock_enrichment,
-            ),
+            ) as enrich,
             patch("treesight.storage.client.BlobStorageClient"),
             patch("treesight.email.send_email", return_value=True),
         ):
             _process_monitor(m)
+        assert enrich.call_args.kwargs["geometry"].model_dump(mode="json") == _SAMPLE_GEOMETRY["geometry"]
+        assert len(enrich.call_args.kwargs["coords"]) > 1
 
     def test_process_monitor_uses_latest_change_comparison_by_year(self, _mock_cosmos):
         from treesight.monitoring import create_monitor

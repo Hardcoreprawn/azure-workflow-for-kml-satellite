@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
+from treesight.models.geometry import PolygonGeometry, PolygonPart
 from treesight.pipeline.enrichment import _phase_runners as phases
 from treesight.pipeline.enrichment._phase_runners import (
     _run_aoi_metrics_phase,
@@ -28,6 +29,7 @@ from treesight.pipeline.enrichment.resource_accumulator import ResourceAccumulat
 from treesight.pipeline.enrichment.weather import fetch_weather
 
 BBOX = [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0], [-49.0, -10.0]]
+GEOMETRY = PolygonGeometry(parts=(PolygonPart(outer=tuple((p[0], p[1]) for p in [*BBOX, BBOX[0]])),))
 
 
 class TestWeatherPhase:
@@ -115,7 +117,7 @@ class TestSyntheticImageryPhase:
         monkeypatch.setenv("CANOPEX_TEST_MODE", "1")
         caplog.set_level("INFO")
         external = MagicMock(side_effect=AssertionError("external enrichment in synthetic mode"))
-        for name in ("register_mosaic", "compute_ndvi", "compute_landsat_ndvi", "fetch_ndvi_stat"):
+        for name in ("register_mosaic", "compute_ndvi", "compute_landsat_ndvi"):
             monkeypatch.setattr(phases, name, external)
         frames = [
             {
@@ -133,7 +135,7 @@ class TestSyntheticImageryPhase:
 
         stats, paths = phases._run_mosaic_ndvi_phase(
             BBOX,
-            BBOX,
+            GEOMETRY,
             frames,
             "synthetic",
             "run",
@@ -177,17 +179,17 @@ class TestLandsatBaseline:
         mock_ndvi.return_value = None
         results: dict = {}
 
-        _run_landsat_baseline(BBOX[0] + BBOX[2], results)
+        _run_landsat_baseline(BBOX[0] + BBOX[2], results, GEOMETRY)
 
         assert results["landsat_baseline"]["available"] is False
         assert results["landsat_baseline"]["scenes"] == []
 
     @patch("treesight.pipeline.enrichment.ndvi.compute_landsat_ndvi")
     def test_scenes_available_strips_raster_bytes(self, mock_ndvi):
-        mock_ndvi.return_value = {"mean": 0.4, "geotiff_bytes": b"raw"}
+        mock_ndvi.return_value = {"available": True, "mean": 0.4, "geotiff_bytes": b"raw"}
         results: dict = {}
 
-        _run_landsat_baseline(BBOX[0] + BBOX[2], results)
+        _run_landsat_baseline(BBOX[0] + BBOX[2], results, GEOMETRY)
 
         assert results["landsat_baseline"]["available"] is True
         assert "geotiff_bytes" not in results["landsat_baseline"]["scenes"][0]
@@ -206,11 +208,11 @@ class TestEudrPhase:
         mock_wdpa.return_value = {"checked": True, "is_protected": False}
         mock_lulc.return_value = {"available": True}
         mock_alos.return_value = {"available": True}
-        mock_landsat.return_value = {"mean": 0.5, "geotiff_bytes": b"raw"}
+        mock_landsat.return_value = {"available": True, "mean": 0.5, "geotiff_bytes": b"raw"}
         results: dict = {}
         acc = ResourceAccumulator()
 
-        _run_eudr_phase(BBOX, -10.0, -50.0, results, acc=acc)
+        _run_eudr_phase(BBOX, -10.0, -50.0, results, acc=acc, geometry=GEOMETRY)
 
         assert results["worldcover"] == mock_worldcover.return_value
         assert results["wdpa"] == mock_wdpa.return_value

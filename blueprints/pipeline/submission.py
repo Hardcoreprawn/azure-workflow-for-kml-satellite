@@ -348,14 +348,24 @@ def _features_to_kml_bytes(features: list) -> bytes:
         SubElement(pm, "name").text = f.name
         if f.description:
             SubElement(pm, "description").text = f.description
-        polygon = SubElement(pm, "Polygon")
-        outer = SubElement(polygon, "outerBoundaryIs")
-        lr = SubElement(outer, "LinearRing")
-        # KML coordinates: lon,lat,alt separated by whitespace
-        coord_str = " ".join(f"{c[0]},{c[1]},0" for c in f.exterior_coords)
-        SubElement(lr, "coordinates").text = coord_str
+        geometry_parent = SubElement(pm, "MultiGeometry") if len(f.geometry.parts) > 1 else pm
+        for part in f.geometry.parts:
+            polygon = SubElement(geometry_parent, "Polygon")
+            outer = SubElement(polygon, "outerBoundaryIs")
+            _write_kml_ring(outer, part.outer)
+            for hole in part.inners:
+                inner = SubElement(polygon, "innerBoundaryIs")
+                _write_kml_ring(inner, hole)
 
     return tostring(kml, encoding="utf-8", xml_declaration=True)
+
+
+def _write_kml_ring(parent: Any, ring: tuple[tuple[float, float], ...]) -> None:
+    from lxml.etree import SubElement
+
+    linear_ring = SubElement(parent, "LinearRing")
+    coordinates = " ".join(f"{longitude},{latitude},0" for longitude, latitude in ring)
+    SubElement(linear_ring, "coordinates").text = coordinates
 
 
 @bp.route(route="analysis/submit", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)

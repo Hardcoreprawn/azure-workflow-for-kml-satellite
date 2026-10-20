@@ -61,7 +61,13 @@ class TestPhaseIngestion:
         responses = [
             {"ref": "claims/kml-ref.json"},  # parse_kml — offloaded (dict, not list)
             [{"feature_name": "A"}],  # load_offloaded_features
-            [{"feature_name": "A", "area_ha": 1.0, "exterior_coords": [[0.0, 0.0]]}],
+            [
+                {
+                    "feature_name": "A",
+                    "area_ha": 1.0,
+                    "geometry": {"parts": [{"outer": [[0, 0], [1, 0], [1, 1], [0, 0]]}]},
+                }
+            ],
             [{"ref": "claims/aoi-0.json", "key": "A"}],  # store_aoi_claims
             [{"status": "ok"}],  # write_metadata
         ]

@@ -28,7 +28,15 @@ def _make_aoi_dict(**kwargs) -> dict:
         "buffered_bbox": [36.78, -1.32, 36.82, -1.28],
         "area_ha": 10.0,
         "perimeter_km": 1.2,
-        "exterior_coords": [[36.79, -1.31], [36.81, -1.31], [36.81, -1.29], [36.79, -1.29]],
+        "geometry": {
+            "parts": [
+                {
+                    "outer": [[36.79, -1.31], [36.81, -1.31], [36.81, -1.29], [36.79, -1.29], [36.79, -1.31]],
+                    "inners": [],
+                }
+            ],
+            "crs": "EPSG:4326",
+        },
     }
     base.update(kwargs)
     return base
@@ -522,6 +530,18 @@ class TestPostProcessImagery:
 
 
 class TestRunEnrichment:
+    def test_missing_source_geometry_rejected_before_storage_or_enrichment(self):
+        from blueprints.pipeline.activities import run_enrichment
+
+        with (
+            patch("treesight.storage.client.BlobStorageClient") as storage,
+            patch("treesight.pipeline.enrichment.run_enrichment") as enrich,
+            pytest.raises(ValueError, match="source geometry"),
+        ):
+            run_enrichment({"coords": [[36.8, -1.3]]})
+        storage.assert_not_called()
+        enrich.assert_not_called()
+
     def test_delegates_to_enrich(self):
         from blueprints.pipeline.activities import run_enrichment
 
@@ -533,6 +553,7 @@ class TestRunEnrichment:
             result = run_enrichment(
                 {
                     "coords": [[36.8, -1.3]],
+                    "geometry": _make_aoi_dict()["geometry"],
                     "project_name": "farm",
                     "timestamp": "2024-06-01T00:00:00Z",
                 }
@@ -640,7 +661,7 @@ class TestEnrichFinalize:
         from blueprints.pipeline.activities import enrich_finalize
 
         expected = {"manifest_path": "output/manifest.json"}
-        per_aoi_coords = [{"name": "Solo", "coords": [[1, 2]], "area_ha": 1}]
+        per_aoi_geometries = [{"name": "Solo", "coords": [[1, 2]], "area_ha": 1}]
         with (
             patch("treesight.storage.client.BlobStorageClient"),
             patch("treesight.pipeline.enrichment.enrich_finalize", return_value=expected) as finalize,
@@ -649,14 +670,14 @@ class TestEnrichFinalize:
                 {
                     "data_sources": {},
                     "imagery": {},
-                    "per_aoi_coords": per_aoi_coords,
+                    "per_aoi_geometries": per_aoi_geometries,
                     "project_name": "farm",
                     "timestamp": "2024-06-01T00:00:00Z",
                 }
             )
 
         assert result == expected
-        assert finalize.call_args.kwargs["per_aoi_coords"] == per_aoi_coords
+        assert finalize.call_args.kwargs["per_aoi_geometries"] == per_aoi_geometries
 
 
 # ---------------------------------------------------------------------------

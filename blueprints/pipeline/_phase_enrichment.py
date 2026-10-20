@@ -29,7 +29,7 @@ def _phase_enrichment(
     inp: dict[str, Any],
     ctx: dict[str, str],
     all_coords: list[list[float]],
-    per_aoi_coords: list[dict[str, Any]],
+    per_aoi_geometries: list[dict[str, Any]],
     output_container: str,
 ) -> _PhaseGen:
     """Fetch weather, NDVI, mosaics, and build enrichment manifest.
@@ -50,6 +50,7 @@ def _phase_enrichment(
 
     enrichment_common = {
         "coords": all_coords,
+        "geometry": per_aoi_geometries[0].get("geometry") if len(per_aoi_geometries) == 1 else None,
         "eudr_mode": inp.get("eudr_mode", False),
         "date_start": inp.get("date_start"),
         "date_end": inp.get("date_end"),
@@ -73,8 +74,8 @@ def _phase_enrichment(
 
     # ── Step 2: per-AOI enrichment (parallel fan-out, one per AOI) ──
     per_aoi_results: list[dict[str, Any]] = []
-    if per_aoi_coords and len(per_aoi_coords) > 1:
-        context.set_custom_status({"phase": "enrichment", "step": "per_aoi", "aois": len(per_aoi_coords)})
+    if per_aoi_geometries and len(per_aoi_geometries) > 1:
+        context.set_custom_status({"phase": "enrichment", "step": "per_aoi", "aois": len(per_aoi_geometries)})
         aoi_tasks = [
             context.call_activity_with_retry(
                 "enrich_single_aoi",
@@ -85,7 +86,7 @@ def _phase_enrichment(
                     **{k: v for k, v in enrichment_common.items() if k != "coords"},
                 },
             )
-            for idx, entry in enumerate(per_aoi_coords)
+            for idx, entry in enumerate(per_aoi_geometries)
         ]
         per_aoi_results = cast(
             "list[dict[str, Any]]",
@@ -104,7 +105,7 @@ def _phase_enrichment(
                     "data_sources": data_sources,
                     "imagery": imagery,
                     "per_aoi_results": per_aoi_results,
-                    "per_aoi_coords": per_aoi_coords,
+                    "per_aoi_geometries": per_aoi_geometries,
                     "eudr_mode": inp.get("eudr_mode", False),
                     "date_start": inp.get("date_start"),
                     "project_name": ctx["project_name"],
