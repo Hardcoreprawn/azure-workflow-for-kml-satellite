@@ -8,17 +8,23 @@ from treesight.config import AOI_BUFFER_M, AOI_MAX_AREA_HA
 from treesight.constants import EARTH_RADIUS_M, METRES_PER_DEGREE_LATITUDE
 from treesight.models.aoi import AOI
 from treesight.models.feature import Feature
+from treesight.models.geometry import PolygonGeometry
 
 
 def prepare_aoi(feature: Feature, buffer_m: float | None = None) -> AOI:
     """Compute bounding box, buffered bbox, geodesic area, centroid from a Feature."""
     buf = buffer_m if buffer_m is not None else AOI_BUFFER_M
-    exterior = feature.exterior_coords
+    exterior_rings = [part.outer for part in feature.geometry.parts]
+    all_exterior_coords = [list(position) for ring in exterior_rings for position in ring]
 
-    bbox = _compute_bbox(exterior)
+    bbox = _compute_bbox(all_exterior_coords)
     buffered_bbox = _buffer_bbox(bbox, buf)
-    area_ha, perimeter_km = _geodesic_area_and_perimeter(exterior)
-    centroid_coords = centroid(exterior)
+    area_ha, perimeter_km = _geometry_area_and_perimeter(feature.geometry)
+    from shapely.geometry import MultiPolygon, Polygon
+
+    shape = MultiPolygon([Polygon(part.outer, part.inners) for part in feature.geometry.parts])
+    centroid_point = shape.centroid
+    centroid_coords = [float(centroid_point.x), float(centroid_point.y)]
 
     area_warning = ""
     if area_ha > AOI_MAX_AREA_HA:
@@ -28,15 +34,13 @@ def prepare_aoi(feature: Feature, buffer_m: float | None = None) -> AOI:
         feature_name=feature.name,
         source_file=feature.source_file,
         feature_index=feature.feature_index,
-        exterior_coords=feature.exterior_coords,
-        interior_coords=feature.interior_coords,
+        geometry=feature.geometry,
         bbox=bbox,
         buffered_bbox=buffered_bbox,
         area_ha=area_ha,
         perimeter_km=perimeter_km,
         centroid=centroid_coords,
         buffer_m=buf,
-        crs="EPSG:4326",
         metadata=feature.metadata,
         area_warning=area_warning,
     )
@@ -80,6 +84,23 @@ def _geodesic_area_and_perimeter(coords: list[list[float]]) -> tuple[float, floa
         return abs(area_m2) / 10_000.0, abs(perimeter_m) / 1_000.0
     except ImportError:
         return _spherical_area_ha(coords), _haversine_perimeter_km(coords)
+
+
+def _geometry_area_and_perimeter(geometry: PolygonGeometry) -> tuple[float, float]:
+    """Compute net geodesic area and all exterior/interior boundary lengths."""
+    area_ha = 0.0
+    perimeter_km = 0.0
+    for part in geometry.parts:
+        part_area, part_perimeter = _geodesic_area_and_perimeter([list(p) for p in part.outer])
+        area_ha += part_area
+        perimeter_km += part_perimeter
+        for hole in part.inners:
+            hole_area, hole_perimeter = _geodesic_area_and_perimeter([list(p) for p in hole])
+            area_ha -= hole_area
+            perimeter_km += hole_perimeter
+    if not math.isfinite(area_ha) or area_ha <= 0:
+        raise ValueError("Polygon geometry must have positive finite geodesic area")
+    return area_ha, perimeter_km
 
 
 def transform_bbox(
@@ -276,6 +297,10 @@ def cluster_aois(
     # Compute centroids; AOIs without coords get None
     centroids: list[list[float] | None] = []
     for aoi in aois:
+        center = aoi.get("center")
+        if isinstance(center, dict) and "lon" in center and "lat" in center:
+            centroids.append([float(center["lon"]), float(center["lat"])])
+            continue
         coords = aoi.get("coords", [])
         centroids.append(centroid(coords) if coords else None)
 

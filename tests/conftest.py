@@ -159,19 +159,24 @@ def fixture_bytes():
 def sample_feature():
     """Pre-built Feature for tests that don't need KML parsing."""
     from treesight.models.feature import Feature
+    from treesight.models.geometry import PolygonGeometry, PolygonPart
 
     return Feature(
         name="Block A - Fuji Apple",
         description="Test orchard block",
-        exterior_coords=[
-            [36.8, -1.3],
-            [36.81, -1.3],
-            [36.81, -1.31],
-            [36.8, -1.31],
-            [36.8, -1.3],
-        ],
-        interior_coords=[],
-        crs="EPSG:4326",
+        geometry=PolygonGeometry(
+            parts=(
+                PolygonPart(
+                    outer=(
+                        (36.8, -1.3),
+                        (36.81, -1.3),
+                        (36.81, -1.31),
+                        (36.8, -1.31),
+                        (36.8, -1.3),
+                    ),
+                ),
+            ),
+        ),
         metadata={"crop": "apple", "variety": "fuji"},
         source_file="test.kml",
         feature_index=0,
@@ -182,24 +187,30 @@ def sample_feature():
 def sample_aoi():
     """Pre-built AOI for tests that don't need geometry computation."""
     from treesight.models.aoi import AOI
+    from treesight.models.geometry import PolygonGeometry, PolygonPart
 
     return AOI(
         feature_name="Block A - Fuji Apple",
         source_file="test.kml",
         feature_index=0,
-        exterior_coords=[
-            [36.8, -1.3],
-            [36.81, -1.3],
-            [36.81, -1.31],
-            [36.8, -1.31],
-            [36.8, -1.3],
-        ],
+        geometry=PolygonGeometry(
+            parts=(
+                PolygonPart(
+                    outer=(
+                        (36.8, -1.3),
+                        (36.81, -1.3),
+                        (36.81, -1.31),
+                        (36.8, -1.31),
+                        (36.8, -1.3),
+                    ),
+                ),
+            ),
+        ),
         bbox=[36.8, -1.31, 36.81, -1.3],
         buffered_bbox=[36.7991, -1.3109, 36.8109, -1.2991],
         area_ha=12.3,
         centroid=[36.805, -1.305],
         buffer_m=100.0,
-        crs="EPSG:4326",
         metadata={"crop": "apple"},
     )
 

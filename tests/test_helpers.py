@@ -52,9 +52,10 @@ class TestEnsureClosed:
 
     def test_closing_appends_copy_not_reference(self):
         ring = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]
-        ensure_closed(ring)
+        result = ensure_closed(ring)
         ring[0][0] = 999.0
-        assert ring[-1][0] == 0.0  # appended copy is independent
+        assert result[-1][0] == 0.0  # appended copy is independent
+        assert len(ring) == 3
 
 
 # ---------------------------------------------------------------------------

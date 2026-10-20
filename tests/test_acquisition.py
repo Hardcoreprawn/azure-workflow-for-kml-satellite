@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import pytest
 
 from treesight.models.aoi import AOI
+from treesight.models.geometry import PolygonGeometry, PolygonPart
 from treesight.models.imagery import ImageryFilters, SearchResult
 from treesight.providers.base import (
     BlobReference,
@@ -93,13 +94,14 @@ def aoi() -> AOI:
         feature_name="Test Block",
         source_file="test.kml",
         feature_index=0,
-        exterior_coords=[[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]],
+        geometry=PolygonGeometry(
+            parts=(PolygonPart(outer=((36.8, -1.3), (36.81, -1.3), (36.81, -1.31), (36.8, -1.31), (36.8, -1.3))),),
+        ),
         bbox=[36.8, -1.31, 36.81, -1.3],
         buffered_bbox=[36.79, -1.32, 36.82, -1.29],
         area_ha=12.0,
         centroid=[36.805, -1.305],
         buffer_m=100.0,
-        crs="EPSG:4326",
     )
 
 
