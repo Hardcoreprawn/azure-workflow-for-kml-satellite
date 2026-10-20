@@ -51,6 +51,7 @@ def compute_change_map(
     """
     import numpy as np
     import rasterio
+    from pyproj import CRS
 
     try:
         with rasterio.open(io.BytesIO(raster_a_bytes)) as src_a:
@@ -60,12 +61,18 @@ def compute_change_map(
 
         with rasterio.open(io.BytesIO(raster_b_bytes)) as src_b:
             ndvi_b = src_b.read(1)
+            profile_b = src_b.profile.copy()
 
-        # Ensure same shape — trim to overlap
-        min_h = min(ndvi_a.shape[0], ndvi_b.shape[0])
-        min_w = min(ndvi_a.shape[1], ndvi_b.shape[1])
-        ndvi_a = ndvi_a[:min_h, :min_w]
-        ndvi_b = ndvi_b[:min_h, :min_w]
+        if (
+            ndvi_a.shape != ndvi_b.shape
+            or profile_a.get("crs") != profile_b.get("crs")
+            or profile_a.get("transform") != profile_b.get("transform")
+        ):
+            raise ValueError("Change observations must use the same raster grid")
+        crs = CRS.from_user_input(str(profile_a.get("crs")))
+        if not crs.is_projected or any(axis.unit_conversion_factor != 1 for axis in crs.axis_info):
+            raise ValueError("Change area requires a projected raster CRS with metre units")
+        min_h, min_w = ndvi_a.shape
 
         pixel_area_m2 = abs(res_a[0] * res_a[1])
         pixel_area_ha = pixel_area_m2 / 10_000  # 1 ha = 10,000 m²
