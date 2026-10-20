@@ -2815,6 +2815,33 @@ class TestEvidenceMapQualityGate:
         )
 
 
+class TestCanonicalGeometryFrontend:
+    """Evidence consumers render the canonical outer/inner/multipart geometry."""
+
+    GEO = WEBSITE / "js" / "canopex-geo.js"
+    DISPLAY_MAP = WEBSITE / "js" / "app-evidence-display-map.js"
+    DISPLAY_SELECTION = WEBSITE / "js" / "app-evidence-display-selection.js"
+
+    def test_shared_geo_helper_preserves_holes_and_multipart_ring_nesting(self):
+        content = self.GEO.read_text()
+        assert "function geometryLatLngs(geometry)" in content
+        assert "var rings = [part.outer].concat(part.inners);" in content
+        assert "polygons.length === 1 ? polygons[0] : polygons" in content
+        assert "extendBoundsWithGeometry: extendBoundsWithGeometry" in content
+
+    def test_evidence_maps_use_geometry_instead_of_flat_coords(self):
+        display_map = self.DISPLAY_MAP.read_text()
+        selection = self.DISPLAY_SELECTION.read_text()
+        assert "geometryLatLngs(aoi.geometry)" in display_map
+        assert "let geometry = singleAoi ? singleAoi.geometry : manifest.geometry;" in display_map
+        assert "geometryLatLngs(geometry)" in display_map
+        assert "extendBoundsWithGeometry(allBounds, aoi.geometry)" in selection
+        assert "manifest.coords" not in display_map
+        assert "aoi.coords" not in display_map
+        assert "manifest.coords" not in selection
+        assert "aoi.coords" not in selection
+
+
 # ---------------------------------------------------------------------------
 # Endpoint auth audit (#572) — ensure every non-anonymous endpoint is protected
 # ---------------------------------------------------------------------------

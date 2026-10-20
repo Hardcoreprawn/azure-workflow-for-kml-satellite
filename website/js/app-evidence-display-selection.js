@@ -39,12 +39,12 @@
 
     let searchIds = manifest.search_ids || [];
     let framePlan = manifest.frame_plan || [];
-    let center = manifest.center || manifest.coords;
+    let center = manifest.center;
     if (!center || !searchIds.length) return;
 
-    let lat = Array.isArray(center) ? center[0] : center.lat || center.latitude;
-    let lon = Array.isArray(center) ? center[1] : center.lon || center.longitude;
-    if (!lat || !lon) return;
+    let lat = center.lat;
+    let lon = center.lon;
+    if (typeof lat !== 'number' || typeof lon !== 'number') return;
 
     let firstFrame = framePlan[0] || {};
     let lastFrame = framePlan[framePlan.length - 1] || {};
@@ -96,11 +96,10 @@
     try {
       let allBounds = L.latLngBounds([]);
       perAoi.forEach(function (aoi) {
-        if (!aoi.coords || !aoi.coords.length) return;
-        aoi.coords.forEach(function (c) { allBounds.extend([c[1], c[0]]); });
+        window.CanopexGeo.extendBoundsWithGeometry(allBounds, aoi.geometry);
       });
-      if (!allBounds.isValid() && manifest.coords && manifest.coords.length) {
-        manifest.coords.forEach(function (c) { allBounds.extend([c[1], c[0]]); });
+      if (!allBounds.isValid() && manifest.geometry) {
+        window.CanopexGeo.extendBoundsWithGeometry(allBounds, manifest.geometry);
       }
       if (allBounds.isValid()) {
         beforeMap.fitBounds(allBounds.pad(0.1));

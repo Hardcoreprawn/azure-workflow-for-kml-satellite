@@ -657,7 +657,54 @@ paths:
                   type: string
                 aoi_geometry:
                   type: object
-                  description: AOI geometry with centroid, bbox, exterior_coords
+                  description: AOI wrapper with centroid and validated canonical polygon geometry.
+                  required: [centroid, geometry]
+                  properties:
+                    centroid:
+                      type: array
+                      minItems: 2
+                      maxItems: 2
+                      items:
+                        type: number
+                      description: Longitude/latitude centre used for contextual lookups.
+                    geometry:
+                      type: object
+                      required: [parts]
+                      additionalProperties: false
+                      properties:
+                        crs:
+                          type: string
+                          enum: ["EPSG:4326"]
+                          default: "EPSG:4326"
+                        parts:
+                          type: array
+                          minItems: 1
+                          items:
+                            type: object
+                            required: [outer]
+                            additionalProperties: false
+                            properties:
+                              outer:
+                                type: array
+                                minItems: 4
+                                items:
+                                  type: array
+                                  minItems: 2
+                                  maxItems: 2
+                                  items:
+                                    type: number
+                              inners:
+                                type: array
+                                default: []
+                                items:
+                                  type: array
+                                  minItems: 4
+                                  items:
+                                    type: array
+                                    minItems: 2
+                                    maxItems: 2
+                                    items:
+                                      type: number
                 cadence_days:
                   type: integer
                   minimum: 1

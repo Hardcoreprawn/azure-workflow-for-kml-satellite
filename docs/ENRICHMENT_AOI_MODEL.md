@@ -18,10 +18,43 @@ parsing. Old record types or retained projections do not define new writes.
 
 ## Parcel Evidence
 
-Each per-AOI entry identifies `aoi_index`, `name`, `area_ha`, `coords`, `bbox`
+Each per-AOI entry identifies `aoi_index`, `name`, `area_ha`, `geometry`, `bbox`
 and named `center.lat`/`center.lon`. Geometry arrays use longitude/latitude order.
 Source geometry type and declared plot area can be retained for downstream review.
 One-parcel and multi-parcel runs use the same per-AOI contract.
+
+### Polygon model
+
+The immutable [geometry model](../treesight/models/geometry.py) is deliberately
+small: a `PolygonPart` has one `outer` ring and an `inners` tuple (empty by
+default). `PolygonGeometry.parts` is a non-empty tuple of these polygons.
+There is no recursive nesting or inferred ring ownership.
+
+- Coordinates are finite WGS84 longitude/latitude pairs. Rings must be closed,
+  non-degenerate and form valid polygon topology.
+- Inner rings exclude area from their own outer ring. They cannot lie outside
+  it, overlap one another or nest inside one another.
+- Separate parts cannot overlap filled area. An island inside a hole is another
+  part; it can have its own inner rings.
+- Ring direction does not determine membership. GeoJSON conversion preserves
+  each outer ring followed by its inner rings.
+- Unknown model fields fail validation rather than silently dropping geometry.
+  The model does not repair, flatten or union invalid input.
+- Antimeridian-crossing rings and geometry whose total longitude span exceeds
+  180 degrees are rejected. Wrapped extents are unsupported; splitting into parts
+  within the same AOI is not a workaround.
+
+For analysis, the footprint is the union of each part's **outer minus inners**.
+Bounding boxes are search/display extents, not substitutes for that footprint.
+Area must subtract holes; NDVI statistics and analytical rasters must exclude
+holes and space between parts. Serialization must preserve all these boundaries.
+
+NDVI is unavailable if the raster window does not cover the complete plot
+(`plot_not_fully_covered`), if required cloud masks or grid metadata are missing,
+or if no valid in-plot pixels remain. Reflectance bands must share a grid;
+categorical SCL/QA masks are reprojected using their actual CRS/transforms.
+Landsat requires STAC reflectance scale/offset metadata and applies it before
+band math; missing calibration metadata yields unavailable evidence.
 
 Other fields include frame plans, weather, NDVI statistics/raster references,
 change detection, EUDR evidence and errors. Exact optionality and types belong

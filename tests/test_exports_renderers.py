@@ -16,6 +16,17 @@ from treesight.exports.csv import _as_dict, _build_bulk_csv, _build_csv, _build_
 from treesight.exports.eudr import _build_eudr_dds, _plot_geolocation
 from treesight.exports.frame_row import FrameRow
 from treesight.exports.geojson import _build_eudr_geojson, _build_geojson, _toplevel_as_single_aoi
+from treesight.exports.pdf_audit import _geometry_vertex_count
+
+
+def _polygon_geometry(outer, inners=()):
+    if outer[0] != outer[-1]:
+        outer = [*outer, outer[0]]
+    return {
+        "parts": [{"outer": outer, "inners": list(inners)}],
+        "crs": "EPSG:4326",
+    }
+
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -26,7 +37,7 @@ from treesight.exports.geojson import _build_eudr_geojson, _build_geojson, _topl
 def minimal_manifest():
     """Minimal enrichment manifest with one frame."""
     return {
-        "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+        "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]]),
         "center": {"lat": -1.305, "lon": 36.805},
         "frame_plan": [
             {
@@ -81,7 +92,21 @@ def eudr_manifest():
                 "name": "Parcel A",
                 "area_ha": 10.5,
                 "center": {"lat": -1.3, "lon": 36.8},
-                "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+                "geometry": {
+                    "parts": [
+                        {
+                            "outer": [
+                                [36.8, -1.3],
+                                [36.81, -1.3],
+                                [36.81, -1.31],
+                                [36.8, -1.31],
+                                [36.8, -1.3],
+                            ],
+                            "inners": [],
+                        }
+                    ],
+                    "crs": "EPSG:4326",
+                },
                 "determination": {"status": "no_signal_detected", "confidence": "high", "flags": []},
                 "worldcover": {
                     "available": True,
@@ -203,14 +228,75 @@ class TestBuildGeoJSON:
         parsed = json.loads(body)
         assert parsed["type"] == "FeatureCollection"
 
+    def test_frame_geojson_preserves_polygon_holes_and_multiple_parts(self, minimal_manifest):
+        geometry = {
+            "parts": [
+                {
+                    "outer": [
+                        [36.8, -1.3],
+                        [36.81, -1.3],
+                        [36.81, -1.31],
+                        [36.8, -1.31],
+                        [36.8, -1.3],
+                    ],
+                    "inners": [
+                        [
+                            [36.802, -1.302],
+                            [36.804, -1.302],
+                            [36.804, -1.304],
+                            [36.802, -1.304],
+                            [36.802, -1.302],
+                        ]
+                    ],
+                },
+                {
+                    "outer": [
+                        [36.82, -1.3],
+                        [36.83, -1.3],
+                        [36.83, -1.31],
+                        [36.82, -1.31],
+                        [36.82, -1.3],
+                    ],
+                    "inners": [],
+                },
+            ],
+            "crs": "EPSG:4326",
+        }
+        result = _build_geojson({**minimal_manifest, "geometry": geometry})
+
+        assert json.loads(json.dumps(result["features"][0]["geometry"])) == {
+            "type": "MultiPolygon",
+            "coordinates": [
+                [
+                    geometry["parts"][0]["outer"],
+                    *geometry["parts"][0]["inners"],
+                ],
+                [geometry["parts"][1]["outer"]],
+            ],
+        }
+
 
 class TestTopLevelAsSingleAoi:
     def test_empty_manifest_returns_empty(self):
         assert _toplevel_as_single_aoi({}) == []
 
-    def test_manifest_with_coords_returns_single_entry(self):
+    def test_manifest_with_geometry_returns_single_entry(self):
         manifest = {
-            "coords": [[36.8, -1.3], [36.81, -1.3]],
+            "geometry": {
+                "parts": [
+                    {
+                        "outer": [
+                            [36.8, -1.3],
+                            [36.81, -1.3],
+                            [36.81, -1.31],
+                            [36.8, -1.31],
+                            [36.8, -1.3],
+                        ],
+                        "inners": [],
+                    }
+                ],
+                "crs": "EPSG:4326",
+            },
             "feature_name": "Test",
             "area_ha": 5.0,
         }
@@ -218,6 +304,7 @@ class TestTopLevelAsSingleAoi:
         assert len(result) == 1
         assert result[0]["name"] == "Test"
         assert result[0]["area_ha"] == 5.0
+        assert result[0]["geometry"] == manifest["geometry"]
 
 
 class TestBuildEudrGeoJSON:
@@ -241,6 +328,55 @@ class TestBuildEudrGeoJSON:
         assert "determination_status" in props
         assert props["worldcover_tree_pct"] == pytest.approx(85.0)
         assert props["ndvi_latest_mean"] == pytest.approx(0.70)
+
+    def test_good_aoi_geometry_keeps_holes_and_multiple_parts(self, eudr_manifest):
+        geometry = {
+            "parts": [
+                {
+                    "outer": [
+                        [36.8, -1.3],
+                        [36.81, -1.3],
+                        [36.81, -1.31],
+                        [36.8, -1.31],
+                        [36.8, -1.3],
+                    ],
+                    "inners": [
+                        [
+                            [36.802, -1.302],
+                            [36.804, -1.302],
+                            [36.804, -1.304],
+                            [36.802, -1.304],
+                            [36.802, -1.302],
+                        ]
+                    ],
+                },
+                {
+                    "outer": [
+                        [36.82, -1.3],
+                        [36.83, -1.3],
+                        [36.83, -1.31],
+                        [36.82, -1.31],
+                        [36.82, -1.3],
+                    ],
+                    "inners": [],
+                },
+            ],
+            "crs": "EPSG:4326",
+        }
+        result = _build_eudr_geojson(
+            {
+                **eudr_manifest,
+                "per_aoi_enrichment": [{**eudr_manifest["per_aoi_enrichment"][0], "geometry": geometry}],
+            }
+        )
+
+        assert json.loads(json.dumps(result["features"][0]["geometry"])) == {
+            "type": "MultiPolygon",
+            "coordinates": [
+                [geometry["parts"][0]["outer"], *geometry["parts"][0]["inners"]],
+                [geometry["parts"][1]["outer"]],
+            ],
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -422,7 +558,7 @@ class TestPlotGeolocation:
         aoi = {
             "center": {"lat": -1.3, "lon": 36.8},
             "area_ha": 10.0,
-            "coords": [[36.8, -1.3], [36.81, -1.3]],
+            "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]]),
         }
         result = _plot_geolocation(aoi, is_cattle=False)
         assert result["geolocation_type"] == "polygon"
@@ -441,7 +577,91 @@ class TestPlotGeolocation:
             "center": {"lat": -1.3, "lon": 36.8},
             "area_ha": 1.0,
             "source_geometry_type": "Polygon",
-            "coords": [[36.8, -1.3]],
+            "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]]),
         }
         result = _plot_geolocation(aoi, is_cattle=False)
         assert result["geolocation_type"] == "polygon"
+
+    def test_polygon_coordinates_preserve_holes_and_multiparts(self):
+        geometry = {
+            "parts": [
+                {
+                    "outer": [
+                        [36.8, -1.3],
+                        [36.81, -1.3],
+                        [36.81, -1.31],
+                        [36.8, -1.31],
+                        [36.8, -1.3],
+                    ],
+                    "inners": [
+                        [
+                            [36.802, -1.302],
+                            [36.804, -1.302],
+                            [36.804, -1.304],
+                            [36.802, -1.304],
+                            [36.802, -1.302],
+                        ]
+                    ],
+                },
+                {
+                    "outer": [
+                        [36.82, -1.3],
+                        [36.83, -1.3],
+                        [36.83, -1.31],
+                        [36.82, -1.31],
+                        [36.82, -1.3],
+                    ],
+                    "inners": [],
+                },
+            ],
+            "crs": "EPSG:4326",
+        }
+        result = _plot_geolocation(
+            {"area_ha": 10.0, "center": {"lat": -1.3, "lon": 36.8}, "geometry": geometry},
+            is_cattle=False,
+        )
+
+        assert json.loads(json.dumps(result["coordinates"])) == [
+            [geometry["parts"][0]["outer"], *geometry["parts"][0]["inners"]],
+            [geometry["parts"][1]["outer"]],
+        ]
+
+
+class TestPdfGeometryVertexCount:
+    def test_counts_outer_hole_and_multipart_vertices_without_closures(self):
+        geometry = {
+            "parts": [
+                {
+                    "outer": [
+                        [36.8, -1.3],
+                        [36.81, -1.3],
+                        [36.81, -1.31],
+                        [36.8, -1.31],
+                        [36.8, -1.3],
+                    ],
+                    "inners": [
+                        [
+                            [36.802, -1.302],
+                            [36.804, -1.302],
+                            [36.804, -1.304],
+                            [36.802, -1.304],
+                            [36.802, -1.302],
+                        ]
+                    ],
+                },
+                {
+                    "outer": [
+                        [36.82, -1.3],
+                        [36.83, -1.3],
+                        [36.83, -1.31],
+                        [36.82, -1.31],
+                        [36.82, -1.3],
+                    ],
+                    "inners": [],
+                },
+            ],
+            "crs": "EPSG:4326",
+        }
+
+        assert _geometry_vertex_count(geometry) == 12
+        assert _geometry_vertex_count(None) == 0

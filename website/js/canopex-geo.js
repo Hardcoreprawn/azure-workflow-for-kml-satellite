@@ -128,6 +128,67 @@
     return Math.round(ha).toLocaleString() + ' ha';
   }
 
+  function geometryLatLngs(geometry) {
+    if (!geometry || geometry.crs !== 'EPSG:4326' ||
+        !Array.isArray(geometry.parts) || !geometry.parts.length) return [];
+
+    var polygons = [];
+    for (var partIndex = 0; partIndex < geometry.parts.length; partIndex++) {
+      var part = geometry.parts[partIndex];
+      if (!part || !Array.isArray(part.outer) || !Array.isArray(part.inners)) return [];
+
+      var rings = [part.outer].concat(part.inners);
+      var latLngRings = [];
+      for (var ringIndex = 0; ringIndex < rings.length; ringIndex++) {
+        var ring = rings[ringIndex];
+        if (!Array.isArray(ring) || ring.length < 4) return [];
+        if (!samePosition(ring[0], ring[ring.length - 1])) return [];
+
+        var latLngRing = [];
+        var uniquePositions = new Set();
+        for (var positionIndex = 0; positionIndex < ring.length; positionIndex++) {
+          var position = ring[positionIndex];
+          if (!Array.isArray(position) || position.length !== 2 ||
+              !Number.isFinite(position[0]) || !Number.isFinite(position[1]) ||
+              position[0] < -180 || position[0] > 180 ||
+              position[1] < -90 || position[1] > 90) return [];
+          if (positionIndex < ring.length - 1) {
+            uniquePositions.add(position[0] + ',' + position[1]);
+          }
+          latLngRing.push([position[1], position[0]]);
+        }
+        if (uniquePositions.size < 3) return [];
+        latLngRings.push(latLngRing);
+      }
+      polygons.push(latLngRings);
+    }
+
+    return polygons.length === 1 ? polygons[0] : polygons;
+  }
+
+  function samePosition(first, second) {
+    return Array.isArray(first) && Array.isArray(second) &&
+      first.length === 2 && second.length === 2 &&
+      first[0] === second[0] && first[1] === second[1];
+  }
+
+  function extendBoundsWithGeometry(bounds, geometry) {
+    if (!bounds || typeof bounds.extend !== 'function') return false;
+
+    var latLngs = geometryLatLngs(geometry);
+    if (!latLngs.length) return false;
+
+    var polygons = geometry.parts.length === 1 ? [latLngs] : latLngs;
+    var rings = [];
+    polygons.forEach(function (polygon) {
+      polygon.forEach(function (ring) { rings.push(ring); });
+    });
+    rings.forEach(function (ring) {
+      ring.forEach(function (position) { bounds.extend(position); });
+    });
+    return true;
+  }
+
   function determineProcessingMode(aoiCount, maxSpreadKm) {
     if (aoiCount > 30 || maxSpreadKm > 100) return 'May batch';
     if (aoiCount > 6 || maxSpreadKm > 25) return 'Bulk-ready';
@@ -185,6 +246,8 @@
     haversineKm: haversineKm,
     polygonCentroid: polygonCentroid,
     polygonAreaHa: polygonAreaHa,
+    geometryLatLngs: geometryLatLngs,
+    extendBoundsWithGeometry: extendBoundsWithGeometry,
     formatDistance: formatDistance,
     formatHectares: formatHectares,
     determineProcessingMode: determineProcessingMode,

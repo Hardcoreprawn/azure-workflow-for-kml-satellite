@@ -116,10 +116,7 @@
    */
   function latLon(source) {
     if (!source) return { lat: 0, lon: 0 };
-    var center = source.center || source.coords;
-    if (Array.isArray(center)) {
-      return { lat: center[0] || 0, lon: center[1] || 0 };
-    }
+    var center = source.center;
     return {
       lat: (center && (center.lat || center.latitude)) || 0,
       lon: (center && (center.lon || center.longitude)) || 0

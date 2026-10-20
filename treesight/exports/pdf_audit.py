@@ -8,9 +8,17 @@ from treesight.constants import EUDR_CUTOFF_DATE
 from treesight.exports.csv import _as_dict
 from treesight.exports.geojson import _aoi_eudr_value
 from treesight.exports.pdf import _safe_text
+from treesight.models.geometry import PolygonGeometry
 from treesight.pipeline.enrichment.determination import as_screening_determination
 
 _EUDR_CUTOFF_YEAR = 2021  # Post-31 December 2020
+
+
+def _geometry_vertex_count(value: Any) -> int:
+    if value is None:
+        return 0
+    geometry = PolygonGeometry.model_validate(value)
+    return sum(len(ring) - 1 for part in geometry.parts for ring in (part.outer, *part.inners))
 
 
 def _audit_cover_page(pdf: Any, manifest: dict[str, Any], instance_id: str) -> None:
@@ -316,13 +324,13 @@ def _audit_single_parcel(
     # Location and area
     area = aoi.get("area_ha", 0.0)
     center = aoi.get("center", {})
-    coords = aoi.get("coords", [])
+    vertex_count = _geometry_vertex_count(aoi.get("geometry"))
     pdf.cell(
         0,
         5,
         f"Area: {area:.2f} ha | Centre: "
         f"{center.get('lat', 0):.6f}, {center.get('lon', 0):.6f} | "
-        f"Vertices: {len(coords)}",
+        f"Vertices: {vertex_count}",
         new_x="LMARGIN",
         new_y="NEXT",
     )

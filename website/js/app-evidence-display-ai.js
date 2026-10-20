@@ -72,7 +72,7 @@
         });
       }
 
-      let center = state.manifest.center || state.manifest.coords;
+      let center = state.manifest.center;
       let lat = Array.isArray(center) ? center[0] : (center && center.lat) || 0;
       let lon = Array.isArray(center) ? center[1] : (center && center.lon) || 0;
 
@@ -151,10 +151,7 @@
       return _em.latLon(source);
     }
     if (!source) return { lat: 0, lon: 0 };
-    let center = source.center || source.coords;
-    if (Array.isArray(center)) {
-      return { lat: center[0] || 0, lon: center[1] || 0 };
-    }
+    let center = source.center;
     return {
       lat: (center && (center.lat || center.latitude)) || 0,
       lon: (center && (center.lon || center.longitude)) || 0
