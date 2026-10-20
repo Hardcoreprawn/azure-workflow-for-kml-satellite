@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 from typing import Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
@@ -16,19 +17,19 @@ _RING_ADAPTER = TypeAdapter(LinearRing)
 
 
 class PolygonPart(BaseModel):
-    """One exterior boundary and its explicitly associated interior holes."""
+    """One outer ring and zero or more inner rings excluded from its area."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
-    exterior: LinearRing
-    holes: tuple[LinearRing, ...] = Field(default_factory=tuple)
+    outer: LinearRing
+    inners: tuple[LinearRing, ...] = ()
 
     @model_validator(mode="after")
     def validate_polygon(self) -> PolygonPart:
-        for ring in (self.exterior, *self.holes):
+        for ring in (self.outer, *self.inners):
             _validate_ring_coordinates(ring)
 
-        polygon = Polygon(self.exterior, self.holes)
+        polygon = Polygon(self.outer, self.inners)
         if not polygon.is_valid or polygon.is_empty or polygon.area <= 0:
             reason = explain_validity(polygon)
             raise ValueError(f"geometry must form a valid polygon: {reason}")
@@ -38,19 +39,22 @@ class PolygonPart(BaseModel):
 class PolygonGeometry(BaseModel):
     """A Polygon or MultiPolygon represented as validated immutable parts.
 
-    Each part owns one exterior and zero or more holes. Ring membership is
+    Each part owns one outer ring and zero or more inner rings. Membership is
     explicit and never inferred from coordinate order or winding direction.
     Coordinates use longitude/latitude order in EPSG:4326.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     parts: tuple[PolygonPart, ...] = Field(min_length=1)
     crs: Literal["EPSG:4326"] = "EPSG:4326"
 
     @model_validator(mode="after")
     def validate_parts(self) -> PolygonGeometry:
-        polygons = [Polygon(part.exterior, part.holes) for part in self.parts]
+        longitudes = [point[0] for part in self.parts for point in part.outer]
+        if max(longitudes) - min(longitudes) > 180:
+            raise ValueError("geometry longitude span cannot exceed 180 degrees; wrapped extents are unsupported")
+        polygons = [Polygon(part.outer, part.inners) for part in self.parts]
         geometry = MultiPolygon(polygons)
         if not geometry.is_valid or geometry.is_empty:
             reason = explain_validity(geometry)
@@ -66,7 +70,7 @@ class PolygonGeometry(BaseModel):
 
     def to_geojson(self) -> dict[str, object]:
         """Serialize to GeoJSON coordinates without flattening ring roles."""
-        polygons = tuple((part.exterior, *part.holes) for part in self.parts)
+        polygons = tuple((part.outer, *part.inners) for part in self.parts)
         if len(polygons) == 1:
             return {"type": "Polygon", "coordinates": polygons[0]}
         return {"type": "MultiPolygon", "coordinates": polygons}
@@ -95,7 +99,7 @@ def _polygon_part_from_coordinates(value: object) -> PolygonPart:
         raise ValueError("GeoJSON polygon part must contain an exterior ring")
 
     rings = tuple(_RING_ADAPTER.validate_python(ring) for ring in value)
-    return PolygonPart(exterior=rings[0], holes=rings[1:])
+    return PolygonPart(outer=rings[0], inners=rings[1:])
 
 
 def _validate_ring_coordinates(ring: LinearRing) -> None:
@@ -107,3 +111,5 @@ def _validate_ring_coordinates(ring: LinearRing) -> None:
             raise ValueError("positions must contain finite coordinates")
         if not -180 <= longitude <= 180 or not -90 <= latitude <= 90:
             raise ValueError("positions must be within EPSG:4326 longitude/latitude bounds")
+    if any(abs(end[0] - start[0]) > 180 for start, end in pairwise(ring)):
+        raise ValueError("rings crossing the antimeridian are unsupported")
