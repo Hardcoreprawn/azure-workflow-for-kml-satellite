@@ -191,7 +191,13 @@ class TestMosaicNdviParallel:
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_naip_rgb_falls_back_to_sentinel_when_naip_missing(self, mock_mosaic, mock_ndvi):
         """If NAIP has no RGB mosaic for a frame, Sentinel-2 should be used for display."""
-        frames = [{**_make_frame(collection="naip", is_naip=True), "display_resolution_m": 0.6}]
+        frames = [
+            {
+                **_make_frame(collection="naip", is_naip=True),
+                "asset": "image",
+                "display_resolution_m": 0.6,
+            }
+        ]
 
         def _mosaic_side_effect(coll, start, end, bbox, extra, cl):
             if coll == "naip":
@@ -208,6 +214,7 @@ class TestMosaicNdviParallel:
         assert results["search_ids"][0] == "sid-sentinel-2-l2a"
         assert results["display_collections"][0] == "sentinel-2-l2a"
         assert frames[0]["display_collection"] == "sentinel-2-l2a"
+        assert frames[0]["asset"] == "visual"
         assert frames[0]["display_resolution_m"] == 10.0
         assert frames[0]["provenance"]["resolution_m"] == 10.0
 
@@ -312,12 +319,13 @@ class TestMosaicNdviParallel:
     def test_landsat_analysis_frame_can_use_naip_display(self, mock_mosaic, mock_s2_ndvi, mock_landsat_ndvi):
         frames = [
             {
-                **_make_frame(year=2016, collection="landsat-c2-l2", is_naip=True),
+                **_make_frame(year=2014, collection="landsat-c2-l2", is_naip=True),
                 "display_collection": "naip",
+                "display_resolution_m": 1.0,
             }
         ]
         mock_mosaic.side_effect = lambda collection, *_args: f"sid-{collection}"
-        mock_landsat_ndvi.return_value = {"mean": 0.4, "scene_id": "LC09_2016"}
+        mock_landsat_ndvi.return_value = {"mean": 0.4, "scene_id": "LC08_2014"}
         results: dict = {}
 
         stats, _ = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", MagicMock(), results)
@@ -327,6 +335,8 @@ class TestMosaicNdviParallel:
         mock_s2_ndvi.assert_not_called()
         assert frames[0]["provenance"]["display_source"] == "naip"
         assert frames[0]["provenance"]["analysis_source"] == "landsat-c2-l2"
+        assert frames[0]["display_resolution_m"] == 1.0
+        assert frames[0]["provenance"]["resolution_m"] == 1.0
         assert stats[0]["source"] == "landsat-c2-l2"
 
     @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")

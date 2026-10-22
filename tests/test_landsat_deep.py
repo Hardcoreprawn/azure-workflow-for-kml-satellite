@@ -441,6 +441,7 @@ class TestCrossSensorTimeline:
             assert len(summer_frames) == 1
             assert summer_frames[0]["collection"] == "landsat-c2-l2"
             assert summer_frames[0]["display_collection"] == "naip"
+            assert summer_frames[0]["asset"] == "image"
             assert summer_frames[0]["is_naip"] is True
 
         observation_keys = [(frame["year"], frame["season"], frame["start"], frame["end"]) for frame in frames]

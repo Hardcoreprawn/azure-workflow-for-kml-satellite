@@ -243,6 +243,7 @@ def build_frame_plan(
             for frame in landsat_frames:
                 if frame["year"] in NAIP_ONLY_YEARS and frame["season"] == "summer":
                     frame["display_collection"] = "naip"
+                    frame["asset"] = "image"
                     frame["is_naip"] = True
         frames.extend(landsat_frames)
         frames.extend(_build_seasonal_frames(has_naip))

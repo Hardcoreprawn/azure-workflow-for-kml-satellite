@@ -42,6 +42,7 @@ from treesight.pipeline.enrichment.weather import (
     aggregate_weather_monthly,
     fetch_weather,
 )
+from treesight.providers.planetary_computer import COLLECTION_ASSET_KEYS
 from treesight.storage.client import BlobStorageClient
 
 logger = logging.getLogger(__name__)
@@ -397,8 +398,10 @@ def _run_mosaic_ndvi_phase(
         f["ndvi_search_id"] = ndvi_search_ids[i]
         f["ndvi_stat"] = ndvi_stats[i]
         f["ndvi_raster_path"] = ndvi_raster_paths[i] if i < len(ndvi_raster_paths) else None
+        requested_display_collection = str(f.get("display_collection") or f.get("collection", ""))
         f["display_collection"] = display_collections[i]
-        if f["display_collection"] != f.get("collection"):
+        if f["display_collection"] != requested_display_collection:
+            f["asset"] = COLLECTION_ASSET_KEYS.get(f["display_collection"], f.get("asset"))
             fallback_resolution_m = COLLECTION_DISPLAY_GSD_M.get(str(f["display_collection"]))
             if fallback_resolution_m is not None:
                 f["display_resolution_m"] = fallback_resolution_m
