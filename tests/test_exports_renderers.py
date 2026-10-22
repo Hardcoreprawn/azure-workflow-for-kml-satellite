@@ -188,6 +188,64 @@ class TestFrameRow:
 
 
 class TestBuildGeoJSON:
+    @pytest.mark.parametrize("invalid", [{"available": False, "mean": 0.8}, {"mean": float("inf")}, {"mean": "0.5"}])
+    def test_unusable_ndvi_excluded_from_exports(self, minimal_manifest, invalid):
+        import csv
+        import io
+        from unittest.mock import MagicMock
+
+        from treesight.exports.csv import _build_csv, _build_eudr_csv
+        from treesight.exports.pdf import _pdf_vegetation_section
+
+        manifest = {**minimal_manifest, "ndvi_stats": [invalid, {"mean": 0.0}]}
+        features = _build_geojson(manifest)["features"]
+        assert "ndvi_mean" not in features[0]["properties"]
+        rows = list(csv.DictReader(io.StringIO(_build_csv(manifest))))
+        assert rows[0]["ndvi_mean"] == ""
+        parcel = {**manifest, "name": "Plot"}
+        eudr = {"per_aoi_enrichment": [parcel]}
+        assert _build_eudr_geojson(eudr)["features"][0]["properties"]["ndvi_observations"] == 1
+        assert next(csv.DictReader(io.StringIO(_build_eudr_csv(eudr))))["ndvi_observations"] == "1"
+        pdf = MagicMock()
+        pdf.epw = 190
+        _pdf_vegetation_section(pdf, manifest)
+        text = [str(call.args[2]) for call in pdf.cell.call_args_list if len(call.args) > 2]
+        assert any("NDVI observations: 1 frames" in line for line in text)
+        assert not any("inf" in line or "0.800" in line for line in text)
+
+    def test_multi_aoi_exports_each_parcels_geometry_and_own_observations(self, minimal_manifest):
+        from copy import deepcopy
+
+        first = deepcopy(minimal_manifest)
+        first.update(aoi_index=2, name="Holey plot", area_ha=12.0)
+        first["geometry"]["parts"][0]["inners"] = [
+            [[36.802, -1.302], [36.804, -1.302], [36.804, -1.304], [36.802, -1.302]]
+        ]
+        second = deepcopy(minimal_manifest)
+        second.update(aoi_index=7, name="Other plot", area_ha=5.0)
+        second["ndvi_stats"] = [{"mean": 0.25}]
+        second["frame_plan"] = second["frame_plan"][:1]
+        manifest = {"geometry": None, "per_aoi_enrichment": [first, second]}
+
+        result = _build_geojson(manifest)
+        frames = [f for f in result["features"] if "frame_index" in f["properties"]]
+
+        assert [f["properties"]["parcel_name"] for f in frames] == ["Holey plot", "Holey plot", "Other plot"]
+        assert [f["properties"]["aoi_index"] for f in frames] == [2, 2, 7]
+        assert frames[0]["geometry"]["coordinates"][1] == tuple(
+            tuple(point) for point in first["geometry"]["parts"][0]["inners"][0]
+        )
+        assert frames[-1]["properties"]["ndvi_mean"] == 0.25
+        assert manifest == {"geometry": None, "per_aoi_enrichment": [first, second]}
+
+    def test_parcel_without_frames_still_exports_boundary_and_error(self, minimal_manifest):
+        aoi = {**minimal_manifest, "name": "Unavailable", "frame_plan": [], "error": "No scenes"}
+        result = _build_geojson({"per_aoi_enrichment": [aoi]})
+        parcels = [f for f in result["features"] if f["geometry"]["type"] == "Polygon"]
+        assert len(parcels) == 1
+        assert parcels[0]["properties"]["parcel_name"] == "Unavailable"
+        assert parcels[0]["properties"]["error"] == "No scenes"
+
     def test_returns_feature_collection(self, minimal_manifest):
         result = _build_geojson(minimal_manifest)
         assert result["type"] == "FeatureCollection"

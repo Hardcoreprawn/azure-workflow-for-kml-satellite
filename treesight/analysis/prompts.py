@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from treesight.analysis.trends import calculate_trends, sanitise_for_prompt
+from treesight.analysis.trends import calculate_trends, is_usable_ndvi, sanitise_for_prompt
 from treesight.constants import EUDR_CUTOFF_DATE
 
 _EUDR_CUTOFF = EUDR_CUTOFF_DATE
@@ -19,7 +19,7 @@ def build_timelapse_prompt(context: dict[str, Any]) -> tuple[str, dict[str, Any]
 
     Returns the prompt string ready to pass to ``generate_analysis``.
     """
-    ndvi_series = context.get("ndvi_timeseries", [])
+    ndvi_series = [entry for entry in context.get("ndvi_timeseries", []) if is_usable_ndvi(entry)]
     weather_series = context.get("weather_timeseries", [])
     trend_info = calculate_trends(ndvi_series, weather_series)
 
@@ -149,8 +149,11 @@ def build_eudr_prompt(
     post_cutoff = [
         s
         for s in ndvi_ts
-        if (isinstance(s.get("date"), str) and s["date"] > _EUDR_CUTOFF)
-        or (isinstance(s.get("year"), (int, float)) and s["year"] > 2020)
+        if is_usable_ndvi(s)
+        and (
+            (isinstance(s.get("date"), str) and s["date"] > _EUDR_CUTOFF)
+            or (isinstance(s.get("year"), (int, float)) and s["year"] > 2020)
+        )
     ]
     if not post_cutoff:
         return None, None, None

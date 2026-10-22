@@ -203,11 +203,32 @@
     showEvidenceFrame(state.frameIndex, ctx);
   }
 
+  function loadImagery(source, ctx) {
+    const state = ctx.state;
+    stopEvidencePlay(ctx);
+    state.mapLayers.forEach(function (frame) {
+      if (frame.rgb) state.map.removeLayer(frame.rgb);
+      if (frame.ndvi) state.map.removeLayer(frame.ndvi);
+    });
+    state.mapLayers = [];
+    state.frameIndex = 0;
+    const controls = document.getElementById('app-evidence-frame-controls');
+    const label = document.getElementById('app-map-frame-label');
+    const searchIds = source.search_ids || [];
+    const framePlan = source.frame_plan || [];
+    const hasImagery = searchIds.some(Boolean) && framePlan.length > 0;
+    if (controls) controls.hidden = !hasImagery;
+    if (label) label.textContent = hasImagery ? '' : 'No imagery available for this selection.';
+    if (hasImagery && state.map) {
+      buildEvidenceFrames(framePlan, searchIds, source.ndvi_search_ids || [], ctx);
+    }
+    syncExpandedControls(ctx);
+  }
+
   function initEvidenceMap(manifest, ctx) {
     let state = ctx.state;
     let container = document.getElementById('app-evidence-map');
     let overlay = document.getElementById('app-evidence-map-overlay');
-    let controls = document.getElementById('app-evidence-frame-controls');
     if (!container) return;
 
     if (state.map) { state.map.remove(); state.map = null; }
@@ -271,16 +292,7 @@
 
     if (overlay) overlay.hidden = true;
 
-    let searchIds = manifest.search_ids || [];
-    let ndviSearchIds = manifest.ndvi_search_ids || [];
-    let framePlan = manifest.frame_plan || [];
-
-    if (searchIds.length && framePlan.length) {
-      buildEvidenceFrames(framePlan, searchIds, ndviSearchIds, ctx);
-      if (controls) controls.hidden = false;
-    } else if (controls) {
-      controls.hidden = true;
-    }
+    loadImagery(singleAoi || manifest, ctx);
 
     setTimeout(function () { if (state.map) state.map.invalidateSize(); }, 200);
   }
@@ -318,6 +330,7 @@
     initEvidenceMap: initEvidenceMap,
     showEvidenceFrame: showEvidenceFrame,
     toggleEvidencePlay: toggleEvidencePlay,
-    stopEvidencePlay: stopEvidencePlay
+    stopEvidencePlay: stopEvidencePlay,
+    loadImagery: loadImagery
   };
 })();

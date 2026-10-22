@@ -16,6 +16,7 @@ import logging
 import math
 from typing import Any
 
+from treesight.analysis.trends import is_usable_ndvi
 from treesight.constants import METRES_PER_DEGREE_LATITUDE
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ def compute_ndvi_trend(ndvi_stats: list[dict[str, float] | None]) -> dict[str, A
     - Overall stability assessment
     """
     # Filter to frames with valid NDVI data
-    valid = [(i, s) for i, s in enumerate(ndvi_stats) if s and s.get("mean") is not None]
+    valid = [(i, s) for i, s in enumerate(ndvi_stats) if s and is_usable_ndvi(s)]
     if len(valid) < 2:
         latest = valid[0][1]["mean"] if valid else None
         return {
@@ -173,7 +174,7 @@ def compute_aoi_metrics(
     metrics["vegetation"] = ndvi_trend
 
     # Latest NDVI detail
-    valid_stats = [s for s in ndvi_stats if s and s.get("mean") is not None]
+    valid_stats = [s for s in ndvi_stats if s and is_usable_ndvi(s)]
     if valid_stats:
         latest = valid_stats[-1]
         metrics["vegetation"]["latest_detail"] = {

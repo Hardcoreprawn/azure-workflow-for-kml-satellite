@@ -54,13 +54,11 @@
     try {
       await (ctx.getApiReady ? ctx.getApiReady() : Promise.resolve());
 
-      let ndviTimeseries = (state.manifest.ndvi_stats || []).map(function (f, i) {
-        if (!f) return null;
-        let fp = (state.manifest.frame_plan || [])[i] || {};
-        return { date: f.datetime || fp.label, mean: f.mean, min: f.min, max: f.max, year: fp.year, season: fp.season };
-      }).filter(Boolean);
+      const source = activeEvidenceContext(state);
+      const ndviTimeseries = buildEvidenceNdviTimeseries(source, ctx.em);
+      if (!ndviTimeseries.length) throw new Error('NDVI unavailable for this selection. No usable observations to analyse.');
 
-      let wm = state.manifest.weather_monthly;
+      let wm = source.weather_monthly;
       let weatherTimeseries = [];
       if (wm && wm.labels && Array.isArray(wm.labels)) {
         weatherTimeseries = wm.labels.map(function (lbl, i) {
@@ -72,15 +70,13 @@
         });
       }
 
-      let center = state.manifest.center;
-      let lat = Array.isArray(center) ? center[0] : (center && center.lat) || 0;
-      let lon = Array.isArray(center) ? center[1] : (center && center.lon) || 0;
+      const latLon = evidenceLatLon(source, ctx.em);
 
       let body = {
         context: {
-          aoi_name: 'Analysis area',
-          latitude: lat,
-          longitude: lon,
+          aoi_name: source.name || 'Analysis area',
+          latitude: latLon.lat,
+          longitude: latLon.lon,
           frame_count: ndviTimeseries.length,
           date_range_start: ndviTimeseries.length ? ndviTimeseries[0].date : '',
           date_range_end: ndviTimeseries.length ? ndviTimeseries[ndviTimeseries.length - 1].date : '',
@@ -119,6 +115,7 @@
   function activeEvidenceContext(state) {
     if (!state.manifest) return null;
     let perAoi = state.manifest.per_aoi_enrichment || [];
+    if (perAoi.length === 1) return perAoi[0];
     if (state.selectedAoi >= 0 && state.selectedAoi < perAoi.length) {
       return perAoi[state.selectedAoi];
     }
@@ -126,23 +123,7 @@
   }
 
   function buildEvidenceNdviTimeseries(source, em) {
-    let _em = em();
-    if (typeof _em.buildNdviTimeseries === 'function') {
-      return _em.buildNdviTimeseries(source);
-    }
-    if (!source) return [];
-    return (source.ndvi_stats || []).map(function (f, i) {
-      if (!f) return null;
-      let fp = (source.frame_plan || [])[i] || {};
-      return {
-        date: f.datetime || f.date || fp.start || fp.label,
-        mean: f.mean,
-        min: f.min,
-        max: f.max,
-        year: f.year || fp.year,
-        season: f.season || fp.season
-      };
-    }).filter(Boolean);
+    return em().buildNdviTimeseries(source);
   }
 
   function evidenceLatLon(source, em) {

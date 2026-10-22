@@ -10,8 +10,11 @@
     let compareWrap = document.getElementById('app-evidence-compare-wrap');
     let compareBtn = document.getElementById('app-map-btn-compare');
     if (!compareWrap) return;
+    manifest = selectedEvidence({ manifest: manifest, selectedAoi: -1 });
 
-    let searchIds = manifest.search_ids || [];
+    let searchIds = (manifest.search_ids || []).filter(function (id, index) {
+      return !!id && !!(manifest.frame_plan || [])[index];
+    });
     if (searchIds.length < 2) {
       if (compareBtn) compareBtn.hidden = true;
       return;
@@ -37,8 +40,11 @@
     let state = ctx.state;
     destroyCompareMaps(ctx);
 
-    let searchIds = manifest.search_ids || [];
-    let framePlan = manifest.frame_plan || [];
+    const observations = (manifest.frame_plan || []).map(function (frame, index) {
+      return { frame: frame, searchId: (manifest.search_ids || [])[index] };
+    }).filter(function (observation) { return !!observation.searchId; });
+    let searchIds = observations.map(function (observation) { return observation.searchId; });
+    let framePlan = observations.map(function (observation) { return observation.frame; });
     let center = manifest.center;
     if (!center || !searchIds.length) return;
 
@@ -157,7 +163,7 @@
     if (state.compareMode) {
       closeCompareView(ctx);
     } else if (state.manifest) {
-      openCompareView(state.manifest, ctx);
+      openCompareView(selectedEvidence(state), ctx);
     }
   }
 
@@ -165,6 +171,19 @@
     let _ep = ctx.ep();
     if (typeof _ep.parcelKeyForIndex === 'function') return _ep.parcelKeyForIndex(idx);
     return String(idx);
+  }
+
+  function selectedEvidence(state) {
+    const perAoi = state.manifest.per_aoi_enrichment || [];
+    if (perAoi.length === 1) return perAoi[0];
+    return perAoi[state.selectedAoi] || state.manifest;
+  }
+
+  function loadSelectedImagery(source, ctx) {
+    if (ctx.state.compareMode) closeCompareView(ctx);
+    destroyCompareMaps(ctx);
+    window.CanopexEvidenceDisplayMap.loadImagery(source, ctx);
+    initCompareView(source);
   }
 
   function selectAoi(idx, ctx) {
@@ -175,6 +194,7 @@
 
     state.selectedAoi = idx;
     let aoi = perAoi[idx];
+    loadSelectedImagery(aoi, ctx);
 
     state.aoiPolygons.forEach(function (poly, i) {
       if (i === idx) {
@@ -209,6 +229,7 @@
     state.selectedAoi = -1;
     state.currentOverrideParcelKey = null;
     state.currentOverrideAoiData = null;
+    loadSelectedImagery(state.manifest, ctx);
 
     state.aoiPolygons.forEach(function (poly) {
       poly.setStyle({ color: 'rgba(88,166,255,.7)', weight: 2, fillOpacity: 0.05 });

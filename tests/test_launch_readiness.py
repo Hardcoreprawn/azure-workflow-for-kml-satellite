@@ -2624,27 +2624,27 @@ class TestParseKmlGeometryHoleHandling:
 
     A Placemark with a polygon hole (outerBoundaryIs + innerBoundaryIs) was
     producing 2 polygon entries instead of 1, causing "56 features across 57
-    AOIs" in the preflight panel. The fix extracts coordinates only from
-    outerBoundaryIs elements when present.
+    AOIs" in the preflight panel. Each Placemark now owns polygon parts with
+    explicit outer/inner rings. Executable multipart/cost regressions live in
+    tests/js/review-evidence-contracts.test.js.
     """
 
     APP_SHELL = WEBSITE / "js" / "canopex-geo.js"
 
     def test_uses_outer_boundary_extraction(self):
-        """parseKmlGeometry must look for outerBoundaryIs before extracting coordinates."""
+        """Polygon parts must retain outer and inner rings in their own roles."""
         content = self.APP_SHELL.read_text()
-        fn_start = content.find("function parseKmlGeometry(")
-        assert fn_start != -1, "parseKmlGeometry not found in canopex-geo.js"
+        fn_start = content.find("function parsePolygonPart(")
+        assert fn_start != -1, "parsePolygonPart not found in canopex-geo.js"
 
         fn_end = content.find("\n  function ", fn_start + 1)
         if fn_end == -1:
             fn_end = len(content)
         fn_body = content[fn_start:fn_end]
 
-        assert "outerBoundaryIs" in fn_body, (
-            "parseKmlGeometry must extract coordinates from outerBoundaryIs "
-            "to avoid counting innerBoundaryIs (holes) as separate polygons (#580)"
-        )
+        assert "parseBoundary(polygon.getElementsByTagName('outerBoundaryIs')[0])" in fn_body
+        assert "getElementsByTagName('innerBoundaryIs')).map(parseBoundary)" in fn_body
+        assert "return { outer: outer, inners: inners }" in fn_body
 
     def test_does_not_blindly_iterate_all_coordinates(self):
         """The primary Placemark loop must not use getElementsByTagName('coordinates') directly."""
@@ -2655,19 +2655,10 @@ class TestParseKmlGeometryHoleHandling:
             fn_end = len(content)
         fn_body = content[fn_start:fn_end]
 
-        # The first coordinates extraction inside the Placemark loop should
-        # go through outerBoundaryIs, not directly on the Placemark.
-        # The fallback (no outerBoundaryIs) is fine, but the primary path
-        # must not blindly grab all <coordinates> from a Placemark.
-        placemark_loop_start = fn_body.find("for (var p = 0;")
-        assert placemark_loop_start != -1, "Placemark loop not found"
-        loop_body = fn_body[placemark_loop_start:]
-
-        # outerBoundaryIs check must appear before any raw getElementsByTagName('coordinates')
-        outer_idx = loop_body.find("outerBoundaryIs")
-        raw_coord_idx = loop_body.find("getElementsByTagName('coordinates')")
-        assert outer_idx < raw_coord_idx, (
-            "parseKmlGeometry must check outerBoundaryIs before falling back to raw coordinates extraction (#580)"
+        assert "for (const placemark of placemarks)" in fn_body
+        assert "getElementsByTagName('Polygon')).map(parsePolygonPart)" in fn_body
+        assert "getElementsByTagName('coordinates')" not in fn_body, (
+            "Placemark extraction must not count inner rings or multipart components as separate AOIs (#580)"
         )
 
 

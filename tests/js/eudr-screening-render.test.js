@@ -41,6 +41,11 @@ function loadRenderer() {
     CanopexHelpers: { setStatGrid: () => {} }
   });
   vm.runInContext(
+    fs.readFileSync(path.join(root, 'website/js/app-evidence-map.js'), 'utf8'),
+    context,
+    { filename: 'app-evidence-map.js' }
+  );
+  vm.runInContext(
     fs.readFileSync(path.join(root, 'website/js/canopex-evidence-render.js'), 'utf8'),
     context,
     { filename: 'canopex-evidence-render.js' }

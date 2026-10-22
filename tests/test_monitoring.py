@@ -46,6 +46,7 @@ def test_openapi_monitoring_requires_canonical_geometry() -> None:
     body = document["paths"]["/monitoring"]["post"]["requestBody"]["content"]["application/json"]["schema"]
     aoi = body["properties"]["aoi_geometry"]
     assert set(aoi["required"]) == {"centroid", "geometry"}
+    assert "bbox" not in aoi["required"]
     part = aoi["properties"]["geometry"]["properties"]["parts"]["items"]
     assert part["required"] == ["outer"]
     assert "inners" in part["properties"]
@@ -412,6 +413,26 @@ class TestAlertSending:
 
 
 class TestMonitoringEndpoints:
+    def test_create_monitor_rejects_antimeridian_geometry(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
+        from blueprints.monitoring import monitoring_endpoint
+
+        geometry = {
+            "parts": [{"outer": [[179, 0], [-179, 0], [-179, 1], [179, 1], [179, 0]], "inners": []}],
+            "crs": "EPSG:4326",
+        }
+        body = {"aoi_name": "Wrapped", "aoi_geometry": {"centroid": [180, 0.5], "geometry": geometry}}
+        response = monitoring_endpoint(make_test_request("/api/monitoring", method="POST", body=body))
+        assert response.status_code == 400
+        assert "antimeridian" in response.get_body().decode()
+
+    @pytest.mark.parametrize("centroid", [[10**400, 0], [0, -(10**400)], [True, 0], ["0", 0], [181, 0], [0, 91]])
+    def test_create_monitor_rejects_invalid_centroid(self, centroid, _mock_cosmos, _mock_auth, _mock_pro_subscription):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {"aoi_name": "Invalid centroid", "aoi_geometry": {**_SAMPLE_GEOMETRY, "centroid": centroid}}
+        resp = monitoring_endpoint(make_test_request("/api/monitoring", method="POST", body=body))
+        assert resp.status_code == 400
+
     def test_list_monitors_empty(self, _mock_cosmos, _mock_auth):
         from blueprints.monitoring import monitoring_endpoint
 
@@ -612,7 +633,7 @@ class TestMonitoringScheduler:
         m = create_monitor(
             user_id="user-1",
             aoi_name="No Centroid",
-            aoi_geometry={"centroid": [0.0, 0.0]},
+            aoi_geometry={},
         )
 
         from blueprints.monitoring import _process_monitor
@@ -621,6 +642,44 @@ class TestMonitoringScheduler:
             _process_monitor(m)
             mock_advance.assert_called_once()
             assert mock_advance.call_args[1]["run_id"] == "skipped-no-centroid"
+
+    @pytest.mark.parametrize("centroid", [[10**400, 0], [0, -(10**400)], [True, 0], ["0", 0], [181, 0], [0, 91]])
+    def test_process_monitor_invalid_centroid_advances_schedule(self, centroid, _mock_cosmos):
+        from blueprints.monitoring import _process_monitor
+        from treesight.monitoring import create_monitor
+
+        monitor = create_monitor(
+            user_id="user-1", aoi_name="Invalid centroid", aoi_geometry={**_SAMPLE_GEOMETRY, "centroid": centroid}
+        )
+        with patch("treesight.monitoring.advance_schedule") as advance:
+            _process_monitor(monitor)
+        advance.assert_called_once_with(monitor, run_id="skipped-no-centroid")
+
+    def test_process_monitor_accepts_null_island(self, _mock_cosmos):
+        from blueprints.monitoring import _process_monitor
+        from treesight.monitoring import create_monitor
+
+        monitor = create_monitor(
+            user_id="user-1", aoi_name="Null Island", aoi_geometry={**_SAMPLE_GEOMETRY, "centroid": [0.0, 0.0]}
+        )
+        with (
+            patch("treesight.pipeline.enrichment.run_enrichment", return_value={}) as enrich,
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("treesight.monitoring.advance_schedule"),
+        ):
+            _process_monitor(monitor)
+        enrich.assert_called_once()
+
+    def test_process_monitor_invalid_geometry_advances_schedule(self, _mock_cosmos):
+        from blueprints.monitoring import _process_monitor
+        from treesight.monitoring import create_monitor
+
+        monitor = create_monitor(
+            user_id="user-1", aoi_name="Malformed", aoi_geometry={"centroid": [0, 0], "geometry": {"type": []}}
+        )
+        with patch("treesight.monitoring.advance_schedule") as advance:
+            _process_monitor(monitor)
+        advance.assert_called_once_with(monitor, run_id="skipped-unavailable-geometry")
 
     def test_process_monitor_with_enrichment(self, _mock_cosmos):
         from treesight.monitoring import create_monitor
@@ -786,6 +845,9 @@ class TestMonitoringScheduler:
             "ndvi_stats": [
                 {"mean": 0.45, "datetime": datetime(2026, 2, 1, tzinfo=UTC)},
                 {"mean": 0.62, "datetime": "2026-03-01"},
+                {"mean": 0.9, "available": False},
+                {"mean": float("inf")},
+                {"mean": float("nan")},
             ]
         }
 

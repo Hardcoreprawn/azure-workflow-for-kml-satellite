@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from treesight.analysis.trends import is_usable_ndvi
 from treesight.constants import EUDR_CUTOFF_DATE
 from treesight.exports.csv import _as_dict
 from treesight.exports.geojson import _aoi_eudr_value
@@ -386,7 +387,7 @@ def _audit_single_parcel(
     # NDVI timeseries
     ndvi_stats = aoi.get("ndvi_stats", [])
     frame_plan = aoi.get("frame_plan", [])
-    valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
+    valid = [s for s in ndvi_stats if s and is_usable_ndvi(s)]
     if valid:
         means = [s["mean"] for s in valid]
         pdf.cell(
@@ -522,7 +523,9 @@ def _audit_appendix(
 
     pdf.set_font("Helvetica", "", 7)
     for frame, ndvi in filtered:
-        ndvi_mean = f"{ndvi['mean']:.3f}" if ndvi and ndvi.get("mean") is not None else "--"
+        if not is_usable_ndvi(ndvi):
+            ndvi = None
+        ndvi_mean = f"{ndvi['mean']:.3f}" if ndvi else "--"
         ndvi_min = f"{ndvi['min']:.3f}" if ndvi and ndvi.get("min") is not None else "--"
         ndvi_max = f"{ndvi['max']:.3f}" if ndvi and ndvi.get("max") is not None else "--"
         scene_id = (ndvi.get("scene_id", "") if ndvi else "")[:16]

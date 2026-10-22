@@ -91,10 +91,15 @@
    * @param {object|null} source - evidence manifest or per-AOI context
    * @returns {Array<{ date: string, mean: number, min: number, max: number, year, season }>}
    */
+  function isUsableNdvi(observation) {
+    return !!observation && observation.available !== false &&
+      Number.isFinite(observation.mean) && observation.mean >= -1 && observation.mean <= 1;
+  }
+
   function buildNdviTimeseries(source) {
     if (!source) return [];
     return (source.ndvi_stats || []).map(function (f, i) {
-      if (!f) return null;
+      if (!isUsableNdvi(f)) return null;
       var fp = (source.frame_plan || [])[i] || {};
       return {
         date: f.datetime || f.date || fp.start || fp.label,
@@ -127,6 +132,7 @@
     pickDefaultLayer: pickDefaultLayer,
     pickInitialFrameIndex: pickInitialFrameIndex,
     buildNdviTimeseries: buildNdviTimeseries,
+    isUsableNdvi: isUsableNdvi,
     latLon: latLon
   };
 })();
