@@ -67,6 +67,28 @@ def test_fixture_reconciliation_rejects_substituted_parcel(tmp_path) -> None:
         validate_fixture_metadata([{"feature": {"name": "B", "feature_index": 0}}], fixture)
 
 
+def test_fixture_reconciliation_checks_holes_not_just_bounds(tmp_path) -> None:
+    from scripts.artifact_validation import validate_fixture_metadata
+    from treesight.parsers.lxml_parser import parse_kml_lxml
+
+    fixture = tmp_path / "holes.kml"
+    fixture.write_text(
+        '<kml xmlns="http://www.opengis.net/kml/2.2"><Placemark><name>A</name><Polygon>'
+        "<outerBoundaryIs><LinearRing><coordinates>0,0 4,0 4,4 0,4 0,0</coordinates></LinearRing>"
+        "</outerBoundaryIs>"
+        "<innerBoundaryIs><LinearRing><coordinates>1,1 2,1 2,2 1,2 1,1</coordinates></LinearRing>"
+        "</innerBoundaryIs></Polygon></Placemark></kml>"
+    )
+    geometry = parse_kml_lxml(fixture.read_bytes())[0].geometry.to_geojson()
+    metadata = [
+        {"feature": {"name": "A", "feature_index": 0}, "geometry": {"bbox": [0, 0, 4, 4], "source_geometry": geometry}}
+    ]
+    validate_fixture_metadata(metadata, fixture)
+    metadata[0]["geometry"]["source_geometry"] = {"type": "Polygon", "coordinates": (geometry["coordinates"][0],)}
+    with pytest.raises(ValueError, match="artifact geometry"):
+        validate_fixture_metadata(metadata, fixture)
+
+
 def test_json_must_be_an_object() -> None:
     with pytest.raises(ValueError, match="artifact"):
         validate_content("metadata.json", b"[]")

@@ -17,6 +17,7 @@ from typing import Any
 
 import httpx
 
+from treesight.analysis.trends import is_usable_ndvi
 from treesight.config import is_test_mode_enabled
 from treesight.constants import (
     COLLECTION_DISPLAY_GSD_M,
@@ -24,6 +25,7 @@ from treesight.constants import (
     DEFAULT_HTTP_TIMEOUT_SECONDS,
 )
 from treesight.log import log_phase
+from treesight.models.geometry import PolygonGeometry
 from treesight.pipeline.enrichment.aoi_metrics import (
     compute_aoi_metrics,
     compute_multi_aoi_summary,
@@ -35,13 +37,13 @@ from treesight.pipeline.enrichment.mosaic import register_mosaic
 from treesight.pipeline.enrichment.ndvi import (
     compute_landsat_ndvi,
     compute_ndvi,
-    fetch_ndvi_stat,
 )
 from treesight.pipeline.enrichment.resource_accumulator import ResourceAccumulator
 from treesight.pipeline.enrichment.weather import (
     aggregate_weather_monthly,
     fetch_weather,
 )
+from treesight.providers.planetary_computer import COLLECTION_ASSET_KEYS
 from treesight.storage.client import BlobStorageClient
 
 logger = logging.getLogger(__name__)
@@ -118,6 +120,7 @@ def _run_eudr_phase(
     center_lon: float,
     results: dict[str, Any],
     acc: ResourceAccumulator | None = None,
+    geometry: PolygonGeometry | None = None,
 ) -> None:
     """Phase 1d: EUDR-specific enrichments (WorldCover + WDPA + IO LULC + ALOS FNF)."""
     from treesight.pipeline.eudr import (
@@ -162,7 +165,7 @@ def _run_eudr_phase(
     log_phase("enrichment", "alos_fnf_done", available=alos.get("available", False))
 
     # Landsat historical NDVI baseline (#609)
-    _run_landsat_baseline(flat_bbox_eudr, results)
+    _run_landsat_baseline(flat_bbox_eudr, results, geometry)
 
     if acc:
         acc.add_source("esa-worldcover")
@@ -183,6 +186,7 @@ def _run_eudr_phase(
 def _run_landsat_baseline(
     flat_bbox: list[float],
     results: dict[str, Any],
+    geometry: PolygonGeometry | None,
 ) -> None:
     """Phase 1e: Landsat C2 L2 historical NDVI baseline (#609).
 
@@ -196,15 +200,25 @@ def _run_landsat_baseline(
         ("2013-06-01", "2014-09-30"),
         ("2015-06-01", "2016-09-30"),
     ]
+    if geometry is None:
+        results["landsat_baseline"] = {
+            "available": False,
+            "unavailable_reason": "geometry_unavailable",
+            "scenes": [],
+            "source": "landsat-c2-l2",
+        }
+        return
+
     baseline_results: list[dict[str, Any]] = []
     for start, end in windows:
-        result = compute_landsat_ndvi(flat_bbox, start, end)
-        if result is not None:
+        result = compute_landsat_ndvi(flat_bbox, start, end, geometry=geometry)
+        if result is not None and result.get("available", False):
             result.pop("geotiff_bytes", None)  # don't store raster in manifest
             baseline_results.append(result)
 
     results["landsat_baseline"] = {
         "available": len(baseline_results) > 0,
+        "unavailable_reason": None if baseline_results else "no_plot_masked_observations",
         "scenes": baseline_results,
         "source": "landsat-c2-l2",
     }
@@ -217,7 +231,7 @@ def _run_landsat_baseline(
 
 def _run_mosaic_ndvi_phase(
     bbox: list[list[float]],
-    coords: list[list[float]],
+    geometry: PolygonGeometry | None,
     frame_plan: list[dict[str, Any]],
     project_name: str,
     timestamp: str,
@@ -227,7 +241,7 @@ def _run_mosaic_ndvi_phase(
     acc: ResourceAccumulator | None = None,
     aoi_index: int | None = None,
 ) -> tuple[list[dict[str, Any] | None], list[str | None]]:
-    """Phase 2/3: mosaic registration + NDVI computation (COG or tile fallback).
+    """Phase 2/3: mosaic registration + geometry-masked NDVI computation.
 
     ``aoi_index`` scopes the NDVI raster blob path to one AOI within a
     multi-parcel submission — ``project_name``/``timestamp`` are shared
@@ -243,25 +257,28 @@ def _run_mosaic_ndvi_phase(
     log_phase("enrichment", "mosaic_start", frames=len(frame_plan))
     search_ids: list[str | None] = [None] * len(frame_plan)
     ndvi_search_ids: list[str | None] = [None] * len(frame_plan)
-    display_collections: list[str] = [str(f.get("collection", "")) for f in frame_plan]
+    display_collections: list[str] = [str(f.get("display_collection") or f.get("collection", "")) for f in frame_plan]
 
     def _register_one(idx: int, f: dict[str, Any]) -> tuple[int, str | None, str | None, str]:
         if test_mode:
-            return idx, None, None, str(f.get("collection", ""))
+            return idx, None, None, str(f.get("display_collection") or f.get("collection", ""))
         cloud_collections = {"sentinel-2-l2a", "landsat-c2-l2"}
+        requested_display_collection = str(f.get("display_collection") or f.get("collection", ""))
         extra: list[dict[str, Any]] = (
-            [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}] if f["collection"] in cloud_collections else []
+            [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}]
+            if requested_display_collection in cloud_collections
+            else []
         )
         with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS, trust_env=False) as cl:
             sid = None
-            display_collection = str(f.get("collection", ""))
+            display_collection = requested_display_collection
             if f.get("rgb_display_suitable", True):
-                sid = register_mosaic(f["collection"], f["start"], f["end"], bbox, extra, cl)
+                sid = register_mosaic(requested_display_collection, f["start"], f["end"], bbox, extra, cl)
 
             # If NAIP is preferred but unavailable for this frame/year, fall
             # back to Sentinel-2 RGB so the viewer still gets the best
             # available visual source instead of a missing/blank RGB layer.
-            if f["is_naip"] and sid is None and f.get("rgb_display_suitable", True):
+            if requested_display_collection == "naip" and sid is None and f.get("rgb_display_suitable", True):
                 sid = register_mosaic(
                     "sentinel-2-l2a",
                     f["start"],
@@ -273,24 +290,12 @@ def _run_mosaic_ndvi_phase(
                 if sid:
                     display_collection = "sentinel-2-l2a"
 
-            nsid = sid
-            # When the RGB mosaic was skipped (unsuitable) or failed, register a
-            # Sentinel-2 mosaic for NDVI so the viewer has a vegetation tile to show.
-            # This covers sentinel-2-l2a (direct) and landsat-c2-l2 (cross-sensor) —
-            # previously Landsat frames were left with nsid=None here.
-            if sid is None and f["collection"] in {"sentinel-2-l2a", "landsat-c2-l2"}:
-                nsid = register_mosaic(
-                    "sentinel-2-l2a",
-                    f["start"],
-                    f["end"],
-                    bbox,
-                    [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}],
-                    cl,
-                )
-            if f["is_naip"]:
+            nsid = None
+            if f["collection"] in {"sentinel-2-l2a", "landsat-c2-l2"} or f["is_naip"]:
                 if display_collection == "sentinel-2-l2a" and sid is not None:
                     nsid = sid
                 else:
+                    # Tile-stat NDVI currently evaluates Sentinel-2 assets only.
                     nsid = register_mosaic(
                         "sentinel-2-l2a",
                         f["start"],
@@ -327,17 +332,41 @@ def _run_mosaic_ndvi_phase(
     # 3. NDVI computation (parallel — each frame is independent I/O)
     flat_bbox = [bbox[0][0], bbox[0][1], bbox[2][0], bbox[2][1]]
     log_phase("enrichment", "ndvi_start", frames=len(frame_plan))
-    ndvi_stats: list[dict[str, float] | None] = [None] * len(frame_plan)
+    ndvi_stats: list[dict[str, Any] | None] = [None] * len(frame_plan)
     ndvi_raster_paths: list[str | None] = [None] * len(frame_plan)
 
     def _compute_one_ndvi(idx: int, f: dict[str, Any]) -> tuple[int, dict[str, Any] | None, str | None]:
         if test_mode:
             return idx, None, None
-        cog_result = None
+        if geometry is None:
+            return idx, {"available": False, "unavailable_reason": "geometry_unavailable"}, None
         if f["collection"] == "landsat-c2-l2":
-            cog_result = compute_landsat_ndvi(flat_bbox, f["start"], f["end"])
+            analysis_sources = ("landsat-c2-l2", "sentinel-2-l2a")
         elif f["collection"] == "sentinel-2-l2a" or f["is_naip"]:
-            cog_result = compute_ndvi(flat_bbox, f["start"], f["end"])
+            analysis_sources = ("sentinel-2-l2a", "landsat-c2-l2")
+        else:
+            analysis_sources = ()
+
+        cog_result = None
+        unavailable_result = None
+        for source in analysis_sources:
+            try:
+                if source == "landsat-c2-l2":
+                    observation = compute_landsat_ndvi(flat_bbox, f["start"], f["end"], geometry=geometry)
+                else:
+                    observation = compute_ndvi(flat_bbox, f["start"], f["end"], geometry=geometry)
+            except Exception:
+                logger.warning("NDVI COG source failed source=%s year=%s", source, f["year"], exc_info=True)
+                continue
+            if observation is not None and is_usable_ndvi(observation):
+                cog_result = {**observation, "source": observation.get("source") or source}
+                break
+            if observation is not None and unavailable_result is None:
+                unavailable_result = {
+                    **observation,
+                    "available": False,
+                    "unavailable_reason": observation.get("unavailable_reason") or "no_plot_masked_observation",
+                }
         if cog_result is not None:
             geotiff_bytes = cog_result.pop("geotiff_bytes", None)
             raster_path = None
@@ -352,13 +381,7 @@ def _run_mosaic_ndvi_phase(
                 )
             return idx, cog_result, raster_path
 
-        # Fallback: tile-based sampling
-        nsid = ndvi_search_ids[idx]
-        if nsid:
-            with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS, trust_env=False) as cl:
-                stat = fetch_ndvi_stat(nsid, coords, cl)
-            return idx, stat, None
-        return idx, None, None
+        return idx, unavailable_result or {"available": False, "unavailable_reason": "no_plot_masked_observation"}, None
 
     with ThreadPoolExecutor(max_workers=frame_workers) as pool:
         futures = [pool.submit(_compute_one_ndvi, i, f) for i, f in enumerate(frame_plan)]
@@ -389,7 +412,13 @@ def _run_mosaic_ndvi_phase(
         f["ndvi_search_id"] = ndvi_search_ids[i]
         f["ndvi_stat"] = ndvi_stats[i]
         f["ndvi_raster_path"] = ndvi_raster_paths[i] if i < len(ndvi_raster_paths) else None
+        requested_display_collection = str(f.get("display_collection") or f.get("collection", ""))
         f["display_collection"] = display_collections[i]
+        if f["display_collection"] != requested_display_collection:
+            f["asset"] = COLLECTION_ASSET_KEYS.get(f["display_collection"], f.get("asset"))
+            fallback_resolution_m = COLLECTION_DISPLAY_GSD_M.get(str(f["display_collection"]))
+            if fallback_resolution_m is not None:
+                f["display_resolution_m"] = fallback_resolution_m
         season_key = f["season"]
         year = f["year"]
         if f["display_collection"] == "naip":
@@ -409,9 +438,16 @@ def _run_mosaic_ndvi_phase(
             src = "Sentinel-2 L2A"
         f["info"] = f"{src} | {res} m/px | {f['start']} → {f['end']}"
         ndvi_stat = ndvi_stats[i] if i < len(ndvi_stats) else None
+        if not is_usable_ndvi(ndvi_stat):
+            ndvi_stat = None
         f["provenance"] = {
             "collection": f.get("display_collection") or f.get("collection", ""),
             "requested_collection": f.get("collection", ""),
+            "display_source": f.get("display_collection") or f.get("collection", ""),
+            "analysis_source": ndvi_stat.get("source") if ndvi_stat else None,
+            "analysis_resolution_m": (
+                COLLECTION_DISPLAY_GSD_M.get(str(ndvi_stat.get("source"))) if ndvi_stat else None
+            ),
             "display_search_id": search_ids[i],
             "ndvi_search_id": ndvi_search_ids[i],
             "ndvi_scene_id": ndvi_stat.get("scene_id") if ndvi_stat else None,
@@ -486,7 +522,7 @@ def _run_change_detection_phase(
 
 def _run_aoi_metrics_phase(
     aoi_list: list[dict[str, Any]],
-    ndvi_stats: list[dict[str, float] | None],
+    ndvi_stats: list[dict[str, Any] | None],
     results: dict[str, Any],
 ) -> None:
     """Phase 6: per-AOI quantitative metrics."""

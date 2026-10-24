@@ -1225,6 +1225,21 @@ NAV_PAGES: tuple[Path, ...] = (
 )
 
 
+def test_eudr_source_docs_match_scheduled_sensor_policy() -> None:
+    data_sources = (WEBSITE / "docs" / "eudr-data-sources.html").read_text().lower()
+    glossary = (WEBSITE / "docs" / "eudr-glossary.html").read_text().lower()
+    assert "preferred historical ndvi source (2013–2017)" in data_sources
+    assert "sentinel-2 is preferred from 2018 onward" in data_sources
+    assert "does not create same-year paired observations" in data_sources
+    assert "sentinel-2 takes over from 2017" not in data_sources
+    assert "preferred ndvi source for 2013–2017 frames" in data_sources
+    assert "preferred ndvi source for 2018+ frames" in data_sources
+    assert "scheduled ndvi frames from 2013 through 2017" in glossary
+    assert "before sentinel-2 coverage began" not in data_sources
+    assert "pre-2017 historical baselines" not in glossary
+    assert "pre-2017 historical baseline" not in data_sources
+
+
 class TestNavigationModel:
     """Every page shares one nav model — see website/README.md."""
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from treesight.geo import (
     _buffer_bbox,
@@ -14,6 +15,7 @@ from treesight.geo import (
 )
 from treesight.models.aoi import AOI
 from treesight.models.feature import Feature
+from treesight.models.geometry import PolygonGeometry, PolygonPart
 
 
 class TestComputeBbox:
@@ -148,10 +150,37 @@ class TestPrepareAOI:
         """A polygon spanning 10 degrees should trigger area warning."""
         f = Feature(
             name="Huge",
-            exterior_coords=[[30, -10], [40, -10], [40, 0], [30, 0], [30, -10]],
+            geometry=PolygonGeometry(
+                parts=(
+                    PolygonPart(
+                        outer=((30, -10), (40, -10), (40, 0), (30, 0), (30, -10)),
+                    ),
+                ),
+            ),
         )
         aoi = prepare_aoi(f)
         assert aoi.area_warning != ""
+
+    def test_prepare_aoi_metrics_account_for_holes_and_multipart_geometry(self):
+        exterior = ((0, 0), (2, 0), (2, 2), (0, 2), (0, 0))
+        hole = ((0.5, 0.5), (1.5, 0.5), (1.5, 1.5), (0.5, 1.5), (0.5, 0.5))
+        second_part = ((3, 0), (4, 0), (4, 1), (3, 1), (3, 0))
+        geometry = PolygonGeometry(
+            parts=(
+                PolygonPart(outer=exterior, inners=(hole,)),
+                PolygonPart(outer=second_part),
+            ),
+        )
+        feature = Feature(name="Multi-part plot", geometry=geometry)
+
+        aoi = prepare_aoi(feature)
+        outer_area, outer_perimeter = _geodesic_area_and_perimeter([list(point) for point in exterior])
+        hole_area, hole_perimeter = _geodesic_area_and_perimeter([list(point) for point in hole])
+        second_area, second_perimeter = _geodesic_area_and_perimeter([list(point) for point in second_part])
+
+        assert aoi.area_ha == pytest.approx(outer_area - hole_area + second_area, rel=1e-6)
+        assert aoi.perimeter_km == pytest.approx(outer_perimeter + hole_perimeter + second_perimeter, rel=1e-6)
+        assert aoi.bbox == [0.0, 0.0, 4.0, 2.0]
 
 
 class TestSquareBbox:
@@ -288,70 +317,37 @@ class TestClusterAois:
 class TestPrepareAoiEdgeCases:
     """Guards against degenerate geometry that can stall the ingestion phase."""
 
-    def test_collinear_coords_zero_area(self):
-        """Collinear exterior coords produce zero area but do not raise."""
-        f = Feature(
-            name="Line",
-            exterior_coords=[[36.8, -1.3], [36.81, -1.3], [36.82, -1.3], [36.8, -1.3]],
-        )
-        aoi = prepare_aoi(f)
-        assert isinstance(aoi, AOI)
-        assert aoi.area_ha == pytest.approx(0.0, abs=0.01)
-
-    def test_two_point_exterior_coords(self):
-        """Two-point exterior produces zero area and a valid bbox."""
-        f = Feature(
-            name="TwoPoint",
-            exterior_coords=[[36.8, -1.3], [36.81, -1.31]],
-        )
-        aoi = prepare_aoi(f)
-        assert aoi.area_ha == pytest.approx(0.0, abs=0.01)
-        # Bbox should still be non-degenerate (contains both points)
-        assert aoi.bbox[0] == pytest.approx(36.8)
-        assert aoi.bbox[2] == pytest.approx(36.81)
-
-    def test_single_point_exterior_coords(self):
-        """Single-point exterior produces zero area and degenerate bbox."""
-        f = Feature(
-            name="SinglePoint",
-            exterior_coords=[[36.8, -1.3]],
-        )
-        aoi = prepare_aoi(f)
-        assert aoi.area_ha == pytest.approx(0.0, abs=0.01)
-        assert aoi.bbox == [36.8, -1.3, 36.8, -1.3]
+    @pytest.mark.parametrize(
+        "ring",
+        [
+            ((36.8, -1.3), (36.81, -1.3), (36.82, -1.3), (36.8, -1.3)),
+            ((36.8, -1.3), (36.81, -1.31)),
+            ((36.8, -1.3),),
+        ],
+    )
+    def test_rejects_degenerate_rings(self, ring):
+        """Invalid geometry fails at model construction rather than producing zero-area AOIs."""
+        with pytest.raises(ValidationError):
+            PolygonPart(outer=ring)
 
     def test_polygon_near_antimeridian(self):
-        """Polygon near ±180° longitude does not crash and produces valid bbox."""
-        f = Feature(
-            name="Antimeridian",
-            exterior_coords=[
-                [179.9, -16.5],
-                [-179.8, -16.5],
-                [-179.8, -16.6],
-                [179.9, -16.6],
-                [179.9, -16.5],
-            ],
-        )
-        aoi = prepare_aoi(f)
-        assert isinstance(aoi, AOI)
-        # Bbox is computed from raw coords — min/max will cross zero,
-        # which is a known limitation. Verify we get *something* back
-        # without raising and that the centroid is inside the computed bbox.
-        assert aoi.bbox[0] <= aoi.centroid[0] <= aoi.bbox[2] or aoi.bbox[0] > aoi.bbox[2]
+        """Do not mistake a short dateline crossing for a world-spanning plot."""
+        with pytest.raises(ValidationError, match="antimeridian"):
+            (
+                PolygonPart(
+                    outer=(
+                        (179.9, -16.5),
+                        (-179.8, -16.5),
+                        (-179.8, -16.6),
+                        (179.9, -16.6),
+                        (179.9, -16.5),
+                    ),
+                ),
+            )
 
-    def test_prepare_aoi_duplicate_adjacent_coords(self):
-        """Exterior ring with repeated consecutive points does not raise."""
-        f = Feature(
-            name="Dupes",
-            exterior_coords=[
-                [36.8, -1.3],
-                [36.8, -1.3],  # duplicate of first
-                [36.81, -1.31],
-                [36.8, -1.3],
-            ],
-        )
-        aoi = prepare_aoi(f)
-        assert isinstance(aoi, AOI)
+    def test_rejects_duplicate_ring_with_insufficient_distinct_vertices(self):
+        with pytest.raises(ValidationError):
+            PolygonPart(outer=((36.8, -1.3), (36.8, -1.3), (36.81, -1.31), (36.8, -1.3)))
 
 
 class TestGeodesicAreaEdgeCases:

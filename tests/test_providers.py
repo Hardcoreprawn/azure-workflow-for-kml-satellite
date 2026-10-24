@@ -8,6 +8,7 @@ import pytest
 
 from tests.stub_provider import StubPlanetaryComputerProvider
 from treesight.models.aoi import AOI
+from treesight.models.geometry import PolygonGeometry, PolygonPart
 from treesight.models.imagery import ImageryFilters
 from treesight.providers.base import BlobReference, OrderStatus
 from treesight.providers.geo_router import (
@@ -195,6 +196,19 @@ def _make_aoi(centroid: list[float], name: str = "Test AOI") -> AOI:
     return AOI(
         feature_name=name,
         source_file="test.kml",
+        geometry=PolygonGeometry(
+            parts=(
+                PolygonPart(
+                    outer=(
+                        (lon - 0.01, lat - 0.01),
+                        (lon + 0.01, lat - 0.01),
+                        (lon + 0.01, lat + 0.01),
+                        (lon - 0.01, lat + 0.01),
+                        (lon - 0.01, lat - 0.01),
+                    ),
+                ),
+            ),
+        ),
         centroid=centroid,
         bbox=[lon - 0.01, lat - 0.01, lon + 0.01, lat + 0.01],
         buffered_bbox=[lon - 0.02, lat - 0.02, lon + 0.02, lat + 0.02],

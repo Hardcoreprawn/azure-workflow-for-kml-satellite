@@ -118,6 +118,21 @@ class TestComputeNdviTrend:
         assert result["overall_change"] > 0
         assert result["overall_change_pct"] > 0
 
+    def test_trend_uses_latest_single_analysis_source(self):
+        stats = [
+            {"mean": 0.2, "source": "landsat-c2-l2"},
+            {"mean": 0.3, "source": "landsat-c2-l2"},
+            {"mean": 0.7, "source": "sentinel-2-l2a"},
+            {"mean": 0.8, "source": "sentinel-2-l2a"},
+        ]
+
+        result = compute_ndvi_trend(stats)
+
+        assert result["source"] == "sentinel-2-l2a"
+        assert result["observations"] == 2
+        assert result["earliest_mean"] == pytest.approx(0.7)
+        assert result["latest_mean"] == pytest.approx(0.8)
+
     def test_declining_trend(self):
         stats = _make_ndvi_stats([0.5, 0.45, 0.4, 0.35, 0.3])
         result = compute_ndvi_trend(stats)
@@ -403,3 +418,13 @@ class TestWorstChangeLegacyCompatLogging:
         assert result is not None
         assert result["period"] == "summer 2022\u21922023"
         mock_warn.assert_not_called()
+
+
+@pytest.mark.parametrize("observation", [{"mean": 0.8, "available": False}, {"mean": float("inf")}, {"mean": "0.5"}])
+def test_unusable_ndvi_excluded_from_trend_and_latest_detail(observation):
+    from treesight.pipeline.enrichment.aoi_metrics import compute_aoi_metrics
+
+    metrics = compute_aoi_metrics({}, [{"mean": 0.0}, observation])
+    assert metrics["vegetation"]["observations"] == 1
+    assert metrics["vegetation"]["latest_mean"] == 0.0
+    assert metrics["vegetation"]["latest_detail"]["mean"] == 0.0

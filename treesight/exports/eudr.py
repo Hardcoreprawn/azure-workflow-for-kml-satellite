@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from treesight.eudr_commodities import EUDR_COMMODITIES, normalize_commodity
+from treesight.models.geometry import PolygonGeometry
 
 # Verbatim from Regulation (EU) 2023/1115, Annex II, item 5.
 _DDS_DECLARATION_TEXT = (
@@ -81,13 +82,15 @@ def _plot_geolocation(aoi: dict[str, Any], *, is_cattle: bool) -> dict[str, Any]
     if source_geometry_type == "Point":
         return {"geolocation_type": "point", "coordinates": point}
     if source_geometry_type == "Polygon":
-        return {"geolocation_type": "polygon", "coordinates": list(aoi.get("coords", []))}
+        geometry = PolygonGeometry.model_validate(aoi["geometry"]).to_geojson()
+        return {"geolocation_type": "polygon", "coordinates": geometry["coordinates"]}
 
-    # Legacy fallback: derive from buffer area when source_geometry_type is absent.
+    # Derive point-vs-polygon geolocation from area when source type is unknown.
     area_ha = aoi.get("area_ha", 0.0)
     if area_ha <= 4.0:
         return {"geolocation_type": "point", "coordinates": point}
-    return {"geolocation_type": "polygon", "coordinates": list(aoi.get("coords", []))}
+    geometry = PolygonGeometry.model_validate(aoi["geometry"]).to_geojson()
+    return {"geolocation_type": "polygon", "coordinates": geometry["coordinates"]}
 
 
 def _production_block(manifest: dict[str, Any]) -> dict[str, Any]:

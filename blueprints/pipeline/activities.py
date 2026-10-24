@@ -321,9 +321,16 @@ def post_process_imagery(payload: _Payload) -> dict[str, Any]:
 @bp.activity_trigger(input_name="payload")
 def run_enrichment(payload: _Payload) -> dict[str, Any]:
     """Phase 4 activity: fetch weather, register mosaics, sample NDVI, store manifest."""
+    from treesight.models.geometry import PolygonGeometry
     from treesight.pipeline.enrichment import run_enrichment as _enrich
     from treesight.storage.client import BlobStorageClient
 
+    geometry = PolygonGeometry.model_validate(payload["geometry"]) if payload.get("geometry") is not None else None
+    per_aoi_geometries = payload.get("per_aoi_geometries")
+    if geometry is None and not per_aoi_geometries:
+        raise ValueError("Enrichment activity requires source geometry")
+    for entry in per_aoi_geometries or []:
+        PolygonGeometry.model_validate(entry.get("geometry"))
     storage = BlobStorageClient()
     return _enrich(
         coords=payload["coords"],
@@ -331,7 +338,8 @@ def run_enrichment(payload: _Payload) -> dict[str, Any]:
         timestamp=payload["timestamp"],
         output_container=payload.get("output_container", DEFAULT_OUTPUT_CONTAINER),
         storage=storage,
-        per_aoi_coords=payload.get("per_aoi_coords"),
+        per_aoi_geometries=per_aoi_geometries,
+        geometry=geometry,
         eudr_mode=payload.get("eudr_mode", False),
         date_start=payload.get("date_start"),
         date_end=payload.get("date_end"),
@@ -359,10 +367,12 @@ def enrich_data_sources(payload: _Payload) -> dict[str, Any]:
         logger.info("SAFE_MODE: skipping enrich_data_sources")
         return {"safe_mode": True, "skipped": ["weather", "flood_fire", "eudr_datasets"]}
 
+    from treesight.models.geometry import PolygonGeometry
     from treesight.pipeline.enrichment import enrich_data_sources as _enrich_ds
 
     return _enrich_ds(
         payload["coords"],
+        geometry=PolygonGeometry.model_validate(payload["geometry"]) if payload.get("geometry") is not None else None,
         eudr_mode=payload.get("eudr_mode", False),
         date_start=payload.get("date_start"),
         date_end=payload.get("date_end"),
@@ -374,12 +384,14 @@ def enrich_data_sources(payload: _Payload) -> dict[str, Any]:
 @bp.activity_trigger(input_name="payload")
 def enrich_imagery(payload: _Payload) -> dict[str, Any]:
     """Enrichment sub-step 2: mosaic registration, NDVI, change detection."""
+    from treesight.models.geometry import PolygonGeometry
     from treesight.pipeline.enrichment import enrich_imagery as _enrich_img
     from treesight.storage.client import BlobStorageClient
 
     storage = BlobStorageClient()
     return _enrich_img(
         payload["coords"],
+        geometry=PolygonGeometry.model_validate(payload["geometry"]) if payload.get("geometry") is not None else None,
         eudr_mode=payload.get("eudr_mode", False),
         date_start=payload.get("date_start"),
         date_end=payload.get("date_end"),
@@ -425,7 +437,7 @@ def enrich_finalize(payload: _Payload) -> dict[str, Any]:
         payload["data_sources"],
         payload["imagery"],
         payload.get("per_aoi_results", []),
-        per_aoi_coords=payload.get("per_aoi_coords"),
+        per_aoi_geometries=payload.get("per_aoi_geometries"),
         eudr_mode=payload.get("eudr_mode", False),
         date_start=payload.get("date_start"),
         project_name=payload["project_name"],

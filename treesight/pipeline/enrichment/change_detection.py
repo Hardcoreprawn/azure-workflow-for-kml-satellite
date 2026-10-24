@@ -51,6 +51,7 @@ def compute_change_map(
     """
     import numpy as np
     import rasterio
+    from pyproj import CRS
 
     try:
         with rasterio.open(io.BytesIO(raster_a_bytes)) as src_a:
@@ -60,12 +61,18 @@ def compute_change_map(
 
         with rasterio.open(io.BytesIO(raster_b_bytes)) as src_b:
             ndvi_b = src_b.read(1)
+            profile_b = src_b.profile.copy()
 
-        # Ensure same shape — trim to overlap
-        min_h = min(ndvi_a.shape[0], ndvi_b.shape[0])
-        min_w = min(ndvi_a.shape[1], ndvi_b.shape[1])
-        ndvi_a = ndvi_a[:min_h, :min_w]
-        ndvi_b = ndvi_b[:min_h, :min_w]
+        if (
+            ndvi_a.shape != ndvi_b.shape
+            or profile_a.get("crs") != profile_b.get("crs")
+            or profile_a.get("transform") != profile_b.get("transform")
+        ):
+            raise ValueError("Change observations must use the same raster grid")
+        crs = CRS.from_user_input(str(profile_a.get("crs")))
+        if not crs.is_projected or any(axis.unit_conversion_factor != 1 for axis in crs.axis_info):
+            raise ValueError("Change area requires a projected raster CRS with metre units")
+        min_h, min_w = ndvi_a.shape
 
         pixel_area_m2 = abs(res_a[0] * res_a[1])
         pixel_area_ha = pixel_area_m2 / 10_000  # 1 ha = 10,000 m²
@@ -177,13 +184,7 @@ def detect_changes(
     """
     log_phase("change_detection", "start", frames=len(frame_plan))
 
-    # Group frames by season with their raster paths
-    season_groups: dict[str, list[tuple[int, int, str]]] = {}
-    for i, f in enumerate(frame_plan):
-        raster_path = ndvi_raster_paths[i] if i < len(ndvi_raster_paths) else None
-        if raster_path and f.get("season") and f.get("year"):
-            season = f["season"]
-            season_groups.setdefault(season, []).append((int(f["year"]), i, raster_path))
+    season_groups = _group_observations_by_season(frame_plan, ndvi_raster_paths)
 
     # Sort each season group by year
     for group in season_groups.values():
@@ -200,8 +201,10 @@ def detect_changes(
 
         # Compare consecutive years within same season
         for j in range(1, len(frames)):
-            year_a, _idx_a, path_a = frames[j - 1]
-            year_b, _idx_b, path_b = frames[j]
+            year_a, _idx_a, path_a, source_a = frames[j - 1]
+            year_b, _idx_b, path_b, source_b = frames[j]
+            if year_a >= year_b or source_a != source_b:
+                continue
 
             try:
                 raster_a = storage.download_bytes(output_container, path_a)
@@ -271,3 +274,28 @@ def detect_changes(
     )
 
     return {"season_changes": season_changes, "summary": summary}
+
+
+def _group_observations_by_season(
+    frame_plan: list[dict[str, Any]],
+    ndvi_raster_paths: Sequence[str | None],
+) -> dict[str, list[tuple[int, int, str, str | None]]]:
+    season_groups: dict[str, list[tuple[int, int, str, str | None]]] = {}
+    seen_observations: set[tuple[str, int, str, str, str | None]] = set()
+    for index, frame in enumerate(frame_plan):
+        raster_path = ndvi_raster_paths[index] if index < len(ndvi_raster_paths) else None
+        season = frame.get("season")
+        year = frame.get("year")
+        if not raster_path or not season or not year:
+            continue
+
+        year = int(year)
+        provenance = frame.get("provenance") or {}
+        ndvi_stat = frame.get("ndvi_stat") or {}
+        source = provenance.get("analysis_source") or ndvi_stat.get("source")
+        observation_key = (season, year, frame.get("start", ""), frame.get("end", ""), source)
+        if observation_key in seen_observations:
+            continue
+        seen_observations.add(observation_key)
+        season_groups.setdefault(season, []).append((year, index, raster_path, source))
+    return season_groups

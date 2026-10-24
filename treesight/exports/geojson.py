@@ -4,21 +4,53 @@ from __future__ import annotations
 
 from typing import Any
 
+from treesight.analysis.trends import is_usable_ndvi
 from treesight.exports.frame_row import FrameRow
+from treesight.models.geometry import PolygonGeometry
 from treesight.pipeline.enrichment.determination import as_screening_determination
 
 
 def _build_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Export each parcel's boundaries and observations without union evidence."""
+    per_aoi = manifest.get("per_aoi_enrichment") or []
+    if not per_aoi:
+        return _build_single_geojson(manifest)
+
+    features: list[dict[str, Any]] = []
+    for index, aoi in enumerate(per_aoi):
+        parcel_features = _build_single_geojson(aoi)["features"]
+        if not aoi.get("frame_plan"):
+            parcel_features.insert(
+                0,
+                {
+                    "type": "Feature",
+                    "geometry": _to_geojson_geometry(aoi.get("geometry")),
+                    "properties": {"type": "parcel"},
+                },
+            )
+        for feature in parcel_features:
+            feature["properties"].update(
+                parcel_name=aoi.get("name", ""),
+                aoi_index=aoi.get("aoi_index", index),
+                area_ha=aoi.get("area_ha"),
+            )
+            if "error" in aoi:
+                feature["properties"]["error"] = aoi["error"]
+        features.extend(parcel_features)
+    return {"type": "FeatureCollection", "features": features}
+
+
+def _build_single_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
     """Build a GeoJSON FeatureCollection from the enrichment manifest.
 
     The AOI polygon becomes the geometry; NDVI stats, weather, and frame
     metadata are stored as Feature properties.
     """
-    coords = manifest.get("coords", [])
+    geometry = _to_geojson_geometry(manifest.get("geometry"))
     frame_plan = manifest.get("frame_plan", [])
     ndvi_stats = manifest.get("ndvi_stats", [])
     weather_monthly = manifest.get("weather_monthly")
-    change_detection = manifest.get("change_detection", {})
+    change_detection = manifest.get("change_detection") or {}
 
     frames = [FrameRow.from_dict(i, f) for i, f in enumerate(frame_plan)]
 
@@ -37,24 +69,16 @@ def _build_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
             "is_naip": frame.is_naip,
             "provenance": frame.provenance,
         }
-        if ndvi:
+        if ndvi and is_usable_ndvi(ndvi):
             props["ndvi_mean"] = ndvi.get("mean")
             props["ndvi_min"] = ndvi.get("min")
             props["ndvi_max"] = ndvi.get("max")
             props["ndvi_std"] = ndvi.get("std")
             props["ndvi_scene_id"] = ndvi.get("scene_id")
 
-        # Close polygon ring if needed
-        ring = list(coords)
-        if ring and ring[0] != ring[-1]:
-            ring.append(ring[0])
-
         feature = {
             "type": "Feature",
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [ring],
-            },
+            "geometry": geometry,
             "properties": props,
         }
         features.append(feature)
@@ -94,12 +118,12 @@ def _toplevel_as_single_aoi(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     Used as fallback when ``per_aoi_enrichment`` is empty (single-parcel runs).
     Returns an empty list if the manifest has no usable evidence.
     """
-    if not manifest.get("determination") and not manifest.get("coords"):
+    if not manifest.get("determination") and not manifest.get("geometry"):
         return []
     return [
         {
             "name": manifest.get("feature_name", ""),
-            "coords": manifest.get("coords", []),
+            "geometry": manifest.get("geometry"),
             "center": manifest.get("center", {}),
             "area_ha": manifest.get("area_ha", 0.0),
             "determination": manifest.get("determination", {}),
@@ -171,7 +195,7 @@ def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
 
         # NDVI summary
         ndvi_stats = aoi.get("ndvi_stats", [])
-        valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
+        valid = [s for s in ndvi_stats if s and is_usable_ndvi(s)]
         if valid:
             props["ndvi_latest_mean"] = valid[-1]["mean"]
             props["ndvi_observations"] = len(valid)
@@ -186,13 +210,14 @@ def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
         props["change_comparisons"] = summary.get("comparisons", 0)
 
         # Build polygon geometry
-        coords = aoi.get("coords", [])
-        ring = list(coords)
-        if ring and ring[0] != ring[-1]:
-            ring.append(ring[0])
-
-        geometry: dict[str, Any] | None = {"type": "Polygon", "coordinates": [ring]} if ring else None
+        geometry = _to_geojson_geometry(aoi.get("geometry"))
 
         features.append({"type": "Feature", "geometry": geometry, "properties": props})
 
     return {"type": "FeatureCollection", "features": features}
+
+
+def _to_geojson_geometry(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    return PolygonGeometry.model_validate(value).to_geojson()

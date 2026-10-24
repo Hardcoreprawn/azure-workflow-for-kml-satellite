@@ -24,6 +24,43 @@ from treesight.pipeline.orchestrator import (
 )
 from treesight.storage.offload import PayloadOffloader
 
+GEOMETRY = {
+    "parts": [{"outer": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]], "inners": []}],
+    "crs": "EPSG:4326",
+}
+
+
+def test_kml_aoi_and_durable_payload_preserve_multiple_holes_and_island():
+    from blueprints.pipeline._payloads import _collect_per_aoi_geometries
+    from blueprints.pipeline.submission import _features_to_kml_bytes
+    from treesight.geo import prepare_aoi
+    from treesight.models.feature import Feature
+    from treesight.models.geometry import PolygonGeometry, PolygonPart
+    from treesight.parsers.lxml_parser import parse_kml_lxml
+
+    geometry = PolygonGeometry(
+        parts=(
+            PolygonPart(
+                outer=((0, 0), (5, 0), (5, 5), (0, 5), (0, 0)),
+                inners=(
+                    ((1, 1), (2, 1), (2, 2), (1, 2), (1, 1)),
+                    ((3, 3), (4, 3), (4, 4), (3, 4), (3, 3)),
+                ),
+            ),
+            PolygonPart(outer=((1.2, 1.2), (1.8, 1.2), (1.8, 1.8), (1.2, 1.8), (1.2, 1.2))),
+        )
+    )
+    source = Feature(name="Holey plot", geometry=geometry)
+    parsed = parse_kml_lxml(_features_to_kml_bytes([source]))
+    assert len(parsed) == 1
+    assert parsed[0].geometry == geometry
+
+    prepared = prepare_aoi(parsed[0])
+    payload = _collect_per_aoi_geometries([json.loads(prepared.model_dump_json())])
+    restored = PolygonGeometry.model_validate(json.loads(json.dumps(payload))[0]["geometry"])
+    assert restored == geometry
+    assert payload[0]["area_ha"] == prepared.area_ha
+
 
 class TestDeriveProjectContext:
     def test_extracts_stem(self):
@@ -297,7 +334,7 @@ class TestLoadAoi:
 
         aoi_data = {
             "feature_name": "farm",
-            "exterior_coords": [[1.0, 2.0], [3.0, 4.0]],
+            "geometry": GEOMETRY,
             "bbox": [1.0, 2.0, 3.0, 4.0],
             "buffered_bbox": [0.9, 1.9, 3.1, 4.1],
         }
@@ -311,7 +348,7 @@ class TestLoadAoi:
     def test_loads_from_inline_aoi(self):
         from blueprints.pipeline.activities import _load_aoi
 
-        result = _load_aoi({"aoi": {"feature_name": "inline"}})
+        result = _load_aoi({"aoi": {"feature_name": "inline", "geometry": GEOMETRY}})
         assert result.feature_name == "inline"
 
 
@@ -750,7 +787,7 @@ class TestEnrichmentParallelFanOut:
             inp={"eudr_mode": False},
             ctx={"project_name": "p", "timestamp": "t"},
             all_coords=[[10.0, 20.0]],
-            per_aoi_coords=[],
+            per_aoi_geometries=[],
             output_container="out",
         )
         # First yield: task_all for data_sources + imagery
@@ -800,7 +837,7 @@ class TestEnrichmentParallelFanOut:
             inp={"eudr_mode": False},
             ctx={"project_name": "p", "timestamp": "t"},
             all_coords=[[10.0, 20.0]],
-            per_aoi_coords=aois,
+            per_aoi_geometries=aois,
             output_container="out",
         )
 
@@ -832,7 +869,7 @@ class TestEnrichmentParallelFanOut:
             inp={"eudr_mode": False},
             ctx={"project_name": "p", "timestamp": "t"},
             all_coords=[[10.0, 20.0]],
-            per_aoi_coords=aois,
+            per_aoi_geometries=aois,
             output_container="out",
         )
 
@@ -843,7 +880,7 @@ class TestEnrichmentParallelFanOut:
         activity_names = [call.args[0] for call in ctx.call_activity_with_retry.call_args_list]
         assert "enrich_single_aoi" not in activity_names
         finalize_payload = ctx.call_activity_with_retry.call_args_list[-1].args[2]
-        assert finalize_payload["per_aoi_coords"] == aois
+        assert finalize_payload["per_aoi_geometries"] == aois
 
     def test_enrichment_reports_substep_status(self):
         """Orchestrator should set customStatus with enrichment sub-steps."""
@@ -859,7 +896,7 @@ class TestEnrichmentParallelFanOut:
             inp={},
             ctx={"project_name": "p", "timestamp": "t"},
             all_coords=[[10.0, 20.0]],
-            per_aoi_coords=[],
+            per_aoi_geometries=[],
             output_container="out",
         )
         gen.send(None)
@@ -883,7 +920,7 @@ class TestEnrichmentParallelFanOut:
             inp={},
             ctx={"project_name": "p", "timestamp": "t"},
             all_coords=[],
-            per_aoi_coords=[],
+            per_aoi_geometries=[],
             output_container="out",
         )
         try:
@@ -1101,7 +1138,7 @@ class TestProgressivePipeline:
         project_ctx = {"project_name": "test", "timestamp": "20260416T000000Z"}
         ing = {
             "aoi_refs": [{"ref": "blob://1", "key": "A"}, {"ref": "blob://2", "key": "B"}],
-            "per_aoi_coords": [
+            "per_aoi_geometries": [
                 {"name": "A", "coords": [[0, 0]], "area_ha": 10, "cluster": 0},
                 {"name": "B", "coords": [[1, 1]], "area_ha": 20, "cluster": 0},
             ],
@@ -1126,7 +1163,7 @@ class TestProgressivePipeline:
 
         ing = {
             "aoi_refs": [{"ref": "blob://1", "key": "A"}, {"ref": "blob://2", "key": "B"}],
-            "per_aoi_coords": [{"name": "A", "coords": [[0, 0]], "cluster": 0}],
+            "per_aoi_geometries": [{"name": "A", "coords": [[0, 0]], "cluster": 0}],
             "aoi_area_by_name": {"A": 10.0, "B": 20.0},
         }
 
@@ -1154,7 +1191,7 @@ class TestProgressivePipeline:
 
         ing = {
             "aoi_refs": [{"ref": "blob://1", "key": "A"}],
-            "per_aoi_coords": [{"name": "A", "coords": [[0, 0]], "cluster": 0}],
+            "per_aoi_geometries": [{"name": "A", "coords": [[0, 0]], "cluster": 0}],
             "aoi_area_by_name": {"A": 10.0},
         }
 
@@ -1186,7 +1223,7 @@ class TestProgressivePipeline:
 
         ing = {
             "aoi_refs": [{"ref": "blob://1", "key": "A"}],
-            "per_aoi_coords": [{"name": "A", "coords": [[0, 0]], "cluster": 0}],
+            "per_aoi_geometries": [{"name": "A", "coords": [[0, 0]], "cluster": 0}],
             "aoi_area_by_name": {"A": 10.0},
         }
 
@@ -1282,33 +1319,33 @@ class TestCollectEnrichmentCoordsEdgeCases:
         result = _collect_enrichment_coords([])
         assert result == []
 
-    def test_aoi_with_no_exterior_coords_falls_back_to_bbox(self):
+    def test_bbox_cannot_replace_geometry(self):
         from blueprints.pipeline._helpers import _collect_enrichment_coords
 
         aois = [{"feature_name": "farm", "bbox": [36.8, -1.31, 36.81, -1.3], "exterior_coords": []}]
-        result = _collect_enrichment_coords(aois)
-        assert len(result) == 5  # bbox-derived ring has 5 points
+        with pytest.raises(ValueError, match="source geometry"):
+            _collect_enrichment_coords(aois)
 
-    def test_aoi_with_no_coords_and_no_bbox_returns_empty(self):
+    def test_missing_geometry_is_rejected(self):
         from blueprints.pipeline._helpers import _collect_enrichment_coords
 
         aois = [{"feature_name": "unknown"}]
-        result = _collect_enrichment_coords(aois)
-        assert result == []
+        with pytest.raises(ValueError, match="source geometry"):
+            _collect_enrichment_coords(aois)
 
 
 class TestCollectPerAoiCoordsEdgeCases:
     """Guards against per-AOI coord collection with missing/empty coordinates."""
 
-    def test_aoi_without_coords_or_bbox_excluded(self):
-        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+    def test_aoi_without_geometry_is_rejected(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_geometries
 
         aois = [{"feature_name": "ghost"}]  # no exterior_coords, no bbox
-        result = _collect_per_aoi_coords(aois)
-        assert result == []
+        with pytest.raises(ValueError, match="source geometry"):
+            _collect_per_aoi_geometries(aois)
 
-    def test_aoi_with_empty_exterior_uses_bbox_ring(self):
-        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+    def test_bbox_only_aoi_is_rejected(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_geometries
 
         aois = [
             {
@@ -1318,22 +1355,20 @@ class TestCollectPerAoiCoordsEdgeCases:
                 "area_ha": 5.0,
             }
         ]
-        result = _collect_per_aoi_coords(aois)
-        assert len(result) == 1
-        assert result[0]["name"] == "field"
-        assert len(result[0]["coords"]) == 5  # bbox-derived ring
+        with pytest.raises(ValueError, match="source geometry"):
+            _collect_per_aoi_geometries(aois)
 
     def test_single_aoi_assigned_cluster_zero(self):
-        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+        from blueprints.pipeline._helpers import _collect_per_aoi_geometries
 
         aois = [
             {
                 "feature_name": "solo",
-                "exterior_coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]],
+                "geometry": GEOMETRY,
                 "area_ha": 3.0,
             }
         ]
-        result = _collect_per_aoi_coords(aois)
+        result = _collect_per_aoi_geometries(aois)
         assert result[0]["cluster"] == 0
 
 
@@ -1376,9 +1411,9 @@ class TestOffloadedFeaturesPath:
 
         ctx = MagicMock()
         # parse_kml returns a list (inline, not offloaded)
-        one_feature = [{"feature_name": "farm", "exterior_coords": [[36.8, -1.3]]}]
+        one_feature = [{"feature_name": "farm", "geometry": GEOMETRY}]
         ctx.call_activity.return_value = "sentinel"
-        ctx.task_all.return_value = [{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}]
+        ctx.task_all.return_value = [{"feature_name": "farm", "geometry": GEOMETRY, "bbox": [36.8, -1.31, 36.81, -1.3]}]
 
         gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-1", {})
         gen.send(None)  # first yield: parse_kml
@@ -1395,7 +1430,7 @@ class TestOffloadedFeaturesPath:
 
         ctx = MagicMock()
         ctx.call_activity.return_value = "sentinel"
-        ctx.task_all.return_value = [{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}]
+        ctx.task_all.return_value = [{"feature_name": "farm", "geometry": GEOMETRY, "bbox": [36.8, -1.31, 36.81, -1.3]}]
 
         gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-2", {})
         gen.send(None)  # first yield: parse_kml
@@ -1442,11 +1477,9 @@ class TestOrchestratorActivityOutputContracts:
 
         gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-4", {})
         gen.send(None)  # yield parse_kml activity call
+        gen.send([{"feature_name": "farm", "geometry": GEOMETRY}])  # resolve parse_kml; yield prepare_aoi fan-out
         gen.send(
-            [{"feature_name": "farm", "exterior_coords": [[36.8, -1.3]]}]
-        )  # resolve parse_kml; yield prepare_aoi fan-out
-        gen.send(
-            [{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}]
+            [{"feature_name": "farm", "geometry": GEOMETRY, "bbox": [36.8, -1.31, 36.81, -1.3]}]
         )  # resolve prepare_aoi; yield store_aoi_claims
 
         with pytest.raises(ValueError, match=r"store_aoi_claims activity output item 0 missing required keys: ref"):
@@ -1473,14 +1506,14 @@ class TestPhaseIngestionCentroidTelemetry:
         gen.send(None)  # yield parse_kml
         gen.send(
             [
-                {"feature_name": "farm", "exterior_coords": [[36.8, -1.3]]},
+                {"feature_name": "farm", "geometry": GEOMETRY},
                 {"feature_name": "empty", "exterior_coords": []},
             ]
         )  # resolve parse_kml; yield prepare_aoi fan-out
         gen.send(
             [
-                {"feature_name": "farm", "centroid": [36.8, -1.3]},
-                {"feature_name": "empty", "centroid": [0.0, 0.0]},
+                {"feature_name": "farm", "geometry": GEOMETRY, "centroid": [36.8, -1.3]},
+                {"feature_name": "empty", "geometry": GEOMETRY, "centroid": [0.0, 0.0]},
             ]
         )  # resolve prepare_aoi; yield store_aoi_claims
         gen.send(
@@ -1527,7 +1560,7 @@ class TestPhaseCustomStatusReporting:
         ctx.call_activity.return_value = "sentinel"
         ctx.task_all.return_value = []
 
-        features = [{"feature_name": "f", "exterior_coords": [[1.0, 2.0]]}] * 2
+        features = [{"feature_name": "f", "geometry": GEOMETRY}] * 2
         gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "i2", {})
         gen.send(None)
         with contextlib.suppress(StopIteration):
@@ -1604,7 +1637,7 @@ class TestPhaseCustomStatusReporting:
             inp={},
             ctx={"project_name": "p", "timestamp": "t"},
             all_coords=[[10.0, 20.0]],
-            per_aoi_coords=[],
+            per_aoi_geometries=[],
             output_container="out",
         )
         gen.send(None)
@@ -1625,7 +1658,7 @@ class TestPhaseCustomStatusReporting:
             inp={},
             ctx={"project_name": "p", "timestamp": "t"},
             all_coords=[[10.0, 20.0]],
-            per_aoi_coords=[],
+            per_aoi_geometries=[],
             output_container="out",
         )
         gen.send(None)  # data_sources_and_imagery yield
@@ -1715,7 +1748,7 @@ class TestHelpersModuleSplit:
         assert hasattr(_payloads, "_download_payload")
         assert hasattr(_payloads, "_post_process_payload")
         assert hasattr(_payloads, "_collect_enrichment_coords")
-        assert hasattr(_payloads, "_collect_per_aoi_coords")
+        assert hasattr(_payloads, "_collect_per_aoi_geometries")
         assert hasattr(_payloads, "_build_order_lookups")
         assert hasattr(_payloads, "_split_batch_routing")
 
@@ -1733,7 +1766,7 @@ class TestHelpersModuleSplit:
             "_aggregate_aoi_results",
             "_build_order_lookups",
             "_collect_enrichment_coords",
-            "_collect_per_aoi_coords",
+            "_collect_per_aoi_geometries",
             "_download_payload",
             "_durable_status_payload",
             "_expected_blob_host",

@@ -13,10 +13,10 @@ from treesight.constants import (
     EUDR_CUTOFF_DATE,
     MULTI_REGION_THRESHOLD_KM,
 )
-from treesight.geo import centroid as _geo_centroid
 from treesight.geo import haversine_km as _geo_haversine_km
 from treesight.log import log_phase
 from treesight.models.enrichment_manifest import ENRICHMENT_MANIFEST_V2_SCHEMA, EnrichmentManifestV2
+from treesight.models.geometry import PolygonGeometry
 from treesight.pipeline.enrichment._phase_runners import (
     _run_aoi_metrics_phase,
     _run_change_detection_phase,
@@ -62,13 +62,15 @@ def _enrich_single_aoi(
     same ``project_name``/``timestamp`` never overwrite each other (#1425).
     """
     aoi_name = aoi_entry.get("name", "")
-    coords = aoi_entry["coords"]
+    geometry = _geometry_from_entry(aoi_entry)
+    coords = _geometry_boundary_coordinates(geometry)
 
     bbox = _coords_to_bbox(coords)
     lons = [c[0] for c in coords]
     lats = [c[1] for c in coords]
-    center_lat = round((min(lats) + max(lats)) / 2, 4)
-    center_lon = round((min(lons) + max(lons)) / 2, 4)
+    center = aoi_entry.get("center")
+    center_lat = float(center["lat"]) if center else round((min(lats) + max(lats)) / 2, 4)
+    center_lon = float(center["lon"]) if center else round((min(lons) + max(lons)) / 2, 4)
 
     frame_plan = build_frame_plan(
         coords,
@@ -81,7 +83,7 @@ def _enrich_single_aoi(
     result: dict[str, Any] = {
         "aoi_index": aoi_index if aoi_index is not None else 0,
         "name": aoi_name,
-        "coords": coords,
+        "geometry": geometry.model_dump(mode="json"),
         "bbox": bbox,
         "center": {"lat": center_lat, "lon": center_lon},
         "frame_plan": frame_plan,
@@ -113,11 +115,11 @@ def _enrich_single_aoi(
     _run_flood_fire_phase(bbox, center_lat, center_lon, result, acc=aoi_acc)
 
     if eudr_mode:
-        _run_eudr_phase(bbox, center_lat, center_lon, result, acc=aoi_acc)
+        _run_eudr_phase(bbox, center_lat, center_lon, result, acc=aoi_acc, geometry=geometry)
 
     _ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
         bbox,
-        coords,
+        geometry,
         frame_plan,
         project_name,
         timestamp,
@@ -155,21 +157,20 @@ def _enrich_single_aoi(
 # ── Multi-region detection ─────────────────────────────────────────────────
 
 
-def _is_multi_region(per_aoi_coords: list[dict]) -> bool:
+def _is_multi_region(per_aoi_geometries: list[dict]) -> bool:
     """Return True when any two AOI centroids are farther apart than MULTI_REGION_THRESHOLD_KM.
 
     When True, union-level mosaic/NDVI/change-detection and EUDR stats would
     span continents and are geographically meaningless.  Each AOI's data is
     still produced via the per-AOI fan-out.
     """
-    if len(per_aoi_coords) < 2:
+    if len(per_aoi_geometries) < 2:
         return False
 
-    centroids = []
-    for entry in per_aoi_coords:
-        coords = entry.get("coords")
-        if coords:
-            centroids.append(_geo_centroid(coords))
+    centroids: list[tuple[float, float]] = []
+    for entry in per_aoi_geometries:
+        center = _center_from_coords(_geometry_boundary_coordinates(_geometry_from_entry(entry)))
+        centroids.append((center["lon"], center["lat"]))
 
     for i in range(len(centroids)):
         for j in range(i + 1, len(centroids)):
@@ -202,12 +203,18 @@ def _center_from_coords(coords: list[list[float]]) -> dict[str, float]:
 
 
 def _bbox_from_entry(aoi_entry: dict[str, Any], fallback: Any = None) -> Any:
-    if aoi_entry.get("bbox"):
-        return aoi_entry["bbox"]
-    coords = aoi_entry.get("coords") or []
-    if coords:
-        return _coords_to_bbox(coords)
-    return fallback or []
+    coords = _geometry_boundary_coordinates(_geometry_from_entry(aoi_entry))
+    return _coords_to_bbox(coords)
+
+
+def _geometry_from_entry(aoi_entry: dict[str, Any]) -> PolygonGeometry:
+    if "geometry" not in aoi_entry:
+        raise ValueError(f"AOI {aoi_entry.get('name', '')!r} has no source geometry")
+    return PolygonGeometry.model_validate(aoi_entry["geometry"])
+
+
+def _geometry_boundary_coordinates(geometry: PolygonGeometry) -> list[list[float]]:
+    return [list(position) for part in geometry.parts for position in part.outer]
 
 
 def _manifest_run(project_name: str, timestamp: str, eudr_mode: bool) -> dict[str, Any]:
@@ -215,27 +222,30 @@ def _manifest_run(project_name: str, timestamp: str, eudr_mode: bool) -> dict[st
 
 
 def _manifest_summary(
-    per_aoi_coords: list[dict[str, Any]] | None,
+    per_aoi_geometries: list[dict[str, Any]] | None,
     *,
     multi_region: bool,
     frame_plan: list[dict[str, Any]],
 ) -> dict[str, Any]:
     return {
-        "aoi_count": len(per_aoi_coords or []),
+        "aoi_count": len(per_aoi_geometries or []),
         "multi_region": multi_region,
         "frame_plan": frame_plan,
     }
 
 
 def _single_aoi_projection(results: dict[str, Any], aoi_entry: dict[str, Any]) -> dict[str, Any]:
-    coords = aoi_entry.get("coords", results.get("coords", []))
+    geometry = aoi_entry.get("geometry", results.get("geometry"))
+    if geometry is None:
+        raise ValueError("Single-AOI enrichment requires source geometry")
+    coords = _geometry_boundary_coordinates(PolygonGeometry.model_validate(geometry))
     projected: dict[str, Any] = {
         "aoi_index": 0,
         "name": str(aoi_entry.get("name", "")),
         "area_ha": aoi_entry.get("area_ha", 0.0),
-        "coords": coords,
+        "geometry": geometry,
         "bbox": results.get("bbox") or _bbox_from_entry(aoi_entry),
-        "center": results.get("center") or _center_from_coords(coords),
+        "center": results.get("center") or aoi_entry.get("center") or _center_from_coords(coords),
         "frame_plan": results.get("frame_plan", []),
         "weather_daily": results.get("weather_daily") or {},
         "ndvi_stats": results.get("ndvi_stats") or [],
@@ -258,14 +268,17 @@ def _single_aoi_projection(results: dict[str, Any], aoi_entry: dict[str, Any]) -
 
 
 def _normalise_per_aoi_entry(result: dict[str, Any], aoi_entry: dict[str, Any], idx: int) -> dict[str, Any]:
-    coords = aoi_entry.get("coords", [])
+    geometry = aoi_entry.get("geometry")
+    if geometry is None:
+        raise ValueError(f"AOI {aoi_entry.get('name', '')!r} has no source geometry")
+    coords = _geometry_boundary_coordinates(PolygonGeometry.model_validate(geometry))
     normalised: dict[str, Any] = {
         "aoi_index": idx,
         "name": str(aoi_entry.get("name", "")),
         "area_ha": aoi_entry.get("area_ha", 0.0),
-        "coords": coords,
+        "geometry": geometry,
         "bbox": result.get("bbox") or _bbox_from_entry(aoi_entry),
-        "center": result.get("center") or _center_from_coords(coords),
+        "center": result.get("center") or aoi_entry.get("center") or _center_from_coords(coords),
         "frame_plan": result.get("frame_plan", []),
         "weather_daily": result.get("weather_daily") or {},
         "ndvi_stats": result.get("ndvi_stats") or [],
@@ -283,7 +296,8 @@ def _normalise_per_aoi_entry(result: dict[str, Any], aoi_entry: dict[str, Any], 
     normalised.update(result)
     normalised["aoi_index"] = idx
     normalised["bbox"] = normalised.get("bbox") or _bbox_from_entry(aoi_entry)
-    normalised["center"] = normalised.get("center") or _center_from_coords(coords)
+    normalised["geometry"] = geometry
+    normalised["center"] = normalised.get("center") or aoi_entry.get("center") or _center_from_coords(coords)
     normalised["weather_daily"] = normalised.get("weather_daily") or {}
     normalised["errors"] = normalised.get("errors") or ([normalised["error"]] if normalised.get("error") else [])
     return normalised
@@ -300,7 +314,8 @@ def run_enrichment(
     storage: BlobStorageClient,
     aoi_list: list[dict[str, Any]] | None = None,
     *,
-    per_aoi_coords: list[dict[str, Any]] | None = None,
+    per_aoi_geometries: list[dict[str, Any]] | None = None,
+    geometry: PolygonGeometry | None = None,
     eudr_mode: bool = False,
     date_start: str | None = None,
     date_end: str | None = None,
@@ -329,6 +344,8 @@ def run_enrichment(
     """
     start = time.monotonic()
     bbox = _coords_to_bbox(coords)
+    if geometry is None and per_aoi_geometries and len(per_aoi_geometries) == 1:
+        geometry = _geometry_from_entry(per_aoi_geometries[0])
 
     # EUDR mode: default to post-cutoff baseline
     if eudr_mode and not date_start:
@@ -349,14 +366,14 @@ def run_enrichment(
     center_lat = round((min(lats) + max(lats)) / 2, 4)
     center_lon = round((min(lons) + max(lons)) / 2, 4)
 
-    multi_region = _is_multi_region(per_aoi_coords) if per_aoi_coords else False
+    multi_region = _is_multi_region(per_aoi_geometries) if per_aoi_geometries else False
 
     results: dict[str, Any] = {
         "schema_version": ENRICHMENT_MANIFEST_V2_SCHEMA,
         "run": _manifest_run(project_name, timestamp, eudr_mode),
-        "summary": _manifest_summary(per_aoi_coords, multi_region=multi_region, frame_plan=frame_plan),
+        "summary": _manifest_summary(per_aoi_geometries, multi_region=multi_region, frame_plan=frame_plan),
         "frame_plan": frame_plan,
-        "coords": coords,
+        "geometry": geometry.model_dump(mode="json") if geometry is not None else None,
         "bbox": bbox,
         "center": {"lat": center_lat, "lon": center_lon},
     }
@@ -367,12 +384,12 @@ def run_enrichment(
         if eudr_mode:
             results["eudr_mode"] = True
             results["eudr_date_start"] = date_start
-        if per_aoi_coords:
-            if len(per_aoi_coords) == 1:
-                results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_coords[0])]
+        if per_aoi_geometries:
+            if len(per_aoi_geometries) == 1:
+                results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_geometries[0])]
             else:
                 results["per_aoi_enrichment"] = [
-                    _normalise_per_aoi_entry({}, entry, idx) for idx, entry in enumerate(per_aoi_coords)
+                    _normalise_per_aoi_entry({}, entry, idx) for idx, entry in enumerate(per_aoi_geometries)
                 ]
         EnrichmentManifestV2.model_validate(results)
         return results
@@ -398,18 +415,18 @@ def run_enrichment(
     # union-level imagery and EUDR stats are geographically meaningless (#860).
     if multi_region:
         results["multi_region"] = True
-        results["summary"] = _manifest_summary(per_aoi_coords, multi_region=True, frame_plan=frame_plan)
-        log_phase("enrichment", "multi_region_detected", aoi_count=len(per_aoi_coords or []))
+        results["summary"] = _manifest_summary(per_aoi_geometries, multi_region=True, frame_plan=frame_plan)
+        log_phase("enrichment", "multi_region_detected", aoi_count=len(per_aoi_geometries or []))
 
     # 1d. EUDR-specific enrichments (WorldCover + WDPA) — skipped for multi-region
     if eudr_mode and not multi_region and not safe_mode:
-        _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc)
+        _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc, geometry=geometry)
 
     # 2/3. Mosaic registration + NDVI computation — skipped for multi-region
     if not multi_region and not safe_mode:
         ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
             bbox,
-            coords,
+            geometry,
             frame_plan,
             project_name,
             timestamp,
@@ -442,9 +459,9 @@ def run_enrichment(
         _run_aoi_metrics_phase(aoi_list, ndvi_stats, results)
 
     # 6b. Per-AOI enrichment — parallel fan-out; each AOI gets weather, NDVI, change detection
-    if per_aoi_coords and len(per_aoi_coords) > 1:
-        log_phase("enrichment", "per_aoi_start", aoi_count=len(per_aoi_coords))
-        per_aoi_enrichment: list[dict[str, Any]] = [{}] * len(per_aoi_coords)
+    if per_aoi_geometries and len(per_aoi_geometries) > 1:
+        log_phase("enrichment", "per_aoi_start", aoi_count=len(per_aoi_geometries))
+        per_aoi_enrichment: list[dict[str, Any]] = [{}] * len(per_aoi_geometries)
 
         if safe_mode:
             per_aoi_enrichment = [
@@ -453,7 +470,7 @@ def run_enrichment(
                     entry,
                     idx,
                 )
-                for idx, entry in enumerate(per_aoi_coords)
+                for idx, entry in enumerate(per_aoi_geometries)
             ]
             results["per_aoi_enrichment"] = per_aoi_enrichment
             log_phase(
@@ -495,14 +512,16 @@ def run_enrichment(
             # Bound max_workers: never exceed the cap, never create more workers than AOIs,
             # never allow 0 (which raises ValueError). Nested calls to _run_mosaic_ndvi_phase
             # may themselves use thread pools, so we also clamp to avoid runaway concurrency.
-            max_workers = max(1, min(DEFAULT_ENRICHMENT_CONCURRENCY, len(per_aoi_coords)))
+            max_workers = max(1, min(DEFAULT_ENRICHMENT_CONCURRENCY, len(per_aoi_geometries)))
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                future_to_idx = {pool.submit(_enrich_safe, entry, idx): idx for idx, entry in enumerate(per_aoi_coords)}
+                future_to_idx = {
+                    pool.submit(_enrich_safe, entry, idx): idx for idx, entry in enumerate(per_aoi_geometries)
+                }
                 for future in as_completed(future_to_idx):
                     per_aoi_enrichment[future_to_idx[future]] = future.result()
 
             results["per_aoi_enrichment"] = [
-                _normalise_per_aoi_entry(result, per_aoi_coords[idx], idx)
+                _normalise_per_aoi_entry(result, per_aoi_geometries[idx], idx)
                 for idx, result in enumerate(per_aoi_enrichment)
             ]
             log_phase(
@@ -511,8 +530,8 @@ def run_enrichment(
                 total=len(results["per_aoi_enrichment"]),
                 succeeded=sum(1 for r in results["per_aoi_enrichment"] if "error" not in r),
             )
-    elif per_aoi_coords and len(per_aoi_coords) == 1:
-        results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_coords[0])]
+    elif per_aoi_geometries and len(per_aoi_geometries) == 1:
+        results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_geometries[0])]
 
     # 7. Store manifest
     duration = time.monotonic() - start
@@ -544,8 +563,8 @@ def run_enrichment(
             )
 
             results["determination"] = determine_deforestation_free(results)
-            if per_aoi_coords and len(per_aoi_coords) == 1:
-                results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_coords[0])]
+            if per_aoi_geometries and len(per_aoi_geometries) == 1:
+                results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_geometries[0])]
 
     manifest_path = f"enrichment/{project_name}/{timestamp}/timelapse_payload.json"
     EnrichmentManifestV2.model_validate(results)
@@ -571,6 +590,7 @@ def run_enrichment(
 def enrich_data_sources(
     coords: list[list[float]],
     *,
+    geometry: PolygonGeometry | None = None,
     eudr_mode: bool = False,
     date_start: str | None = None,
     date_end: str | None = None,
@@ -603,7 +623,7 @@ def enrich_data_sources(
 
     results: dict[str, Any] = {
         "frame_plan": frame_plan,
-        "coords": coords,
+        "geometry": geometry.model_dump(mode="json") if geometry is not None else None,
         "bbox": bbox,
         "center": {"lat": center_lat, "lon": center_lon},
     }
@@ -634,7 +654,7 @@ def enrich_data_sources(
     _run_flood_fire_phase(bbox, center_lat, center_lon, results, acc=acc)
 
     if eudr_mode:
-        _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc)
+        _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc, geometry=geometry)
         results["eudr_mode"] = True
         results["eudr_date_start"] = date_start
 
@@ -645,6 +665,7 @@ def enrich_data_sources(
 def enrich_imagery(
     coords: list[list[float]],
     *,
+    geometry: PolygonGeometry | None = None,
     eudr_mode: bool = False,
     date_start: str | None = None,
     date_end: str | None = None,
@@ -674,7 +695,10 @@ def enrich_imagery(
         max_history_years=max_history_years,
     )
 
-    results: dict[str, Any] = {"frame_plan": frame_plan}
+    results: dict[str, Any] = {
+        "frame_plan": frame_plan,
+        "geometry": geometry.model_dump(mode="json") if geometry is not None else None,
+    }
     if not frame_plan:
         return {}
 
@@ -691,7 +715,7 @@ def enrich_imagery(
     acc = ResourceAccumulator()
     _ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
         bbox,
-        coords,
+        geometry,
         frame_plan,
         project_name,
         timestamp,
@@ -772,7 +796,7 @@ def enrich_finalize(
     imagery: dict[str, Any],
     per_aoi_results: list[dict[str, Any]],
     *,
-    per_aoi_coords: list[dict[str, Any]] | None = None,
+    per_aoi_geometries: list[dict[str, Any]] | None = None,
     eudr_mode: bool = False,
     date_start: str | None = None,
     project_name: str,
@@ -794,11 +818,11 @@ def enrich_finalize(
         cutoff = date.fromisoformat(EUDR_CUTOFF_DATE)
         effective_date_start = (cutoff + timedelta(days=1)).isoformat()
     frame_plan = data_sources.get("frame_plan") or imagery.get("frame_plan") or []
-    multi_region = _is_multi_region(per_aoi_coords) if per_aoi_coords else False
+    multi_region = _is_multi_region(per_aoi_geometries) if per_aoi_geometries else False
     merged = {
         "schema_version": ENRICHMENT_MANIFEST_V2_SCHEMA,
         "run": _manifest_run(project_name, timestamp, eudr_mode),
-        "summary": _manifest_summary(per_aoi_coords, multi_region=multi_region, frame_plan=frame_plan),
+        "summary": _manifest_summary(per_aoi_geometries, multi_region=multi_region, frame_plan=frame_plan),
         **data_sources,
         **imagery,
     }
@@ -823,7 +847,7 @@ def enrich_finalize(
         acc.merge(ResourceAccumulator.from_dict(img_usage))
 
     if per_aoi_results:
-        source_entries = per_aoi_coords or [{} for _ in per_aoi_results]
+        source_entries = per_aoi_geometries or [{} for _ in per_aoi_results]
         merged["per_aoi_enrichment"] = [
             _normalise_per_aoi_entry(result, source_entries[idx] if idx < len(source_entries) else {}, idx)
             for idx, result in enumerate(per_aoi_results)
@@ -836,8 +860,8 @@ def enrich_finalize(
             total=len(merged["per_aoi_enrichment"]),
             succeeded=len(succeeded),
         )
-    elif per_aoi_coords and len(per_aoi_coords) == 1:
-        merged["per_aoi_enrichment"] = [_single_aoi_projection(merged, per_aoi_coords[0])]
+    elif per_aoi_geometries and len(per_aoi_geometries) == 1:
+        merged["per_aoi_enrichment"] = [_single_aoi_projection(merged, per_aoi_geometries[0])]
 
     merged["resource_usage"] = acc.to_dict()
     merged["estimated_cost_pence"] = acc.estimate_cost_pence()
@@ -851,8 +875,8 @@ def enrich_finalize(
 
         if not multi_region:
             merged["determination"] = determine_deforestation_free(merged)
-            if per_aoi_coords and len(per_aoi_coords) == 1:
-                merged["per_aoi_enrichment"] = [_single_aoi_projection(merged, per_aoi_coords[0])]
+            if per_aoi_geometries and len(per_aoi_geometries) == 1:
+                merged["per_aoi_enrichment"] = [_single_aoi_projection(merged, per_aoi_geometries[0])]
 
     manifest_path = f"enrichment/{project_name}/{timestamp}/timelapse_payload.json"
     EnrichmentManifestV2.model_validate(merged)

@@ -16,8 +16,8 @@
   var parseKmlText = function (t) { return (window.CanopexGeo || geo).parseKmlText ? (window.CanopexGeo || geo).parseKmlText(t) : t; };
   var parseKmlGeometry = function (t) { return (window.CanopexGeo || geo).parseKmlGeometry(t); };
   var haversineKm = function (a, b, c, d) { return (window.CanopexGeo || geo).haversineKm(a, b, c, d); };
-  var polygonCentroid = function (c) { return (window.CanopexGeo || geo).polygonCentroid(c); };
-  var polygonAreaHa = function (c) { return (window.CanopexGeo || geo).polygonAreaHa(c); };
+  const geometryCentroid = function (geometry) { return window.CanopexGeo.geometryCentroid(geometry); };
+  const geometryAreaHa = function (geometry) { return window.CanopexGeo.geometryAreaHa(geometry); };
   var determineProcessingMode = function (n, s) { return (window.CanopexGeo || geo).determineProcessingMode(n, s); };
   var formatDistance = function (v) { return (window.CanopexGeo || geo).formatDistance(v); };
   var formatHectares = function (v) { return (window.CanopexGeo || geo).formatHectares(v); };
@@ -119,17 +119,17 @@
       return { error: 'No polygon boundaries were detected. Canopex expects polygon AOIs.' };
     }
 
-    var centroids = parsed.polygons.map(function (polygon) { return polygonCentroid(polygon.coords); });
+    var centroids = parsed.polygons.map(function (polygon) { return geometryCentroid(polygon.geometry); });
     var groupLat = centroids.reduce(function (sum, coord) { return sum + coord[0]; }, 0) / centroids.length;
     var groupLon = centroids.reduce(function (sum, coord) { return sum + coord[1]; }, 0) / centroids.length;
     var maxSpreadKm = centroids.reduce(function (maxDistance, coord) {
       return Math.max(maxDistance, haversineKm(groupLat, groupLon, coord[0], coord[1]));
     }, 0);
     var totalAreaHa = parsed.polygons.reduce(function (sum, polygon) {
-      return sum + polygonAreaHa(polygon.coords);
+      return sum + geometryAreaHa(polygon.geometry);
     }, 0);
     var largestAreaHa = parsed.polygons.reduce(function (maxArea, polygon) {
-      return Math.max(maxArea, polygonAreaHa(polygon.coords));
+      return Math.max(maxArea, geometryAreaHa(polygon.geometry));
     }, 0);
     var processingMode = determineProcessingMode(parsed.polygons.length, maxSpreadKm);
     var latestBillingStatus = _getLatestBillingStatus ? _getLatestBillingStatus() : null;
@@ -182,7 +182,7 @@
 
     var bounds = L.latLngBounds([]);
     polygons.forEach(function (polygon) {
-      var layer = L.polygon(polygon.coords, {
+      var layer = L.polygon(window.CanopexGeo.geometryLatLngs(polygon.geometry), {
         color: '#5eecc4',
         weight: 2,
         fillColor: '#5eecc4',
