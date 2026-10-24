@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from treesight.models.aoi import AOI
+from treesight.models.geometry import PolygonGeometry, PolygonPart
 from treesight.models.imagery import ImageryFilters
 from treesight.providers.planetary_computer import (
     COLLECTION_DEFAULT_GSD,
@@ -26,6 +27,13 @@ def _make_aoi(name: str = "Test AOI") -> AOI:
     return AOI(
         feature_name=name,
         source_file="test.kml",
+        geometry=PolygonGeometry(
+            parts=(
+                PolygonPart(
+                    outer=((-1.52, 51.48), (-1.48, 51.48), (-1.48, 51.52), (-1.52, 51.52), (-1.52, 51.48)),
+                ),
+            ),
+        ),
         centroid=[-1.5, 51.5],
         bbox=[-1.52, 51.48, -1.48, 51.52],
         buffered_bbox=[-1.55, 51.45, -1.45, 51.55],

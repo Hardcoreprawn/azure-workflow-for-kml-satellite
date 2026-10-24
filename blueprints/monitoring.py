@@ -94,6 +94,16 @@ def monitoring_scheduler(timer: func.TimerRequest) -> None:
             )
 
 
+def _valid_centroid(value: Any) -> bool:
+    return (
+        isinstance(value, (list, tuple))
+        and len(value) == 2
+        and all(type(coordinate) in {int, float} for coordinate in value)
+        and -180 <= value[0] <= 180
+        and -90 <= value[1] <= 90
+    )
+
+
 def _process_monitor(monitor: Any) -> None:
     """Run enrichment for a single monitor and evaluate alerts.
 
@@ -110,15 +120,24 @@ def _process_monitor(monitor: Any) -> None:
     from treesight.storage.client import BlobStorageClient
 
     geometry = monitor.aoi_geometry
-    centroid = geometry.get("centroid", [0.0, 0.0])
+    centroid = geometry.get("centroid")
 
-    if not centroid or centroid == [0.0, 0.0]:
+    if not _valid_centroid(centroid):
         logger.warning("Monitor %s has no valid centroid — skipping", monitor.id)
         advance_schedule(monitor, run_id="skipped-no-centroid")
         return
 
-    # run_enrichment expects coords as [[lon, lat], ...]
-    coords = [centroid]
+    from pydantic import ValidationError
+
+    from treesight.models.geometry import PolygonGeometry
+
+    try:
+        plot_geometry = PolygonGeometry.model_validate(geometry.get("geometry"))
+    except ValidationError:
+        logger.warning("Monitor %s has invalid polygon geometry — skipping", monitor.id)
+        advance_schedule(monitor, run_id="skipped-unavailable-geometry")
+        return
+    coords = [list(point) for part in plot_geometry.parts for point in part.outer]
     storage = BlobStorageClient()
 
     now = datetime.now(UTC)
@@ -138,6 +157,8 @@ def _process_monitor(monitor: Any) -> None:
 
     enrichment_result = run_enrichment(
         coords=coords,
+        geometry=plot_geometry,
+        per_aoi_geometries=[{"name": monitor.aoi_name, "geometry": plot_geometry.model_dump(mode="json")}],
         project_name=f"monitor-{monitor.id}",
         timestamp=run_ts,
         output_container="kml-output",
@@ -174,8 +195,10 @@ def _process_monitor(monitor: Any) -> None:
         send_monitoring_alert(monitor, alert)
 
     # Persist the latest NDVI mean so the next delta run has an updated baseline.
+    from treesight.analysis.trends import is_usable_ndvi
+
     ndvi_stats: list[dict] = enrichment_result.get("ndvi_stats") or []
-    valid_stats = [s for s in ndvi_stats if s and s.get("mean") is not None]
+    valid_stats = [s for s in ndvi_stats if is_usable_ndvi(s)]
     if valid_stats:
         # ndvi_stats follows the chronological frame order, so the last valid
         # stat is the latest baseline candidate without relying on mixed-type
@@ -226,8 +249,16 @@ def create_monitor_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id
         return error_response(400, "aoi_name is required", req=req)
 
     aoi_geometry = body.get("aoi_geometry")
-    if not isinstance(aoi_geometry, dict) or not aoi_geometry.get("centroid"):
-        return error_response(400, "aoi_geometry with centroid is required", req=req)
+    if not isinstance(aoi_geometry, dict) or not _valid_centroid(aoi_geometry.get("centroid")):
+        return error_response(400, "aoi_geometry with valid longitude/latitude centroid is required", req=req)
+    from pydantic import ValidationError
+
+    from treesight.models.geometry import PolygonGeometry
+
+    try:
+        PolygonGeometry.model_validate(aoi_geometry.get("geometry"))
+    except ValidationError as exc:
+        return error_response(400, f"aoi_geometry must contain valid polygon geometry: {exc}", req=req)
 
     cadence_days = body.get("cadence_days", 30)
     if not isinstance(cadence_days, int) or cadence_days < 1 or cadence_days > 365:

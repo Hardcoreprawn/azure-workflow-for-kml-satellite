@@ -70,13 +70,13 @@ def _make_stub_enrich(timings: list[float]):
 
     def _stub(entry: dict, **kwargs) -> dict:
         t0 = time.perf_counter()
-        coords = entry.get("coords", [])
+        coords = [list(point) for part in entry["geometry"]["parts"] for point in part["outer"]]
         # No-op: mirror production's _coords_to_bbox() shape (closed 5-point
         # ring), not an arbitrary coords[:4] slice, so a structural bug in
         # real bbox handling wouldn't be masked by a differently-shaped stub.
         result = {
             "name": entry.get("name", ""),
-            "coords": coords,
+            "geometry": entry["geometry"],
             "bbox": _coords_to_bbox(coords) if coords else [],
             "area_ha": entry.get("area_ha", 0.0),
         }
@@ -86,14 +86,15 @@ def _make_stub_enrich(timings: list[float]):
     return _stub
 
 
-def _build_per_aoi_coords(monster_kml_bytes: bytes) -> list[dict]:
-    """Parse the monster KML and return ``per_aoi_coords`` entries for ``run_enrichment``."""
+def _build_per_aoi_geometries(monster_kml_bytes: bytes) -> list[dict]:
+    """Parse the monster KML and return ``per_aoi_geometries`` entries for ``run_enrichment``."""
     features = parse_kml_lxml(monster_kml_bytes, source_file="monster_200.kml")
     aois = [prepare_aoi(f) for f in features]
     return [
         {
             "name": a.feature_name,
-            "coords": list(a.exterior_coords),
+            "geometry": a.geometry.model_dump(mode="json"),
+            "coords": [list(point) for part in a.geometry.parts for point in part.outer],
             "area_ha": a.area_ha,
         }
         for a in aois
@@ -200,8 +201,8 @@ class TestEnrichmentFanOut200:
         mock_frame_plan.return_value = self._FRAME_PLAN
         mock_mosaic.return_value = ([], [])
 
-        per_aoi_coords = _build_per_aoi_coords(monster_kml_bytes)
-        assert len(per_aoi_coords) == _EXPECTED_AOI_COUNT
+        per_aoi_geometries = _build_per_aoi_geometries(monster_kml_bytes)
+        assert len(per_aoi_geometries) == _EXPECTED_AOI_COUNT
 
         timings: list[float] = []
         storage = MagicMock()
@@ -211,12 +212,12 @@ class TestEnrichmentFanOut200:
             _make_stub_enrich(timings),
         ):
             result = run_enrichment(
-                coords=per_aoi_coords[0]["coords"],
+                coords=per_aoi_geometries[0]["coords"],
                 project_name="monster_scale_test",
                 timestamp="20240101T000000",
                 output_container="output",
                 storage=storage,
-                per_aoi_coords=per_aoi_coords,
+                per_aoi_geometries=per_aoi_geometries,
             )
 
         assert "per_aoi_enrichment" in result, "per_aoi_enrichment key missing from result"
@@ -249,7 +250,7 @@ class TestEnrichmentFanOut200:
         mock_frame_plan.return_value = self._FRAME_PLAN
         mock_mosaic.return_value = ([], [])
 
-        per_aoi_coords = _build_per_aoi_coords(monster_kml_bytes)
+        per_aoi_geometries = _build_per_aoi_geometries(monster_kml_bytes)
         storage = MagicMock()
 
         with patch(
@@ -257,12 +258,12 @@ class TestEnrichmentFanOut200:
             _make_stub_enrich([]),
         ):
             result = run_enrichment(
-                coords=per_aoi_coords[0]["coords"],
+                coords=per_aoi_geometries[0]["coords"],
                 project_name="monster_scale_test",
                 timestamp="20240101T000000",
                 output_container="output",
                 storage=storage,
-                per_aoi_coords=per_aoi_coords,
+                per_aoi_geometries=per_aoi_geometries,
             )
 
         errored = [r.get("name", f"idx-{i}") for i, r in enumerate(result["per_aoi_enrichment"]) if "error" in r]
@@ -289,7 +290,7 @@ class TestEnrichmentFanOut200:
         mock_frame_plan.return_value = self._FRAME_PLAN
         mock_mosaic.return_value = ([], [])
 
-        per_aoi_coords = _build_per_aoi_coords(monster_kml_bytes)
+        per_aoi_geometries = _build_per_aoi_geometries(monster_kml_bytes)
         timings: list[float] = []
         storage = MagicMock()
 
@@ -299,12 +300,12 @@ class TestEnrichmentFanOut200:
             _make_stub_enrich(timings),
         ):
             run_enrichment(
-                coords=per_aoi_coords[0]["coords"],
+                coords=per_aoi_geometries[0]["coords"],
                 project_name="monster_scale_test",
                 timestamp="20240101T000000",
                 output_container="output",
                 storage=storage,
-                per_aoi_coords=per_aoi_coords,
+                per_aoi_geometries=per_aoi_geometries,
             )
         wall_elapsed = time.perf_counter() - wall_start
 
@@ -352,7 +353,7 @@ class TestEnrichmentFanOut200:
         mock_frame_plan.return_value = self._FRAME_PLAN
         mock_mosaic.return_value = ([], [])
 
-        per_aoi_coords = _build_per_aoi_coords(monster_kml_bytes)
+        per_aoi_geometries = _build_per_aoi_geometries(monster_kml_bytes)
         storage = MagicMock()
 
         with patch(
@@ -360,12 +361,12 @@ class TestEnrichmentFanOut200:
             _make_stub_enrich([]),
         ):
             result = run_enrichment(
-                coords=per_aoi_coords[0]["coords"],
+                coords=per_aoi_geometries[0]["coords"],
                 project_name="monster_scale_test",
                 timestamp="20240101T000000",
                 output_container="output",
                 storage=storage,
-                per_aoi_coords=per_aoi_coords,
+                per_aoi_geometries=per_aoi_geometries,
             )
 
         assert "enrichment_duration_seconds" in result

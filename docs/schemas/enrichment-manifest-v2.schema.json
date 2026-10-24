@@ -28,9 +28,16 @@
           "title": "Aoi Index",
           "type": "integer"
         },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
         "area_ha": {
           "title": "Area Ha",
           "type": "number"
+        },
+        "geometry": {
+          "$ref": "#/$defs/PolygonGeometry"
         },
         "bbox": {
           "items": {},
@@ -40,87 +47,17 @@
         "center": {
           "$ref": "#/$defs/CenterPoint"
         },
-        "change_detection": {
+        "source_geometry_type": {
           "anyOf": [
             {
-              "additionalProperties": true,
-              "type": "object"
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "title": "Change Detection"
-        },
-        "coords": {
-          "items": {
-            "items": {
-              "type": "number"
-            },
-            "type": "array"
-          },
-          "title": "Coords",
-          "type": "array"
-        },
-        "errors": {
-          "items": {},
-          "title": "Errors",
-          "type": "array"
-        },
-        "eudr": {
-          "anyOf": [
-            {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Eudr"
-        },
-        "frame_plan": {
-          "items": {
-            "additionalProperties": true,
-            "type": "object"
-          },
-          "title": "Frame Plan",
-          "type": "array"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "ndvi_raster_paths": {
-          "items": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "title": "Ndvi Raster Paths",
-          "type": "array"
-        },
-        "ndvi_stats": {
-          "items": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "title": "Ndvi Stats",
-          "type": "array"
+          "title": "Source Geometry Type"
         },
         "plot_area_ha": {
           "anyOf": [
@@ -134,17 +71,13 @@
           "default": null,
           "title": "Plot Area Ha"
         },
-        "source_geometry_type": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Geometry Type"
+        "frame_plan": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Frame Plan",
+          "type": "array"
         },
         "weather_daily": {
           "anyOf": [
@@ -161,17 +94,151 @@
             }
           ],
           "title": "Weather Daily"
+        },
+        "ndvi_stats": {
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Ndvi Stats",
+          "type": "array"
+        },
+        "ndvi_raster_paths": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Ndvi Raster Paths",
+          "type": "array"
+        },
+        "change_detection": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Change Detection"
+        },
+        "eudr": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Eudr"
+        },
+        "errors": {
+          "items": {},
+          "title": "Errors",
+          "type": "array"
         }
       },
       "required": [
         "aoi_index",
         "name",
         "area_ha",
-        "coords",
+        "geometry",
         "bbox",
         "center"
       ],
       "title": "PerAoiEnrichment",
+      "type": "object"
+    },
+    "PolygonGeometry": {
+      "additionalProperties": false,
+      "description": "A Polygon or MultiPolygon represented as validated immutable parts.\n\nEach part owns one outer ring and zero or more inner rings. Membership is\nexplicit and never inferred from coordinate order or winding direction.\nCoordinates use longitude/latitude order in EPSG:4326.",
+      "properties": {
+        "parts": {
+          "items": {
+            "$ref": "#/$defs/PolygonPart"
+          },
+          "minItems": 1,
+          "title": "Parts",
+          "type": "array"
+        },
+        "crs": {
+          "const": "EPSG:4326",
+          "default": "EPSG:4326",
+          "title": "Crs",
+          "type": "string"
+        }
+      },
+      "required": [
+        "parts"
+      ],
+      "title": "PolygonGeometry",
+      "type": "object"
+    },
+    "PolygonPart": {
+      "additionalProperties": false,
+      "description": "One outer ring and zero or more inner rings excluded from its area.",
+      "properties": {
+        "outer": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Outer",
+          "type": "array"
+        },
+        "inners": {
+          "default": [],
+          "items": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "title": "Inners",
+          "type": "array"
+        }
+      },
+      "required": [
+        "outer"
+      ],
+      "title": "PolygonPart",
       "type": "object"
     },
     "RunSummary": {
@@ -183,6 +250,11 @@
           "title": "Aoi Count",
           "type": "integer"
         },
+        "multi_region": {
+          "default": false,
+          "title": "Multi Region",
+          "type": "boolean"
+        },
         "frame_plan": {
           "items": {
             "additionalProperties": true,
@@ -190,11 +262,6 @@
           },
           "title": "Frame Plan",
           "type": "array"
-        },
-        "multi_region": {
-          "default": false,
-          "title": "Multi Region",
-          "type": "boolean"
         }
       },
       "title": "RunSummary",
@@ -204,25 +271,36 @@
   "additionalProperties": true,
   "description": "Boundary contract for new enrichment manifest writes.",
   "properties": {
-    "per_aoi_enrichment": {
-      "items": {
-        "$ref": "#/$defs/PerAoiEnrichment"
-      },
-      "title": "Per Aoi Enrichment",
-      "type": "array"
+    "schema_version": {
+      "const": "enrichment-manifest/v2",
+      "title": "Schema Version",
+      "type": "string"
     },
     "run": {
       "additionalProperties": true,
       "title": "Run",
       "type": "object"
     },
-    "schema_version": {
-      "const": "enrichment-manifest/v2",
-      "title": "Schema Version",
-      "type": "string"
-    },
     "summary": {
       "$ref": "#/$defs/RunSummary"
+    },
+    "geometry": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PolygonGeometry"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "per_aoi_enrichment": {
+      "items": {
+        "$ref": "#/$defs/PerAoiEnrichment"
+      },
+      "title": "Per Aoi Enrichment",
+      "type": "array"
     }
   },
   "required": [

@@ -20,16 +20,20 @@ from blueprints.export.geojson import _build_eudr_geojson, _build_geojson
 from blueprints.export.pdf import _build_pdf, _pdf_scene_provenance_section
 
 
+def _polygon_geometry(outer, inners=()):
+    if outer[0] != outer[-1]:
+        outer = [*outer, outer[0]]
+    return {
+        "parts": [{"outer": outer, "inners": list(inners)}],
+        "crs": "EPSG:4326",
+    }
+
+
 @pytest.fixture()
 def enrichment_manifest():
     """Realistic enrichment manifest as stored in blob storage."""
     return {
-        "coords": [
-            [36.8, -1.3],
-            [36.81, -1.3],
-            [36.81, -1.31],
-            [36.8, -1.31],
-        ],
+        "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]]),
         "bbox": [[36.8, -1.31], [36.81, -1.31], [36.81, -1.3], [36.8, -1.3]],
         "center": {"lat": -1.305, "lon": 36.805},
         "frame_plan": [
@@ -647,7 +651,7 @@ def eudr_manifest():
     return {
         "eudr_mode": True,
         "eudr_date_start": "2021-01-01",
-        "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+        "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]]),
         "center": {"lat": -1.305, "lon": 36.805},
         "enriched_at": "2026-04-16T12:00:00Z",
         "frame_plan": [
@@ -656,7 +660,7 @@ def eudr_manifest():
         "per_aoi_enrichment": [
             {
                 "name": "Farm A",
-                "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+                "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]]),
                 "bbox": [[36.8, -1.31], [36.81, -1.3]],
                 "center": {"lat": -1.305, "lon": 36.805},
                 "area_ha": 12.5,
@@ -691,7 +695,7 @@ def eudr_manifest():
             },
             {
                 "name": "Farm B",
-                "coords": [[36.9, -1.4], [36.91, -1.4], [36.91, -1.41], [36.9, -1.41]],
+                "geometry": _polygon_geometry([[36.9, -1.4], [36.91, -1.4], [36.91, -1.41], [36.9, -1.41]]),
                 "bbox": [[36.9, -1.41], [36.91, -1.4]],
                 "center": {"lat": -1.405, "lon": 36.905},
                 "area_ha": 8.0,
@@ -744,7 +748,7 @@ class TestBuildEudrGeoJson:
             "per_aoi_enrichment": [
                 {
                     "name": "Solo Farm",
-                    "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]],
+                    "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]]),
                     "center": {"lat": -1.305, "lon": 36.805},
                     "area_ha": 12.5,
                     "eudr": {
@@ -780,7 +784,7 @@ class TestBuildEudrGeoJson:
             "per_aoi_enrichment": [
                 {
                     "name": "Partial parcel",
-                    "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]],
+                    "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]]),
                     "center": {"lat": -1.305, "lon": 36.805},
                     "area_ha": 12.5,
                     "change_detection": None,
@@ -851,7 +855,7 @@ class TestBuildEudrGeoJson:
         """Single-parcel runs have no per_aoi_enrichment; use top-level evidence."""
         manifest = {
             "per_aoi_enrichment": [],
-            "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+            "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]]),
             "center": {"lat": -1.305, "lon": 36.805},
             "determination": {
                 "screening_outcome": "no_signal_detected",
@@ -877,7 +881,7 @@ class TestBuildEudrGeoJson:
 
     def test_no_per_aoi_falls_back_to_toplevel(self):
         manifest = {
-            "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+            "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]]),
             "determination": {"screening_outcome": "insufficient_evidence", "confidence": "low", "flags": []},
         }
         result = _build_eudr_geojson(manifest)
@@ -888,7 +892,7 @@ class TestBuildEudrGeoJson:
             "per_aoi_enrichment": [
                 {
                     "name": "Immutable parcel",
-                    "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]],
+                    "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]]),
                     "determination": {"screening_outcome": "signal_detected", "flags": ["x"]},
                 }
             ]
@@ -1019,7 +1023,7 @@ class TestBuildEudrCsv:
         """Single-parcel: build one CSV row from top-level evidence."""
         manifest = {
             "per_aoi_enrichment": [],
-            "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+            "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]]),
             "center": {"lat": -1.305, "lon": 36.805},
             "determination": {
                 "screening_outcome": "no_signal_detected",
@@ -1170,7 +1174,7 @@ class TestBuildEudrDds:
         plots = result["dds_annex_ii"]["3_production"]["plots"]
         farm_a = next(p for p in plots if p["name"] == "Farm A")  # area_ha=12.5
         assert farm_a["geolocation_type"] == "polygon"
-        assert len(farm_a["coordinates"]) > 1
+        assert len(farm_a["coordinates"][0]) > 1
 
     def test_geolocation_uses_point_for_small_plots(self):
         manifest = {
@@ -1179,7 +1183,7 @@ class TestBuildEudrDds:
                     "name": "Tiny plot",
                     "area_ha": 1.2,
                     "center": {"lat": -1.3, "lon": 36.8},
-                    "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+                    "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]]),
                 }
             ]
         }
@@ -1197,7 +1201,7 @@ class TestBuildEudrDds:
                     "name": "Ranch A",
                     "area_ha": 8000.0,
                     "center": {"lat": -6.55, "lon": -51.85},
-                    "coords": [[-51.85, -6.51], [-51.82, -6.55], [-51.85, -6.59]],
+                    "geometry": _polygon_geometry([[-51.85, -6.51], [-51.82, -6.55], [-51.85, -6.59]]),
                 }
             ],
         }
@@ -1259,7 +1263,6 @@ class TestPlotGeolocationProvenance:
             "source_geometry_type": "Point",
             "area_ha": 10.0,
             "center": {"lat": -1.3, "lon": 36.8},
-            "coords": [],
         }
         result = _plot_geolocation(aoi, is_cattle=False)
         assert result["geolocation_type"] == "point"
@@ -1267,25 +1270,26 @@ class TestPlotGeolocationProvenance:
 
     def test_polygon_source_type_returns_polygon_for_small_area(self):
         """A polygon-sourced plot must use polygon geolocation even if area <= 4 ha."""
-        coords = [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31], [36.8, -1.3]]
+        outer = [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31], [36.8, -1.3]]
+        geometry = _polygon_geometry(outer)
         aoi = {
             "source_geometry_type": "Polygon",
             "area_ha": 1.2,
             "center": {"lat": -1.3, "lon": 36.8},
-            "coords": coords,
+            "geometry": geometry,
         }
         result = _plot_geolocation(aoi, is_cattle=False)
         assert result["geolocation_type"] == "polygon"
-        assert result["coordinates"] == coords
+        assert result["coordinates"] == (tuple(map(tuple, outer)),)
 
     def test_cattle_always_returns_point_regardless_of_source_geometry_type(self):
         """is_cattle overrides source_geometry_type."""
-        coords = [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31], [36.8, -1.3]]
+        geometry = _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]])
         aoi = {
             "source_geometry_type": "Polygon",
             "area_ha": 8000.0,
             "center": {"lat": -1.3, "lon": 36.8},
-            "coords": coords,
+            "geometry": geometry,
         }
         result = _plot_geolocation(aoi, is_cattle=True)
         assert result["geolocation_type"] == "point"
@@ -1295,7 +1299,7 @@ class TestPlotGeolocationProvenance:
         aoi = {
             "area_ha": 12.5,
             "center": {"lat": -6.55, "lon": -51.85},
-            "coords": [[-51.85, -6.51], [-51.82, -6.55], [-51.85, -6.59]],
+            "geometry": _polygon_geometry([[-51.85, -6.51], [-51.82, -6.55], [-51.85, -6.59]]),
         }
         result = _plot_geolocation(aoi, is_cattle=False)
         assert result["geolocation_type"] == "polygon"
@@ -1305,7 +1309,7 @@ class TestPlotGeolocationProvenance:
         aoi = {
             "area_ha": 2.0,
             "center": {"lat": -1.3, "lon": 36.8},
-            "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+            "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]]),
         }
         result = _plot_geolocation(aoi, is_cattle=False)
         assert result["geolocation_type"] == "point"
@@ -1319,7 +1323,7 @@ class TestPlotGeolocationProvenance:
                     "source_geometry_type": "Point",
                     "area_ha": 0.03,
                     "center": {"lat": 48.86, "lon": 2.35},
-                    "coords": [[2.34, 48.85], [2.36, 48.85], [2.36, 48.87], [2.34, 48.87]],
+                    "geometry": _polygon_geometry([[2.34, 48.85], [2.36, 48.85], [2.36, 48.87], [2.34, 48.87]]),
                 }
             ]
         }
@@ -1330,7 +1334,8 @@ class TestPlotGeolocationProvenance:
 
     def test_dds_export_uses_polygon_for_polygon_sourced_small_plot(self):
         """End-to-end: polygon-source plot with area <= 4 ha exports as polygon."""
-        coords = [[2.34, 48.85], [2.36, 48.85], [2.36, 48.87], [2.34, 48.87], [2.34, 48.85]]
+        outer = [[2.34, 48.85], [2.36, 48.85], [2.36, 48.87], [2.34, 48.87], [2.34, 48.85]]
+        geometry = _polygon_geometry(outer)
         manifest = {
             "per_aoi_enrichment": [
                 {
@@ -1338,14 +1343,14 @@ class TestPlotGeolocationProvenance:
                     "source_geometry_type": "Polygon",
                     "area_ha": 2.0,
                     "center": {"lat": 48.86, "lon": 2.35},
-                    "coords": coords,
+                    "geometry": geometry,
                 }
             ]
         }
         result = _build_eudr_dds(manifest)
         plot = result["dds_annex_ii"]["3_production"]["plots"][0]
         assert plot["geolocation_type"] == "polygon"
-        assert plot["coordinates"] == coords
+        assert plot["coordinates"] == (tuple(map(tuple, outer)),)
 
 
 class TestDispatchEudrExport:
@@ -1386,7 +1391,7 @@ class TestBuildEudrAuditPdf:
                 {
                     "name": "Partial parcel",
                     "center": {"lat": -1.305, "lon": 36.805},
-                    "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]],
+                    "geometry": _polygon_geometry([[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]]),
                     "area_ha": 12.5,
                     "change_detection": None,
                     "eudr": {"determination": {"screening_outcome": "no_signal_detected", "confidence": "high"}},

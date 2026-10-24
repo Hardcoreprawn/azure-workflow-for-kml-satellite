@@ -30,12 +30,13 @@ class TestParseCoordinateText:
         assert features[0].vertex_count >= 3
 
     def test_polygon_coords_are_lon_lat(self):
-        """Feature exterior_coords use [lon, lat] convention."""
+        """Feature geometry uses [lon, lat] coordinate order."""
         text = "51.5, -0.1\n51.6, -0.2\n51.55, -0.15"
         features = parse_coordinate_text(text)
         # First pair was lat=51.5, lon=-0.1 → [lon, lat] = [-0.1, 51.5]
-        assert features[0].exterior_coords[0][0] == pytest.approx(-0.1, abs=0.001)
-        assert features[0].exterior_coords[0][1] == pytest.approx(51.5, abs=0.001)
+        first = features[0].geometry.parts[0].outer[0]
+        assert first[0] == pytest.approx(-0.1, abs=0.001)
+        assert first[1] == pytest.approx(51.5, abs=0.001)
 
     def test_tab_separator(self):
         features = parse_coordinate_text("51.5\t-0.1")
@@ -80,8 +81,8 @@ class TestParseCoordinateText:
         features_small = parse_coordinate_text("51.5, -0.1", buffer_m=100)
         features_big = parse_coordinate_text("51.5, -0.1", buffer_m=1000)
         # Bigger buffer → wider spread of coordinates
-        small_lons = [c[0] for c in features_small[0].exterior_coords]
-        big_lons = [c[0] for c in features_big[0].exterior_coords]
+        small_lons = [c[0] for c in features_small[0].geometry.parts[0].outer]
+        big_lons = [c[0] for c in features_big[0].geometry.parts[0].outer]
         assert max(big_lons) - min(big_lons) > max(small_lons) - min(small_lons)
 
     def test_source_file_propagated(self):
@@ -91,7 +92,7 @@ class TestParseCoordinateText:
     def test_polygon_is_closed(self):
         text = "51.5, -0.1\n51.6, -0.2\n51.55, -0.15"
         features = parse_coordinate_text(text)
-        coords = features[0].exterior_coords
+        coords = features[0].geometry.parts[0].outer
         assert coords[0] == coords[-1]
 
     def test_negative_coords(self):

@@ -173,7 +173,7 @@ jobs:
 
       - name: Upload Trivy SARIF
         if: ${{ always() && hashFiles('trivy-dev.sarif') != '' }}
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           sarif_file: trivy-dev.sarif
           category: trivy-dev-image
@@ -196,7 +196,7 @@ jobs:
 
       - name: Upload Trivy SARIF (pipeline-e2e)
         if: ${{ always() && hashFiles('trivy-dev-e2e.sarif') != '' }}
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           sarif_file: trivy-dev-e2e.sarif
           category: trivy-dev-pipeline-e2e-image

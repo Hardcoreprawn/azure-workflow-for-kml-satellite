@@ -418,3 +418,13 @@ class TestWorstChangeLegacyCompatLogging:
         assert result is not None
         assert result["period"] == "summer 2022\u21922023"
         mock_warn.assert_not_called()
+
+
+@pytest.mark.parametrize("observation", [{"mean": 0.8, "available": False}, {"mean": float("inf")}, {"mean": "0.5"}])
+def test_unusable_ndvi_excluded_from_trend_and_latest_detail(observation):
+    from treesight.pipeline.enrichment.aoi_metrics import compute_aoi_metrics
+
+    metrics = compute_aoi_metrics({}, [{"mean": 0.0}, observation])
+    assert metrics["vegetation"]["observations"] == 1
+    assert metrics["vegetation"]["latest_mean"] == 0.0
+    assert metrics["vegetation"]["latest_detail"]["mean"] == 0.0

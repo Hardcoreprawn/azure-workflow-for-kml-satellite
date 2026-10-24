@@ -252,3 +252,20 @@ class TestCombinedTrends:
         result = _calculate_trends(series, [])
         assert "ndvi_trajectory" not in result
         assert result.get("significant_events", []) == []
+
+
+@pytest.mark.parametrize("mean", [None, True, "0.6", float("nan"), float("inf"), 10**400])
+def test_eudr_prompt_rejects_unusable_numeric_observations(mean):
+    from treesight.analysis.prompts import build_eudr_prompt
+
+    assert build_eudr_prompt({"ndvi_timeseries": [{"date": "2024-06-01", "mean": mean}]}) == (None, None, None)
+
+
+def test_eudr_prompt_ignores_explicitly_unavailable_observations():
+    from treesight.analysis.prompts import build_eudr_prompt
+
+    usable = {"date": "2024-06-01", "mean": 0.0}
+    _, _, observations = build_eudr_prompt(
+        {"ndvi_timeseries": [{"date": "2023-06-01", "mean": 0.7, "available": False}, usable]}
+    )
+    assert observations == [usable]

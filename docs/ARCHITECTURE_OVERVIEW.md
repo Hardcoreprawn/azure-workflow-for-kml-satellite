@@ -94,6 +94,22 @@ Event Grid starts API-managed runs using submission identity and an admission ma
 is written during ingestion. Single-AOI acquisition/fulfilment runs directly;
 multi-AOI work fans out into `aoi_pipeline` children before enrichment and fan-in.
 
+Source geometry has one canonical immutable representation: a non-empty tuple
+of polygon parts, each containing one `outer` ring and zero or more `inners`.
+One polygon-bearing KML Placemark remains one Feature/AOI even when it has
+multiple parts. Holes subtract from geodesic area and contribute boundary length;
+parts, holes and islands survive claim-check and Durable JSON boundaries.
+See the [polygon contract](ENRICHMENT_AOI_MODEL.md#polygon-model).
+
+NDVI uses pixel-centre inclusion in the raster CRS, intersected with spectral
+and cloud validity. Holes and gaps are NaN in analytical GeoTIFFs, not merely
+hidden in the viewer. Missing geometry/observations yield unavailable evidence;
+unmasked tile statistics cannot replace plot statistics. Change comparisons
+require identical projected-metre grids; geographic or misaligned grids yield
+unavailable comparisons rather than incorrect hectare metrics.
+Bounding-box imagery post-processing remains a display/acquisition concern,
+not proof of analytical polygon clipping or legal compliance.
+
 | Responsibility | Owning implementation | Focused tests |
 | --- | --- | --- |
 | Submission and admission | [submission](../blueprints/pipeline/submission.py), [blob trigger](../blueprints/pipeline/blob_trigger.py) | [submission endpoints](../tests/test_analysis_submission_endpoints.py) |

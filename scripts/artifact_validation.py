@@ -17,6 +17,7 @@ from treesight.constants import (
     LOCAL_AUDIT_MAX_RASTER_VALUES,
 )
 from treesight.models.enrichment_manifest import EnrichmentManifestV2
+from treesight.models.geometry import PolygonGeometry
 from treesight.parsers.lxml_parser import parse_kml_lxml
 from treesight.providers.stub import make_stub_geotiff
 
@@ -105,10 +106,13 @@ def validate_fixture_metadata(metadata: list[dict], fixture: Path) -> None:
     if len(actual) != len(metadata) or set(actual) != set(expected):
         raise ValueError("artifact identities differ from submitted fixture")
     for identity, feature in expected.items():
-        coords = np.asarray(feature.exterior_coords)
+        coords = np.asarray([position for part in feature.geometry.parts for position in part.outer])
         bounds = [*coords.min(axis=0), *coords.max(axis=0)]
         if not np.allclose(actual[identity]["geometry"]["bbox"], bounds, rtol=0, atol=LOCAL_AUDIT_BOUNDS_TOLERANCE):
             raise ValueError("artifact geometry differs from submitted fixture")
+        stored = actual[identity]["geometry"].get("source_geometry")
+        if not isinstance(stored, dict) or PolygonGeometry.from_geojson(stored) != feature.geometry:
+            raise ValueError("artifact geometry rings differ from submitted fixture")
 
 
 def validate_fixture_outputs(output: dict, documents: dict[str, dict], fixture: Path) -> None:

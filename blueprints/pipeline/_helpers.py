@@ -7,7 +7,7 @@ The implementations have been moved to focused modules:
   ``_reshape_output``)
 - ``_payloads``: orchestrator activity payload builders (``_acq_payload``,
   ``_poll_payload``, ``_download_payload``, ``_post_process_payload``,
-  ``_collect_enrichment_coords``, ``_collect_per_aoi_coords``,
+  ``_collect_enrichment_coords``, ``_collect_per_aoi_geometries``,
   ``_build_order_lookups``, ``_split_batch_routing``)
 - ``_aggregation``: per-AOI result aggregation (``_aggregate_aoi_results``)
 
@@ -27,7 +27,7 @@ from ._payloads import (
     _acq_payload,
     _build_order_lookups,
     _collect_enrichment_coords,
-    _collect_per_aoi_coords,
+    _collect_per_aoi_geometries,
     _download_payload,
     _poll_payload,
     _post_process_payload,
@@ -40,7 +40,7 @@ __all__ = [
     "_aggregate_aoi_results",
     "_build_order_lookups",
     "_collect_enrichment_coords",
-    "_collect_per_aoi_coords",
+    "_collect_per_aoi_geometries",
     "_download_payload",
     "_durable_status_payload",
     "_expected_blob_host",

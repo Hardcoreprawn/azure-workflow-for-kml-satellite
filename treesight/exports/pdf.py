@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from treesight.analysis.trends import is_usable_ndvi
 from treesight.constants import EUDR_CUTOFF_DATE
 from treesight.exports.geojson import _aoi_eudr_value
 from treesight.pipeline.enrichment.determination import as_screening_determination
@@ -201,7 +202,7 @@ def _pdf_vegetation_section(
             new_y="NEXT",
         )
 
-    valid_ndvi = [s for s in ndvi_stats if s and s.get("mean") is not None]
+    valid_ndvi = [s for s in ndvi_stats if s and is_usable_ndvi(s)]
     if valid_ndvi:
         means = [s["mean"] for s in valid_ndvi]
         overall_avg = sum(means) / len(means)
@@ -232,7 +233,7 @@ def _pdf_vegetation_section(
     pdf.set_font("Helvetica", "", 8)
     for idx, frame in enumerate(frame_plan):
         ndvi = ndvi_stats[idx] if idx < len(ndvi_stats) else None
-        ndvi_val = f"{ndvi['mean']:.3f}" if ndvi and ndvi.get("mean") is not None else "--"
+        ndvi_val = f"{ndvi['mean']:.3f}" if ndvi and is_usable_ndvi(ndvi) else "--"
         row_data = [
             _safe_text(frame.get("label", ""))[:18],
             str(frame.get("year", "")),
@@ -323,7 +324,7 @@ def _pdf_per_parcel_sections(pdf: Any, per_aoi: list[dict[str, Any]]) -> None:
 
         # NDVI summary
         ndvi_stats = aoi.get("ndvi_stats", [])
-        valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
+        valid = [s for s in ndvi_stats if s and is_usable_ndvi(s)]
         if valid:
             means = [s["mean"] for s in valid]
             pdf.cell(

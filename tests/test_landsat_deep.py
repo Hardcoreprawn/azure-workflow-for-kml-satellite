@@ -129,16 +129,22 @@ class TestQaPixelMask:
     def test_clear_mask_constant(self):
         from treesight.pipeline.enrichment.ndvi import _LANDSAT_QA_CLEAR_MASK
 
-        # Bits 1 (dilated cloud), 3 (cloud), 4 (cloud shadow), 5 (snow)
-        assert _LANDSAT_QA_CLEAR_MASK == 0b00111010
+        # Fill, dilated cloud, cirrus, cloud, cloud shadow and snow.
+        assert _LANDSAT_QA_CLEAR_MASK == 0b00111111
 
     def test_clear_pixel_passes_mask(self):
         """A pixel with no cloud/shadow/snow bits set should pass."""
         from treesight.pipeline.enrichment.ndvi import _LANDSAT_QA_CLEAR_MASK
 
-        qa_value = np.uint16(0b0000000001000001)  # bit 0=fill, bit 6=clear
+        qa_value = np.uint16(0b0000000001000000)  # bit 6=clear, no fill
         is_cloudy = (qa_value & _LANDSAT_QA_CLEAR_MASK) != 0
         assert not is_cloudy, "Clear pixel should pass the mask"
+
+    def test_fill_pixel_fails_mask_even_with_clear_flag(self):
+        from treesight.pipeline.enrichment.ndvi import _LANDSAT_QA_CLEAR_MASK
+
+        qa_value = np.uint16(0b0000000001000001)
+        assert qa_value & _LANDSAT_QA_CLEAR_MASK
 
     def test_cloudy_pixel_fails_mask(self):
         """A pixel with cloud bit (bit 3) set should fail."""

@@ -6,6 +6,7 @@ import csv
 import io
 from typing import Any
 
+from treesight.analysis.trends import is_usable_ndvi
 from treesight.exports.frame_row import FrameRow
 from treesight.exports.geojson import _aoi_eudr_value, _toplevel_as_single_aoi
 from treesight.pipeline.enrichment.determination import as_screening_determination
@@ -101,6 +102,8 @@ def _build_csv(manifest: dict[str, Any]) -> str:
 
     for frame in frames:
         ndvi = ndvi_stats[frame.frame_index] if frame.frame_index < len(ndvi_stats) else None
+        if not is_usable_ndvi(ndvi):
+            ndvi = None
 
         # Weather aggregation for the frame's date range
         mean_temp = None
@@ -257,7 +260,7 @@ def _build_eudr_csv(
         lc = wc.get("land_cover", {}) if wc.get("available") else {}
         wdpa = _aoi_eudr_value(aoi, "wdpa") or {}
         ndvi_stats = aoi.get("ndvi_stats", [])
-        valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
+        valid = [s for s in ndvi_stats if s and is_usable_ndvi(s)]
         change_detection = aoi.get("change_detection") or {}
         cd_summary = change_detection.get("summary", {})
         review = _as_dict(parcel_reviews.get(str(idx)))
