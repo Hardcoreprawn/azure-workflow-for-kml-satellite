@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from treesight.analysis.trends import is_usable_ndvi
-from treesight.constants import EUDR_CUTOFF_DATE
 from treesight.exports.csv import _as_dict
 from treesight.exports.geojson import _aoi_eudr_value
 from treesight.exports.pdf import _safe_text
@@ -20,6 +20,47 @@ def _geometry_vertex_count(value: Any) -> int:
         return 0
     geometry = PolygonGeometry.model_validate(value)
     return sum(len(ring) - 1 for part in geometry.parts for ring in (part.outer, *part.inners))
+
+
+def _evidence_date(value: Any) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
+        return None
+
+
+def _usable_observation_dates(aoi: dict[str, Any]) -> tuple[list[str], int]:
+    frames = aoi.get("frame_plan") or []
+    dates = []
+    usable_count = 0
+    for index, observation in enumerate(aoi.get("ndvi_stats") or []):
+        if not is_usable_ndvi(observation):
+            continue
+        usable_count += 1
+        frame = frames[index] if index < len(frames) else {}
+        provenance = _as_dict(frame.get("provenance"))
+        observed = _evidence_date(observation.get("datetime")) or _evidence_date(provenance.get("acquired_at"))
+        if observed:
+            dates.append(observed)
+    return dates, usable_count
+
+
+def _audit_evidence_period(pdf: Any, manifest: dict[str, Any]) -> None:
+    parcels = manifest.get("per_aoi_enrichment") or [manifest]
+    frames = manifest.get("frame_plan") or [frame for parcel in parcels for frame in parcel.get("frame_plan") or []]
+    starts = [value for frame in frames if (value := _evidence_date(frame.get("start")))]
+    ends = [value for frame in frames if (value := _evidence_date(frame.get("end")))]
+    requested_start = _evidence_date(manifest.get("eudr_date_start")) or min(starts, default="unknown")
+    requested_end = max(ends, default="unknown")
+    pdf.cell(0, 6, f"Requested period: {requested_start} to {requested_end}", new_x="LMARGIN", new_y="NEXT")
+    observations = [_usable_observation_dates(parcel) for parcel in parcels if "error" not in parcel]
+    dates = [observed for parcel_dates, _ in observations for observed in parcel_dates]
+    usable_count = sum(count for _, count in observations)
+    observed_period = f"{min(dates)} to {max(dates)}" if dates else "unavailable"
+    pdf.cell(0, 6, f"Usable NDVI observation dates: {observed_period}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"{usable_count} usable observations; {len(dates)} dated", new_x="LMARGIN", new_y="NEXT")
 
 
 def _audit_cover_page(pdf: Any, manifest: dict[str, Any], instance_id: str) -> None:
@@ -71,15 +112,7 @@ def _audit_cover_page(pdf: Any, manifest: dict[str, Any], instance_id: str) -> N
             new_y="NEXT",
         )
 
-    cutoff = manifest.get("eudr_date_start", EUDR_CUTOFF_DATE)
-    pdf.cell(
-        0,
-        7,
-        f"Assessment period: {cutoff} to present",
-        align="C",
-        new_x="LMARGIN",
-        new_y="NEXT",
-    )
+    _audit_evidence_period(pdf, manifest)
     pdf.ln(6)
     pdf.set_font("Helvetica", "I", 9)
     pdf.set_text_color(100, 100, 100)
@@ -194,17 +227,20 @@ def _audit_methodology(pdf: Any) -> None:
         (
             "Land cover classification",
             "ESA WorldCover 10m (2021) provides baseline land-cover class (tree cover, "
-            "cropland, grassland, etc.) at the time closest to the EUDR cutoff date.",
+            "cropland, grassland, etc.) at the time closest to the EUDR cutoff date. "
+            "Values describe a bounding-box sample, not a parcel-clipped area assessment.",
         ),
         (
             "Protected areas",
-            "WDPA (World Database on Protected Areas) is checked for spatial overlap "
-            "with each parcel. Overlap with a protected area is flagged as a risk factor.",
+            "WDPA (World Database on Protected Areas) is queried at the parcel centre point. "
+            "This is contextual screening, not a polygon overlap assessment. A negative "
+            "point result does not establish that the parcel is outside protected areas. "
+            "Unchecked results remain unknown.",
         ),
         (
             "Satellite screening",
             "A parcel receives 'no_signal_detected' when: (1) no significant NDVI "
-            "loss (>5% of area or >1 ha) is detected in any post-2020 comparison period, "
+            "loss (>=5% of area AND >=1 ha) is detected in any post-2020 comparison period, "
             "and (2) the overall vegetation trajectory is not declining. Otherwise the "
             "parcel is classified 'signal_detected' (review required). Parcels with "
             "insufficient data receive 'insufficient_evidence'. "
@@ -216,7 +252,9 @@ def _audit_methodology(pdf: Any) -> None:
             "Cloud cover may reduce temporal coverage. Mixed pixels at parcel boundaries "
             "can affect NDVI accuracy. Sentinel-2 revisit interval is 5 days at the "
             "equator. NDVI is a proxy for vegetation health, not a direct measure of "
-            "tree count or biomass. This analysis provides supporting evidence only.",
+            "tree count or biomass. Requested periods are search windows, not observed coverage. "
+            "Observation date ranges include only usable NDVI with recorded acquisition dates "
+            "and do not imply continuous coverage. This analysis provides supporting evidence only.",
         ),
     ]
 
@@ -298,6 +336,16 @@ def _render_parcel_review_section(
                 pdf.multi_cell(0, 4, _safe_text(f"    Note: {note}"))
 
 
+def _wdpa_sample_status(wdpa: dict[str, Any]) -> str:
+    if not wdpa.get("checked"):
+        return "unknown (not checked)"
+    if wdpa.get("is_protected") is True:
+        return "Protected area found at sampled point"
+    if wdpa.get("is_protected") is False:
+        return "No protected area found at sampled point"
+    return "unknown (result unavailable)"
+
+
 def _audit_single_parcel(
     pdf: Any,
     aoi: dict[str, Any],
@@ -368,7 +416,7 @@ def _audit_single_parcel(
         pdf.cell(
             0,
             5,
-            f"Land cover (WorldCover 2021): {lc.get('dominant_class', 'N/A')} (dominant)",
+            f"Land cover (WorldCover 2021, bounding-box sample): {lc.get('dominant_class', 'N/A')} (dominant)",
             new_x="LMARGIN",
             new_y="NEXT",
         )
@@ -377,16 +425,19 @@ def _audit_single_parcel(
             pct = cls.get("area_pct")
             pct_str = f"{float(pct):.1f}%" if pct is not None else "N/A"
             pdf.cell(0, 4, f"    {label}: {pct_str}", new_x="LMARGIN", new_y="NEXT")
+    else:
+        pdf.cell(0, 5, "Land cover (WorldCover 2021, bounding-box sample): unavailable", new_x="LMARGIN", new_y="NEXT")
 
     # Protected area
     wdpa = _aoi_eudr_value(aoi, "wdpa") or {}
-    if wdpa.get("checked"):
-        prot = "YES -- overlap detected" if wdpa.get("is_protected") else "No overlap"
-        pdf.cell(0, 5, f"Protected area (WDPA): {prot}", new_x="LMARGIN", new_y="NEXT")
+    protected_status = _wdpa_sample_status(wdpa)
+    pdf.cell(0, 5, f"Protected area (WDPA, centre-point query): {protected_status}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, "Parcel overlap not assessed", new_x="LMARGIN", new_y="NEXT")
 
     # NDVI timeseries
-    ndvi_stats = aoi.get("ndvi_stats", [])
-    frame_plan = aoi.get("frame_plan", [])
+    _audit_evidence_period(pdf, aoi)
+    ndvi_stats = aoi.get("ndvi_stats") or []
+    frame_plan = aoi.get("frame_plan") or []
     valid = [s for s in ndvi_stats if s and is_usable_ndvi(s)]
     if valid:
         means = [s["mean"] for s in valid]
@@ -397,11 +448,13 @@ def _audit_single_parcel(
             new_x="LMARGIN",
             new_y="NEXT",
         )
+    else:
+        pdf.cell(0, 5, "NDVI: unavailable (no usable observations)", new_x="LMARGIN", new_y="NEXT")
 
     # Change detection
     change_detection = aoi.get("change_detection") or {}
-    cd_summary = change_detection.get("summary", {})
-    if cd_summary:
+    cd_summary = _as_dict(change_detection.get("summary"))
+    if (cd_summary.get("comparisons") or 0) > 0:
         pdf.cell(
             0,
             5,
@@ -420,6 +473,8 @@ def _audit_single_parcel(
                 new_x="LMARGIN",
                 new_y="NEXT",
             )
+    else:
+        pdf.cell(0, 5, "Change detection: unavailable (no comparison evidence)", new_x="LMARGIN", new_y="NEXT")
 
     # Data provenance (scene IDs)
     scenes = []
@@ -510,8 +565,8 @@ def _audit_appendix(
         "Label",
         "Year",
         "Season",
-        "Start",
-        "End",
+        "Req. start",
+        "Req. end",
         "NDVI Mean",
         "NDVI Min",
         "NDVI Max",
@@ -570,7 +625,7 @@ def _audit_disclaimer(pdf: Any) -> None:
         "detection results should be interpreted as supporting evidence, not definitive "
         "proof of land-use status.\n\n"
         "Methodology: Sentinel-2 L2A via Microsoft Planetary Computer; NDVI change "
-        "detection; ESA WorldCover 2021; WDPA protected area overlay; IO Annual LULC; "
+        "detection; ESA WorldCover 2021 bounding-box sample; WDPA centre-point query; IO Annual LULC; "
         "ALOS PALSAR Forest/Non-Forest.",
     )
 

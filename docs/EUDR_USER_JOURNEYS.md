@@ -30,6 +30,28 @@ Enforcement: large operators from 30 December 2025; SMEs from 30 June
 
 ---
 
+## Interpreting Screening Evidence
+
+Missing determinations are shown as insufficient evidence. Missing or zero
+comparisons mean change detection is unavailable, not stable or improving.
+Declining summaries are not positive results; screening flags remain visible.
+
+The audit PDF distinguishes requested frame windows from acquisition dates of
+usable NDVI observations. Undated observations are counted but do not extend
+the observed date range. That range does not imply continuous coverage or
+evidence through the present.
+
+WDPA context is a centre-point query, not a parcel overlap assessment. A
+negative point result cannot rule out overlap elsewhere in the parcel;
+unchecked results are unknown. WorldCover percentages describe a bounding-box
+sample, not parcel-clipped land-cover areas.
+
+The screening loss rule requires both thresholds in the same comparison:
+at least 5% loss **AND** at least 1 ha loss. A declining trajectory is also a
+screening signal. These are screening rules, not scientific certification or
+an operator's legal compliance conclusion (#1588; scientific acceptance
+remains tracked by #1379/#1223).
+
 ## Jobs-to-be-Done Framework
 
 Every job below is something a compliance officer **must** do around EUDR
