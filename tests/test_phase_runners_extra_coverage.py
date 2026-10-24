@@ -115,7 +115,7 @@ class TestSyntheticImageryPhase:
         monkeypatch.setenv("CANOPEX_TEST_MODE", "1")
         caplog.set_level("INFO")
         external = MagicMock(side_effect=AssertionError("external enrichment in synthetic mode"))
-        for name in ("register_mosaic", "compute_ndvi", "compute_landsat_ndvi", "fetch_ndvi_stat"):
+        for name in ("register_mosaic", "compute_ndvi", "compute_landsat_ndvi"):
             monkeypatch.setattr(phases, name, external)
         frames = [
             {

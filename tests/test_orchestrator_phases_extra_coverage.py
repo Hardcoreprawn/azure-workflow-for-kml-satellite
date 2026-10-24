@@ -52,17 +52,23 @@ CTX = {"project_name": "proj", "timestamp": "2024-01-01T00-00-00"}
 
 
 class TestPhaseIngestion:
-    def test_offloaded_features_path(self):
-        """When parse_kml returns a claim-check ref, load_offloaded_features is used."""
+    def test_per_feature_claim_path(self):
+        """Parsed feature refs flow directly into per-feature preparation."""
         context = MagicMock()
 
-        # Yields, in order: parse_kml, load_offloaded_features, prepare_aoi
-        # (task_all), store_aoi_claims, write_metadata (task_all).
+        # Yields: parse_kml, prepare_aoi (task_all), then write_metadata (task_all).
         responses = [
-            {"ref": "claims/kml-ref.json"},  # parse_kml — offloaded (dict, not list)
-            [{"feature_name": "A"}],  # load_offloaded_features
-            [{"feature_name": "A", "area_ha": 1.0, "exterior_coords": [[0.0, 0.0]]}],
-            [{"ref": "claims/aoi-0.json", "key": "A"}],  # store_aoi_claims
+            {"feature_refs": ["claims/inst-1/feature_0.json"]},
+            [
+                {
+                    "feature_name": "A",
+                    "aoi_ref": "claims/aoi-0.json",
+                    "aoi_claim_index": 0,
+                    "area_ha": 1.0,
+                    "bbox": [0.0, 0.0, 1.0, 1.0],
+                    "centroid": [0.5, 0.5],
+                }
+            ],
             [{"status": "ok"}],  # write_metadata
         ]
 
@@ -178,6 +184,18 @@ class TestPhaseFulfilment:
 
 
 class TestPhaseEnrichment:
+    def test_long_project_names_remain_distinct_after_bounding(self):
+        from blueprints.pipeline._phase_enrichment import _bounded_project_name
+        from treesight.constants import MAX_DURABLE_PROJECT_NAME_LENGTH
+
+        prefix = "farm" * 40
+        first = _bounded_project_name(f"{prefix}-submission-a")
+        second = _bounded_project_name(f"{prefix}-submission-b")
+
+        assert len(first) <= MAX_DURABLE_PROJECT_NAME_LENGTH
+        assert len(second) <= MAX_DURABLE_PROJECT_NAME_LENGTH
+        assert first != second
+
     def test_no_coords_short_circuits(self):
         context = MagicMock()
 
@@ -190,6 +208,10 @@ class TestPhaseEnrichment:
         context = MagicMock()
         data_sources_and_imagery = [{"weather": {}}, {"imagery": []}]
         per_aoi_results = [{"aoi": "A"}, {"aoi": "B"}]
+        per_aoi_refs = [
+            {"name": "A", "aoi_ref": "claims/run/aoi-0.json", "aoi_claim_index": 0},
+            {"name": "B", "aoi_ref": "claims/run/aoi-1.json", "aoi_claim_index": 1},
+        ]
         enrichment_manifest = {"manifest": True}
         context.task_all.side_effect = [data_sources_and_imagery, per_aoi_results]
 
@@ -198,12 +220,97 @@ class TestPhaseEnrichment:
             {},
             CTX,
             [[0.0, 0.0]],
-            [{"name": "A"}, {"name": "B"}],
+            per_aoi_refs,
             "output",
         )
         result = _drain(gen, [data_sources_and_imagery, per_aoi_results, enrichment_manifest])
 
         assert result == enrichment_manifest
+        for activity_call in context.call_activity_with_retry.call_args_list[:2]:
+            payload = activity_call.args[2]
+            assert "coords" not in payload
+            assert payload["per_aoi_claim_indexes"] == [0, 1]
+
+    def test_finalize_payload_stays_below_durable_limit_at_max_aois(self):
+        import json
+
+        from treesight.constants import MAX_FEATURES_PER_KML, PAYLOAD_OFFLOAD_THRESHOLD_BYTES
+
+        context = MagicMock()
+        context.instance_id = "run-1"
+        data_sources_and_imagery = [
+            {"result_ref": "claims/run-1/data_sources.json"},
+            {"result_ref": "claims/run-1/imagery.json"},
+        ]
+        per_aoi_refs = [
+            {"aoi_ref": f"claims/run-1/aoi_{index}.json", "aoi_claim_index": index}
+            for index in range(MAX_FEATURES_PER_KML)
+        ]
+        per_aoi_results = [
+            {"result_ref": f"claims/run-1/enrichment_aoi_{index}.json"} for index in range(MAX_FEATURES_PER_KML)
+        ]
+        context.task_all.side_effect = [data_sources_and_imagery, per_aoi_results]
+
+        gen = _phase_enrichment(context, {}, CTX, [[0.0, 0.0]], per_aoi_refs, "output")
+        _drain(gen, [data_sources_and_imagery, per_aoi_results, {"manifest": True}])
+
+        finalize_call = next(
+            call for call in context.call_activity_with_retry.call_args_list if call.args[0] == "enrich_finalize"
+        )
+        finalizer_payload = finalize_call.args[2]
+        assert len(json.dumps(finalizer_payload).encode("utf-8")) < PAYLOAD_OFFLOAD_THRESHOLD_BYTES
+        assert finalizer_payload["instance_id"] == "run-1"
+        assert finalizer_payload["per_aoi_claim_indexes"] == list(range(MAX_FEATURES_PER_KML))
+        assert finalizer_payload["per_aoi_result_count"] == MAX_FEATURES_PER_KML
+        assert "per_aoi_coords" not in finalizer_payload
+        assert "per_aoi_results" not in finalizer_payload
+
+    def test_fanout_payloads_use_compact_claim_indexes(self):
+        import json
+
+        from treesight.constants import (
+            MAX_DURABLE_PROJECT_NAME_LENGTH,
+            MAX_FEATURES_PER_KML,
+            PAYLOAD_OFFLOAD_THRESHOLD_BYTES,
+        )
+
+        context = MagicMock()
+        context.instance_id = "run-1"
+        data_sources_and_imagery = [{"result_ref": "data.json"}, {"result_ref": "imagery.json"}]
+        per_aoi_refs = [
+            {"aoi_ref": f"claims/run-1/aoi_{index}.json", "aoi_claim_index": index}
+            for index in range(MAX_FEATURES_PER_KML)
+        ]
+        per_aoi_results = [{"result_ref": f"claims/run-1/result_{index}.json"} for index in range(MAX_FEATURES_PER_KML)]
+        context.task_all.side_effect = [data_sources_and_imagery, per_aoi_results]
+        long_context = {**CTX, "project_name": "p" * 10_000}
+
+        gen = _phase_enrichment(
+            context,
+            {},
+            long_context,
+            [[0.0, 0.0]],
+            per_aoi_refs,
+            "output",
+        )
+        _drain(gen, [data_sources_and_imagery, per_aoi_results, {"manifest": True}])
+
+        enrichment_calls = context.call_activity_with_retry.call_args_list[:2]
+        for call in enrichment_calls:
+            payload = call.args[2]
+            assert "per_aoi_coords" not in payload
+            assert payload["per_aoi_claim_indexes"] == list(range(MAX_FEATURES_PER_KML))
+            assert len(payload["project_name"]) <= MAX_DURABLE_PROJECT_NAME_LENGTH
+            assert len(json.dumps(payload).encode("utf-8")) < PAYLOAD_OFFLOAD_THRESHOLD_BYTES
+        per_aoi_calls = [
+            call for call in context.call_activity_with_retry.call_args_list if call.args[0] == "enrich_single_aoi"
+        ]
+        assert len(per_aoi_calls) == MAX_FEATURES_PER_KML
+        assert per_aoi_calls[-1].args[2]["aoi_entry"] == {"aoi_claim_index": MAX_FEATURES_PER_KML - 1}
+        assert "aoi_ref" not in per_aoi_calls[-1].args[2]["aoi_entry"]
+        assert "per_aoi_claim_indexes" not in per_aoi_calls[-1].args[2]
+        finalize_payload = context.call_activity_with_retry.call_args_list[-1].args[2]
+        assert finalize_payload["project_name"] == enrichment_calls[0].args[2]["project_name"]
 
 
 class TestSafeFinalizeRun:

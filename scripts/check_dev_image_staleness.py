@@ -5,7 +5,7 @@ The dev image (``Dockerfile.dev``) bakes two OCI labels:
 
 * ``org.canopex.uvlock-sha256``  — SHA-256 of ``uv.lock`` (dependency drift)
 * ``org.canopex.build-inputs-sha256`` — combined SHA-256 of ``Dockerfile.dev``,
-  ``.github/image-config.env``, ``pyproject.toml``, and all files under
+  ``.dockerignore``, ``.github/image-config.env``, ``pyproject.toml``, and all files under
   ``rust/`` (image-recipe/toolchain drift)
 
 This guard compares the repo's current digests against the labels on a given
@@ -30,7 +30,7 @@ LABEL_KEY = "org.canopex.uvlock-sha256"
 LABEL_KEY_BUILD = "org.canopex.build-inputs-sha256"
 DEFAULT_LOCK = "uv.lock"
 DEFAULT_DOCKERFILE = "Dockerfile.dev"
-_BUILD_EXTRAS = [".github/image-config.env", "pyproject.toml", "rust"]
+_BUILD_EXTRAS = [".dockerignore", ".github/image-config.env", "pyproject.toml", "rust"]
 
 
 def uv_lock_digest(lock_path: str | Path) -> str:
@@ -42,7 +42,8 @@ def uv_lock_digest(lock_path: str | Path) -> str:
 def build_inputs_digest(dockerfile: str | Path, root: str | Path | None = None) -> str:
     """Return a combined SHA-256 digest of the image-recipe build inputs.
 
-    Hashes ``Dockerfile.dev``, ``pyproject.toml``, and every source file under
+    Hashes ``Dockerfile.dev``, ``.dockerignore``, ``.github/image-config.env``,
+    ``pyproject.toml``, and every source file under
     ``rust/`` (sorted for determinism), excluding ``rust/target/`` — that's
     Cargo's gitignored build-output directory, not a source input, and its
     contents vary by machine/build history rather than by recipe, which would
@@ -100,8 +101,8 @@ def staleness_reason(
 ) -> str | None:
     """Return a human-readable reason if the image is stale, else ``None``.
 
-    Checks the uv.lock digest first, then the build-inputs digest when both
-    ``repo_build_digest`` and ``image_build_label`` are provided.
+    Checks the uv.lock digest first, then requires the build-inputs label
+    whenever ``repo_build_digest`` is provided.
     """
     if image_lock_label is None:
         return f"image has no {LABEL_KEY} label (image not pulled, or built without the uv.lock digest)"
@@ -111,7 +112,9 @@ def staleness_reason(
             f"(repo={repo_lock_digest[:12]}…, image={image_lock_label[:12]}…) — "
             "the dev-image workflow needs to rebuild/publish"
         )
-    if repo_build_digest is not None and image_build_label is not None and image_build_label != repo_build_digest:
+    if repo_build_digest is not None and image_build_label is None:
+        return f"image has no {LABEL_KEY_BUILD} label — native sources and toolchain cannot be verified"
+    if repo_build_digest is not None and image_build_label != repo_build_digest:
         return (
             "build inputs (Dockerfile.dev / pyproject.toml / rust/) have changed "
             "since the dev image was built "

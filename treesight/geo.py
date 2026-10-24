@@ -94,14 +94,7 @@ def transform_bbox(
     from pyproj import Transformer
 
     transformer = Transformer.from_crs(src_crs, dst_crs, always_xy=True)
-    x_min, y_min = transformer.transform(bbox[0], bbox[1])
-    x_max, y_max = transformer.transform(bbox[2], bbox[3])
-    return (
-        min(x_min, x_max),
-        min(y_min, y_max),
-        max(x_min, x_max),
-        max(y_min, y_max),
-    )
+    return transformer.transform_bounds(*bbox, densify_pts=21)
 
 
 def _haversine_perimeter_km(coords: list[list[float]]) -> float:

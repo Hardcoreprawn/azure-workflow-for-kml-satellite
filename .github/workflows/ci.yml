@@ -59,15 +59,13 @@ jobs:
           fi
           DIGEST_REF=$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE}")
           echo "image=${DIGEST_REF}" >> "$GITHUB_OUTPUT"
-          # Staleness is advisory: a PR that changes uv.lock legitimately runs
-          # before the image is rebuilt on merge. Report it and let gate jobs
-          # `uv sync` the delta rather than deadlocking dependency PRs.
+          # Stale PR inputs get a job-local image build, never a registry push.
           if python3 scripts/check_dev_image_staleness.py --image "${IMAGE}"; then
             echo "stale=false" >> "$GITHUB_OUTPUT"
             LOCK_NOTE="fresh — deps served straight from the image"
           else
             echo "stale=true" >> "$GITHUB_OUTPUT"
-            LOCK_NOTE="stale vs uv.lock — gate jobs will \`uv sync\` the delta"
+            LOCK_NOTE="stale — gate jobs will build the current dev-image recipe locally"
           fi
           {
             echo "### Dev image"
@@ -83,27 +81,23 @@ jobs:
     permissions:
       contents: read
       packages: read
-    container:
-      image: ${{ needs.resolve-image.outputs.image }}
-      # The checkout mount belongs to the runner UID, not the image's vscode
-      # UID; root keeps stale-image sync and coverage artifacts writable.
-      options: --user root
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    env:
-      # Deps are baked into the dev image; `uv run` must not try to re-sync.
-      UV_NO_SYNC: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
-      - name: Sync dependency delta (only if image is stale)
-        if: needs.resolve-image.outputs.stale == 'true'
-        # --inexact preserves packages not in uv.lock (e.g. the treesight_rs
-        # wheel installed separately in Dockerfile.dev via `uv pip install`).
-        run: uv sync --all-extras --inexact
+        with:
+          persist-credentials: false
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/prepare-ci-gate
+        with:
+          image: ${{ needs.resolve-image.outputs.image }}
+          stale: ${{ needs.resolve-image.outputs.stale }}
       # Canonical lint lives in the Makefile (single source of truth shared
       # with local `make lint` / `make check`). See issue #962.
-      - run: make lint
+      - run: docker compose --profile ci run --rm --no-deps ci-gate make lint
 
   test:
     name: Test
@@ -112,41 +106,31 @@ jobs:
     permissions:
       contents: read
       packages: read
-    container:
-      image: ${{ needs.resolve-image.outputs.image }}
-      # The checkout mount belongs to the runner UID, not the image's vscode
-      # UID; root keeps stale-image sync and coverage artifacts writable.
-      options: --user root
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    env:
-      AzureWebJobsStorage: "UseDevelopmentStorage=true"
-      DEMO_VALET_TOKEN_SECRET: "ci-test-secret"  # pragma: allowlist secret
-      CIAM_AUTHORITY: "https://canopex.ciamlogin.com"
-      CIAM_TENANT_ID: "ci-test-tenant"
-      CIAM_API_AUDIENCE: "api://ci-test-audience"
-      # Deps are baked into the dev image; `uv run` must not try to re-sync.
-      UV_NO_SYNC: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
+          persist-credentials: false
           # Full history so diff-cover can find the merge-base with the base branch.
           fetch-depth: 0
-      - name: Sync dependency delta (only if image is stale)
-        if: needs.resolve-image.outputs.stale == 'true'
-        # --inexact preserves packages not in uv.lock (e.g. the treesight_rs
-        # wheel installed separately in Dockerfile.dev via `uv pip install`).
-        run: uv sync --all-extras --inexact
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/prepare-ci-gate
+        with:
+          image: ${{ needs.resolve-image.outputs.image }}
+          stale: ${{ needs.resolve-image.outputs.stale }}
       # Canonical test command lives in the Makefile (matches local `make test`).
-      - run: make test
+      - run: docker compose --profile ci run --rm --no-deps ci-gate make test
       # Changed-lines coverage is shared with local `make check`.
       - name: Changed-lines coverage (required gate)
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          make coverage-check
+          docker compose --profile ci run --rm --no-deps --env BASE_REF ci-gate make coverage-check
           {
             echo "## Changed-lines test coverage"
             echo ""
@@ -178,6 +162,8 @@ jobs:
     # local `make ci-local`. See #1086.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -186,21 +172,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       # ci-gate runs inside the exact resolved dev image (by digest); the
       # azurite dependency is brought up healthy first via depends_on.
+      - uses: ./.github/actions/prepare-ci-gate
+        with:
+          image: ${{ needs.resolve-image.outputs.image }}
+          stale: ${{ needs.resolve-image.outputs.stale }}
       - name: Integration tests (Azurite via docker compose)
-        env:
-          CI_GATE_IMAGE: ${{ needs.resolve-image.outputs.image }}
-          STALE: ${{ needs.resolve-image.outputs.stale }}
-        run: |
-          CI_GATE_USER="$(id -u):$(id -g)"
-          export CI_GATE_USER
-          if [ "${STALE}" = "true" ]; then
-            # Image deps lag uv.lock (dependency PR before rebuild) — sync the
-            # delta as root in a disposable gate, mirroring the lint/test jobs.
-            # --inexact preserves treesight_rs (not in uv.lock).
-            docker compose --profile ci run --rm --user root ci-gate \
-              uv sync --all-extras --inexact
-          fi
-          docker compose --profile ci run --rm ci-gate make test-int
+        run: docker compose --profile ci run --rm ci-gate make test-int
       - name: Tear down compose
         if: always()
         run: docker compose --profile ci down -v --remove-orphans

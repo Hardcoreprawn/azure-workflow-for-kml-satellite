@@ -35,6 +35,7 @@ class PerAoiEnrichment(BaseModel):
     name: str
     area_ha: float
     coords: list[list[float]]
+    geometry: dict[str, Any] | None = None
     bbox: list[Any]
     center: CenterPoint
     source_geometry_type: str | None = None

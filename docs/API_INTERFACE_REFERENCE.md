@@ -46,6 +46,12 @@ routes validate bearer tokens server-side; Functions `AuthLevel.ANONYMOUS` alone
 does not describe application authentication. Explicit test-principal configuration
 is not a production authentication method.
 
+`POST /api/monitoring` accepts valid Polygon AOI geometry in EPSG:4326.
+MultiPolygon requests are rejected because scheduled monitoring currently selects
+imagery as one region and cannot prove complete scene coverage for every component.
+Legacy stored MultiPolygon monitors are treated as unavailable rather than
+producing potentially partial evidence.
+
 Protected APIs accept delegated access tokens carrying the exact `User.Read`
 permission in the space-delimited `scp` claim, matching the first-party browser's
 `<apiAudience>/User.Read` request. Same-audience ID tokens, absent/wrong/malformed
@@ -78,6 +84,8 @@ record field; a pre-existing record with the same ID and owner is insufficient.
 Malformed KML values return `400` through normal reservation cleanup. Rejected
 new submissions release admission; partial direct publication must confirm ticket
 revocation before refund, and uncertain revocation retains the reservation.
+A KML Placemark name is limited to 256 characters so compact Durable activity
+results remain bounded; longer names are rejected during parsing.
 After a history or blob
 publication failure, marking history `failed` is best-effort and logged if it
 cannot be verified. A continuing storage outage can leave an uncertain record
@@ -172,6 +180,22 @@ redelivering the original blob event. Storage-native uploads without a submissio
 UUID continue to use their Event Grid event ID and do not receive this API-managed
 deduplication contract.
 
+### Durable Workflow Changes
+
+The application is pre-live and currently has one claim-check workflow: parse
+features, prepare and claim-check AOIs, write metadata, acquire and fulfil
+imagery, enrich, and finalize. Independent activity families run in parallel
+where useful; each AOI then receives its own enrichment result. There are no
+persisted public workflow versions or compatibility branches to preserve.
+
+Before a future live workflow change, first inventory nonterminal Durable
+instances and their required input blobs. Keep the action sequence stable for
+those instances; either let them drain before deployment or isolate the new
+workflow implementation behind a separately selected orchestrator version.
+Do not add speculative legacy branches before persisted histories exist, and do
+not mutate an active history's action sequence in place. Execution inputs must
+remain available for as long as an instance may resume.
+
 ## Activity Functions and Contracts
 
 Durable activities are defined in [activities.py](../blueprints/pipeline/activities.py).
@@ -182,22 +206,18 @@ optional fields live in the implementation and
 
 | Activity | Input Contract | Output Contract |
 | --- | --- | --- |
-| `parse_kml` | BlobEvent fields | Feature dictionaries or offloaded `{ref, count}` |
-| `load_offloaded_features` | `ref` | Feature dictionaries |
-| `prepare_aoi` | `feature`, optional `buffer_m` | AOI dictionary |
-| `store_aoi_claims` | `instance_id`, `aois` | Claim references `{claim_id, ref, key}` |
-| `load_aoi_claim` | `aoi_ref` or `ref` | AOI dictionary |
+| `parse_kml` | BlobEvent fields | `feature_refs`: one claim reference per parsed feature |
+| `prepare_aoi` | `feature_ref`, `instance_id`, optional `buffer_m` | `aoi_ref`, stable `aoi_claim_index`, and compact AOI metadata |
 | `write_metadata` | AOI/claim, source, processing ID, timestamp, output container | Metadata and archive paths |
 | `acquire_imagery` | AOI/claim, provider and filters | Acquisition outcome |
 | `acquire_composite` | AOI/claim, filters, temporal count | Acquisition outcomes |
 | `check_order_status` | `order_id`, provider and source identity | Single-shot state and `is_terminal` |
 | `download_imagery` | Outcome, source asset, AOI bounds, output namespace | Download result and stored blob path |
 | `post_process_imagery` | Download result, AOI/claim, output namespace, flags | Post-process result and output path |
-| `run_enrichment` | Coordinates, per-AOI coordinates, dates, output namespace | Combined enrichment result |
-| `enrich_data_sources` | Coordinates, dates, cadence, EUDR mode | Weather/event/dataset results |
-| `enrich_imagery` | Coordinates, dates, output namespace | Imagery/NDVI/change results |
-| `enrich_single_aoi` | `aoi_entry`, `aoi_index`, dates, output namespace | Per-AOI enrichment result |
-| `enrich_finalize` | Data-source, imagery and per-AOI results, output namespace | Merged manifest result |
+| `enrich_data_sources` | `instance_id` and compact `per_aoi_claim_indexes`; dates, cadence, EUDR mode | `result_ref` to weather/event/dataset results (or a safe-mode skip marker) |
+| `enrich_imagery` | `instance_id` and compact `per_aoi_claim_indexes`; dates, output namespace | `result_ref` to imagery/NDVI/change results |
+| `enrich_single_aoi` | `aoi_entry.aoi_claim_index`; `aoi_index`, dates, output namespace | `result_ref` to per-AOI enrichment result |
+| `enrich_finalize` | Data-source, imagery and per-AOI `result_ref`s; per-AOI claim refs; output namespace | Blob manifest path and compact summary with telemetry-presence flags |
 | `submit_batch_fulfilment` | Outcome, asset URL, output namespace | Batch job/task tracking dictionary |
 | `poll_batch_fulfilment` | `job_id`, `task_id` | Batch task state |
 | `complete_billing` | `user_id`, `instance_id` | `{completed: true}` (retained ledger activity) |

@@ -1,0 +1,50 @@
+name: Prepare non-root CI gate
+description: Prepare a job-local dev image and run gates as the checkout owner.
+inputs:
+  image:
+    description: Published dev image pinned by digest.
+    required: true
+  stale:
+    description: Whether the published image differs from the current build inputs.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Prepare gate identity and image
+      shell: bash
+      env:
+        PUBLISHED_IMAGE: ${{ inputs.image }}
+        STALE: ${{ inputs.stale }}
+      run: |
+        if [[ "$(id -u)" == "0" ]]; then
+          echo "::error::CI gates require a non-root checkout owner."
+          exit 1
+        fi
+        if [[ "${PUBLISHED_IMAGE}" != *@sha256:* ]]; then
+          echo "::error::The published dev image must be pinned by digest."
+          exit 1
+        fi
+        if [[ "${STALE}" != "true" && "${STALE}" != "false" ]]; then
+          echo "::error::Image staleness must be true or false."
+          exit 1
+        fi
+        gate_image="${PUBLISHED_IMAGE}"
+        if [[ "${STALE}" == "true" ]]; then
+          source .github/image-config.env
+          base_image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${BASE_IMAGE_REPO}:latest"
+          docker pull "${base_image}"
+          base_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "${base_image}")"
+          gate_image="canopex-ci-gate:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          docker build -f Dockerfile.dev --target dev \
+            --build-arg BASE_IMAGE="${base_digest}" \
+            --build-arg UV_VERSION="${UV_VERSION}" \
+            --build-arg UVLOCK_SHA="$(sha256sum uv.lock | cut -d' ' -f1)" \
+            --build-arg BUILD_INPUTS_SHA="$(python3 scripts/check_dev_image_staleness.py --print-build-digest)" \
+            -t "${gate_image}" .
+        else
+          docker pull "${gate_image}"
+        fi
+        {
+          echo "CI_GATE_USER=$(id -u):$(id -g)"
+          echo "CI_GATE_IMAGE=${gate_image}"
+        } >> "${GITHUB_ENV}"

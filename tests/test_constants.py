@@ -11,6 +11,9 @@ class TestConstants:
     def test_max_kml_size(self):
         assert constants.MAX_KML_FILE_SIZE_BYTES == 10 * 1024 * 1024
 
+    def test_max_aoi_name_length(self):
+        assert constants.MAX_AOI_NAME_LENGTH == 256
+
     def test_offload_threshold(self):
         assert constants.PAYLOAD_OFFLOAD_THRESHOLD_BYTES == 48 * 1024
 

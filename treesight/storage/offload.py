@@ -68,7 +68,7 @@ class PayloadOffloader:
         data: dict[str, Any],
     ) -> str:
         """Store a single item under a unique claim path and return the ref."""
-        blob_path = f"claims/{instance_id}/{claim_id}.json"
+        blob_path = self.claim_ref(instance_id, claim_id)
         serialised = json.dumps(data, default=str).encode("utf-8")
         self._storage.upload_bytes(
             PIPELINE_PAYLOADS_CONTAINER,
@@ -77,6 +77,11 @@ class PayloadOffloader:
             content_type="application/json",
         )
         return blob_path
+
+    @staticmethod
+    def claim_ref(instance_id: str, claim_id: str) -> str:
+        """Return the deterministic ref used by :meth:`store_claim`."""
+        return f"claims/{instance_id}/{claim_id}.json"
 
     def load_claim(self, ref: str) -> dict[str, Any]:
         """Download a single claim-checked item."""

@@ -84,7 +84,6 @@ test: ## Run unit tests (canonical — CI runs this exact command)
 BASE_REF ?= main
 
 coverage-check: ## Enforce changed-lines coverage against origin/BASE_REF (CI and local)
-	git config --global --add safe.directory "$${GITHUB_WORKSPACE:-$$(pwd)}"
 	git fetch --no-tags origin "+refs/heads/$(BASE_REF):refs/remotes/origin/$(BASE_REF)"
 	uv run diff-cover coverage.xml --compare-branch "origin/$(BASE_REF)" --fail-under 80
 

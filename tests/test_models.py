@@ -32,6 +32,10 @@ class TestFeature:
         assert f.vertex_count == 0
         assert f.has_holes is False
 
+    def test_rejects_names_over_durable_limit(self):
+        with pytest.raises(ValidationError):
+            Feature(name="x" * 300)
+
     def test_computed_vertex_count(self, sample_feature: Feature):
         assert sample_feature.vertex_count == 5
 
@@ -82,6 +86,10 @@ class TestAOI:
         assert aoi.buffer_m == 100.0
         assert aoi.crs == "EPSG:4326"
         assert aoi.bbox == [0.0, 0.0, 0.0, 0.0]
+
+    def test_rejects_names_over_durable_limit(self):
+        with pytest.raises(ValidationError):
+            AOI(feature_name="x" * 300)
 
     def test_model_dump_roundtrip(self, sample_aoi: AOI):
         d = sample_aoi.model_dump()

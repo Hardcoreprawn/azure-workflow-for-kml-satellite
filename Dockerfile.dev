@@ -23,12 +23,29 @@
 #                   bloating every other job/devcontainer.
 # ─────────────────────────────────────────────────────────────
 ARG UV_VERSION=0.12.15
+ARG RUST_VERSION=1.99.0
+ARG RUSTUP_VERSION=1.29.1
+ARG RUSTUP_INIT_SHA256=dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71
 ARG BASE_IMAGE=ghcr.io/hardcoreprawn/treesight-base:latest
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 # ── Stage 1: build the treesight_rs wheel ───────────────────
 FROM ${BASE_IMAGE} AS rust-build
+USER root
+ARG RUST_VERSION
+ARG RUSTUP_VERSION
+ARG RUSTUP_INIT_SHA256
 COPY --from=uv /uv /usr/local/bin/uv
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends build-essential curl ca-certificates; \
+    rm -rf /var/lib/apt/lists/*; \
+    if ! id vscode >/dev/null 2>&1; then \
+        groupadd --gid 1000 vscode; \
+        useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash vscode; \
+    fi; \
+    install -d -o vscode -g vscode /opt/rustup /opt/cargo /build/rust /wheels /home/vscode
+USER vscode
 # Pin the interpreter to the base runtime's CPython so the wheel is ABI-tagged
 # for the same Python the final image (and production) runs, and uv never
 # downloads a managed CPython.
@@ -39,16 +56,18 @@ ENV HOME=/home/vscode \
     CARGO_HOME=/opt/cargo \
     PATH=/opt/cargo/bin:$PATH
 RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends build-essential curl ca-certificates; \
-    rm -rf /var/lib/apt/lists/*; \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --profile minimal --default-toolchain stable
-COPY rust/ /build/rust/
+    curl --proto '=https' --tlsv1.2 -sSfL \
+        "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/x86_64-unknown-linux-gnu/rustup-init" \
+        -o /tmp/rustup-init; \
+    printf '%s  %s\n' "${RUSTUP_INIT_SHA256}" /tmp/rustup-init | sha256sum --check --status; \
+    chmod +x /tmp/rustup-init; \
+    /tmp/rustup-init -y --profile minimal --default-toolchain "${RUST_VERSION}"
+COPY --chown=vscode:vscode rust/ /build/rust/
 RUN uv build --wheel --out-dir /wheels /build/rust
 
 # ── Stage 2: runtime dev image ──────────────────────────────
 FROM ${BASE_IMAGE} AS dev
+USER root
 COPY --from=uv /uv /usr/local/bin/uv
 
 # Digest of the uv.lock this image was built from. The publish workflow sets
@@ -74,7 +93,7 @@ RUN set -eux; \
         groupadd --gid 1000 vscode; \
         useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash vscode; \
     fi; \
-    mkdir -p /workspace /opt/venv
+    install -d -o vscode -g vscode /workspace /opt/venv /home/vscode
 
 # Project environment lives OUTSIDE the workspace so a devcontainer / CI
 # bind-mount of the repo does not clobber the baked environment.
@@ -87,22 +106,20 @@ ENV HOME=/home/vscode \
     PATH=/opt/venv/bin:$PATH
 
 WORKDIR /workspace
+USER vscode
 
 # Locked dependency layer (deps only; the project is importable from the
 # mounted workspace via pytest pythonpath = ["."], see pyproject.toml).
-COPY pyproject.toml uv.lock ./
+COPY --chown=vscode:vscode pyproject.toml uv.lock ./
 RUN uv sync --frozen --all-extras --no-install-project
 
 # Install the pre-built treesight_rs wheel from the builder stage.
-# Dev Containers may remap vscode to the host UID after build, so the baked
-# venv remains writable for that user. CI runs with UV_NO_SYNC and does not
-# mutate this shared toolchain during normal gates.
-COPY --from=rust-build /wheels/ /tmp/wheels/
+# CI consumes the environment read-only under the checkout owner's UID.
+# Dev Containers remap the owning vscode user for local dependency updates.
+COPY --from=rust-build --chown=vscode:vscode /wheels/ /tmp/wheels/
 RUN set -eux; \
     uv pip install --python /opt/venv /tmp/wheels/*.whl; \
-    rm -rf /tmp/wheels; \
-    chown -R vscode:vscode /workspace /opt/venv /home/vscode; \
-    chmod -R a+rwX /opt/venv
+    rm -rf /tmp/wheels
 
 USER vscode
 WORKDIR /workspace

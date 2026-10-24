@@ -89,6 +89,19 @@
           "title": "Frame Plan",
           "type": "array"
         },
+        "geometry": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Geometry"
+        },
         "name": {
           "title": "Name",
           "type": "string"

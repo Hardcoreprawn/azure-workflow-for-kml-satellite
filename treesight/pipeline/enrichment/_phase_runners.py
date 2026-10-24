@@ -35,7 +35,6 @@ from treesight.pipeline.enrichment.mosaic import register_mosaic
 from treesight.pipeline.enrichment.ndvi import (
     compute_landsat_ndvi,
     compute_ndvi,
-    fetch_ndvi_stat,
 )
 from treesight.pipeline.enrichment.resource_accumulator import ResourceAccumulator
 from treesight.pipeline.enrichment.weather import (
@@ -118,6 +117,7 @@ def _run_eudr_phase(
     center_lon: float,
     results: dict[str, Any],
     acc: ResourceAccumulator | None = None,
+    geometry: dict[str, Any] | None = None,
 ) -> None:
     """Phase 1d: EUDR-specific enrichments (WorldCover + WDPA + IO LULC + ALOS FNF)."""
     from treesight.pipeline.eudr import (
@@ -162,7 +162,10 @@ def _run_eudr_phase(
     log_phase("enrichment", "alos_fnf_done", available=alos.get("available", False))
 
     # Landsat historical NDVI baseline (#609)
-    _run_landsat_baseline(flat_bbox_eudr, results)
+    if geometry is None:
+        _run_landsat_baseline(flat_bbox_eudr, results)
+    else:
+        _run_landsat_baseline(flat_bbox_eudr, results, geometry=geometry)
 
     if acc:
         acc.add_source("esa-worldcover")
@@ -183,6 +186,7 @@ def _run_eudr_phase(
 def _run_landsat_baseline(
     flat_bbox: list[float],
     results: dict[str, Any],
+    geometry: dict[str, Any] | None = None,
 ) -> None:
     """Phase 1e: Landsat C2 L2 historical NDVI baseline (#609).
 
@@ -198,7 +202,10 @@ def _run_landsat_baseline(
     ]
     baseline_results: list[dict[str, Any]] = []
     for start, end in windows:
-        result = compute_landsat_ndvi(flat_bbox, start, end)
+        if geometry is None:
+            result = compute_landsat_ndvi(flat_bbox, start, end)
+        else:
+            result = compute_landsat_ndvi(flat_bbox, start, end, geometry=geometry)
         if result is not None:
             result.pop("geotiff_bytes", None)  # don't store raster in manifest
             baseline_results.append(result)
@@ -226,6 +233,7 @@ def _run_mosaic_ndvi_phase(
     results: dict[str, Any],
     acc: ResourceAccumulator | None = None,
     aoi_index: int | None = None,
+    geometry: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any] | None], list[str | None]]:
     """Phase 2/3: mosaic registration + NDVI computation (COG or tile fallback).
 
@@ -327,7 +335,7 @@ def _run_mosaic_ndvi_phase(
     # 3. NDVI computation (parallel — each frame is independent I/O)
     flat_bbox = [bbox[0][0], bbox[0][1], bbox[2][0], bbox[2][1]]
     log_phase("enrichment", "ndvi_start", frames=len(frame_plan))
-    ndvi_stats: list[dict[str, float] | None] = [None] * len(frame_plan)
+    ndvi_stats: list[dict[str, Any] | None] = [None] * len(frame_plan)
     ndvi_raster_paths: list[str | None] = [None] * len(frame_plan)
 
     def _compute_one_ndvi(idx: int, f: dict[str, Any]) -> tuple[int, dict[str, Any] | None, str | None]:
@@ -335,9 +343,15 @@ def _run_mosaic_ndvi_phase(
             return idx, None, None
         cog_result = None
         if f["collection"] == "landsat-c2-l2":
-            cog_result = compute_landsat_ndvi(flat_bbox, f["start"], f["end"])
+            if geometry is None:
+                cog_result = compute_landsat_ndvi(flat_bbox, f["start"], f["end"])
+            else:
+                cog_result = compute_landsat_ndvi(flat_bbox, f["start"], f["end"], geometry=geometry)
         elif f["collection"] == "sentinel-2-l2a" or f["is_naip"]:
-            cog_result = compute_ndvi(flat_bbox, f["start"], f["end"])
+            if geometry is None:
+                cog_result = compute_ndvi(flat_bbox, f["start"], f["end"])
+            else:
+                cog_result = compute_ndvi(flat_bbox, f["start"], f["end"], geometry=geometry)
         if cog_result is not None:
             geotiff_bytes = cog_result.pop("geotiff_bytes", None)
             raster_path = None
@@ -352,12 +366,6 @@ def _run_mosaic_ndvi_phase(
                 )
             return idx, cog_result, raster_path
 
-        # Fallback: tile-based sampling
-        nsid = ndvi_search_ids[idx]
-        if nsid:
-            with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS, trust_env=False) as cl:
-                stat = fetch_ndvi_stat(nsid, coords, cl)
-            return idx, stat, None
         return idx, None, None
 
     with ThreadPoolExecutor(max_workers=frame_workers) as pool:

@@ -272,6 +272,17 @@ class TestBuildGeoJSON:
         assert props["ndvi_std"] == 0.12
         assert props["ndvi_scene_id"] == "S2A_123"
 
+    def test_frame_properties_omit_invalid_ndvi_statistics(self, enrichment_manifest):
+        enrichment_manifest["ndvi_stats"][0] = {"mean": 0.4, "min": 0.1, "max": 1.2, "std": 0.1}
+
+        result = _build_geojson(enrichment_manifest)
+        props = result["features"][0]["properties"]
+
+        assert "ndvi_mean" not in props
+        assert "ndvi_min" not in props
+        assert "ndvi_max" not in props
+        assert "ndvi_std" not in props
+
     def test_frame_properties_include_metadata(self, enrichment_manifest):
         result = _build_geojson(enrichment_manifest)
         props = result["features"][0]["properties"]
@@ -390,6 +401,14 @@ class TestBuildCSV:
         # Frame 0 and 1 have no change entry
         assert rows[0]["ndvi_change_from_previous"] == ""
 
+    def test_invalid_change_delta_is_blank(self, enrichment_manifest):
+        enrichment_manifest["change_detection"]["season_changes"][0]["mean_delta"] = float("nan")
+
+        result = _build_csv(enrichment_manifest)
+        rows = list(csv.DictReader(io.StringIO(result)))
+
+        assert rows[2]["ndvi_change_from_previous"] == ""
+
     def test_empty_manifest_produces_header_only(self):
         result = _build_csv({})
         lines = result.strip().split("\n")
@@ -416,8 +435,42 @@ class TestBuildCSV:
         assert rows[0]["ndvi_mean"] == ""
         assert rows[0]["ndvi_min"] == ""
 
+    def test_invalid_ndvi_statistics_produce_empty_cells(self, enrichment_manifest):
+        enrichment_manifest["ndvi_stats"][0] = {"mean": 0.4, "min": 0.1, "max": 1.2, "std": 0.1}
+
+        result = _build_csv(enrichment_manifest)
+        row = next(csv.DictReader(io.StringIO(result)))
+
+        assert row["ndvi_mean"] == ""
+        assert row["ndvi_min"] == ""
+        assert row["ndvi_max"] == ""
+        assert row["ndvi_std"] == ""
+
 
 class TestBuildPDF:
+    def test_vegetation_section_omits_invalid_ndvi_statistics(self):
+        from treesight.exports.pdf import _pdf_vegetation_section
+
+        pdf = MagicMock()
+        pdf.epw = 200
+        manifest = {
+            "frame_plan": [
+                {"label": "Valid", "year": 2023, "season": "spring", "start": "2023-01-01", "end": "2023-03-01"},
+                {"label": "Invalid", "year": 2024, "season": "spring", "start": "2024-01-01", "end": "2024-03-01"},
+            ],
+            "ndvi_stats": [
+                {"mean": 0.5, "min": 0.2, "max": 0.8, "std": 0.1},
+                {"mean": 1.04, "min": 0.8, "max": 1.2, "std": 0.1},
+            ],
+        }
+
+        _pdf_vegetation_section(pdf, manifest)
+
+        text = "\n".join(str(call.args[2]) for call in pdf.cell.call_args_list if len(call.args) > 2)
+        assert "NDVI observations: 1 frames" in text
+        assert "1.040" not in text
+        assert "--" in text
+
     def test_returns_pdf_bytes(self, enrichment_manifest):
         result = _build_pdf(enrichment_manifest, "run-123")
         assert isinstance(result, bytes)
@@ -580,6 +633,18 @@ class TestBuildBulkCsv:
         reader = csv.DictReader(io.StringIO(result))
         rows = list(reader)
         assert "frame_index" in rows[0]
+
+    def test_invalid_latest_detail_is_blank(self):
+        manifest = {
+            "per_aoi_metrics": [
+                {"vegetation": {"latest_detail": {"mean": 1.04}}},
+            ]
+        }
+
+        result = _build_bulk_csv(manifest)
+        row = next(csv.DictReader(io.StringIO(result)))
+
+        assert row["ndvi_latest_mean"] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -758,6 +823,17 @@ class TestBuildEudrGeoJson:
         ring = result["features"][0]["geometry"]["coordinates"][0]
         assert ring[0] == ring[-1]
 
+    def test_polygon_preserves_interior_rings_from_geometry(self, eudr_manifest):
+        rings = [
+            [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]],
+            [[36.802, -1.302], [36.804, -1.302], [36.803, -1.304], [36.802, -1.302]],
+        ]
+        eudr_manifest["per_aoi_enrichment"][0]["geometry"] = {"type": "Polygon", "coordinates": rings}
+
+        result = _build_eudr_geojson(eudr_manifest)
+
+        assert result["features"][0]["geometry"] == {"type": "Polygon", "coordinates": rings}
+
     def test_eudr_properties_present(self, eudr_manifest):
         result = _build_eudr_geojson(eudr_manifest)
         props = result["features"][0]["properties"]
@@ -781,6 +857,19 @@ class TestBuildEudrGeoJson:
         props = result["features"][0]["properties"]
         assert props["ndvi_latest_mean"] == 0.72
         assert props["change_trajectory"] == "stable"
+
+    def test_ndvi_summary_skips_invalid_means(self, eudr_manifest):
+        eudr_manifest["per_aoi_enrichment"][0]["ndvi_stats"] = [
+            {"mean": 0.72},
+            {"mean": 1.04},
+            {"mean": float("nan")},
+        ]
+
+        result = _build_eudr_geojson(eudr_manifest)
+
+        props = result["features"][0]["properties"]
+        assert props["ndvi_latest_mean"] == pytest.approx(0.72)
+        assert props["ndvi_observations"] == 1
 
     def test_failed_aoi_has_error_flag(self, eudr_manifest):
         result = _build_eudr_geojson(eudr_manifest)
@@ -918,6 +1007,19 @@ class TestBuildEudrCsv:
         result = _build_eudr_csv(eudr_manifest)
         assert isinstance(result, str)
 
+    def test_ndvi_summary_skips_invalid_statistics(self, eudr_manifest):
+        eudr_manifest["per_aoi_enrichment"][0]["ndvi_stats"] = [
+            {"mean": 0.72, "min": 0.5, "max": 0.85, "std": 0.08},
+            {"mean": 1.04, "min": 0.8, "max": 1.2, "std": 0.1},
+            {"mean": float("nan"), "min": 0.1, "max": 0.2, "std": 0.1},
+        ]
+
+        result = _build_eudr_csv(eudr_manifest)
+        row = next(csv.DictReader(io.StringIO(result)))
+
+        assert row["ndvi_latest_mean"] == "0.72"
+        assert row["ndvi_observations"] == "1"
+
     def test_has_header(self, eudr_manifest):
         result = _build_eudr_csv(eudr_manifest)
         reader = csv.reader(io.StringIO(result))
@@ -1007,6 +1109,29 @@ class TestBuildPdfEudrPerParcel:
         assert isinstance(result, bytes)
         assert result.startswith(b"%PDF")
 
+    def test_parcel_pdf_omits_invalid_ndvi_statistics(self):
+        from treesight.exports.pdf import _pdf_per_parcel_sections
+
+        pdf = MagicMock()
+        per_aoi = [
+            {
+                "name": "Parcel A",
+                "area_ha": 1.0,
+                "center": {"lat": 51.5, "lon": -0.12},
+                "determination": {"screening_outcome": "no_signal_detected", "confidence": "high", "flags": []},
+                "ndvi_stats": [
+                    {"mean": 0.5, "min": 0.2, "max": 0.8, "std": 0.1},
+                    {"mean": 1.04, "min": 0.8, "max": 1.2, "std": 0.1},
+                ],
+            }
+        ]
+
+        _pdf_per_parcel_sections(pdf, per_aoi)
+
+        text = "\n".join(str(call.args[2]) for call in pdf.cell.call_args_list if len(call.args) > 2)
+        assert "NDVI: 1 observations, latest 0.500" in text
+        assert "1.040" not in text
+
     def test_v2_nested_eudr_and_null_change_detection_render(self):
         manifest = {
             "per_aoi_enrichment": [
@@ -1023,6 +1148,28 @@ class TestBuildPdfEudrPerParcel:
         result = _build_pdf(manifest, "run-v2-partial")
 
         assert result.startswith(b"%PDF")
+
+    def test_parcel_summary_omits_invalid_ndvi_statistics(self):
+        from treesight.exports.pdf_audit import _audit_single_parcel
+
+        pdf = MagicMock()
+        aoi = {
+            "name": "Parcel A",
+            "area_ha": 2.0,
+            "center": {"lat": 51.5, "lon": -0.12},
+            "coords": [],
+            "determination": {"screening_outcome": "no_signal_detected", "confidence": "high", "flags": []},
+            "ndvi_stats": [
+                {"mean": 0.5, "min": 0.2, "max": 0.8, "std": 0.1},
+                {"mean": float("nan"), "min": 0.1, "max": 0.2, "std": 0.1},
+            ],
+        }
+
+        _audit_single_parcel(pdf, aoi, "3.1")
+
+        text = "\n".join(str(call.args[2]) for call in pdf.cell.call_args_list if len(call.args) > 2)
+        assert "NDVI: 1 observations | Latest: 0.500" in text
+        assert "nan" not in text.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -1116,7 +1263,8 @@ class TestBuildEudrDds:
         plots = result["dds_annex_ii"]["3_production"]["plots"]
         farm_a = next(p for p in plots if p["name"] == "Farm A")  # area_ha=12.5
         assert farm_a["geolocation_type"] == "polygon"
-        assert len(farm_a["coordinates"]) > 1
+        assert len(farm_a["coordinates"]) == 1
+        assert len(farm_a["coordinates"][0]) > 1
 
     def test_geolocation_uses_point_for_small_plots(self):
         manifest = {
@@ -1222,7 +1370,38 @@ class TestPlotGeolocationProvenance:
         }
         result = _plot_geolocation(aoi, is_cattle=False)
         assert result["geolocation_type"] == "polygon"
-        assert result["coordinates"] == coords
+        assert result["coordinates"] == [coords]
+
+    def test_legacy_polygon_coordinates_are_nested_as_exterior_ring(self):
+        coords = [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]]
+        aoi = {
+            "source_geometry_type": "Polygon",
+            "center": {"lat": -1.3, "lon": 36.8},
+            "coords": coords,
+        }
+
+        result = _plot_geolocation(aoi, is_cattle=False)
+
+        assert result["geolocation_type"] == "polygon"
+        assert result["coordinates"] == [coords]
+
+    def test_polygon_geolocation_preserves_interior_rings_from_geometry(self):
+        rings = [
+            [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]],
+            [[36.802, -1.302], [36.804, -1.302], [36.803, -1.304], [36.802, -1.302]],
+        ]
+        aoi = {
+            "source_geometry_type": "Polygon",
+            "area_ha": 1.2,
+            "center": {"lat": -1.3, "lon": 36.8},
+            "geometry": {"type": "Polygon", "coordinates": rings},
+            "coords": rings[0],
+        }
+
+        result = _plot_geolocation(aoi, is_cattle=False)
+
+        assert result["geolocation_type"] == "polygon"
+        assert result["coordinates"] == rings
 
     def test_cattle_always_returns_point_regardless_of_source_geometry_type(self):
         """is_cattle overrides source_geometry_type."""
@@ -1245,6 +1424,7 @@ class TestPlotGeolocationProvenance:
         }
         result = _plot_geolocation(aoi, is_cattle=False)
         assert result["geolocation_type"] == "polygon"
+        assert result["coordinates"] == [aoi["coords"]]
 
     def test_legacy_fallback_area_under_4ha_returns_point(self):
         """Without source_geometry_type, area <= 4 ha falls back to point."""
@@ -1291,7 +1471,31 @@ class TestPlotGeolocationProvenance:
         result = _build_eudr_dds(manifest)
         plot = result["dds_annex_ii"]["3_production"]["plots"][0]
         assert plot["geolocation_type"] == "polygon"
-        assert plot["coordinates"] == coords
+        assert plot["coordinates"] == [coords]
+
+    def test_dds_export_preserves_polygon_holes(self):
+        rings = [
+            [[2.34, 48.85], [2.36, 48.85], [2.36, 48.87], [2.34, 48.85]],
+            [[2.345, 48.855], [2.35, 48.855], [2.348, 48.86], [2.345, 48.855]],
+        ]
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Plot with pond",
+                    "source_geometry_type": "Polygon",
+                    "area_ha": 8.0,
+                    "center": {"lat": 48.86, "lon": 2.35},
+                    "geometry": {"type": "Polygon", "coordinates": rings},
+                    "coords": rings[0],
+                }
+            ]
+        }
+
+        result = _build_eudr_dds(manifest)
+
+        plot = result["dds_annex_ii"]["3_production"]["plots"][0]
+        assert plot["geolocation_type"] == "polygon"
+        assert plot["coordinates"] == rings
 
 
 class TestDispatchEudrExport:
@@ -1376,6 +1580,53 @@ class TestBuildEudrAuditPdf:
         ]
         result = build_eudr_audit_pdf(manifest, "run-filter")
         assert result.startswith(b"%PDF")
+
+    def test_appendix_omits_invalid_ndvi_statistics(self):
+        from treesight.exports.pdf_audit import _audit_appendix
+
+        pdf = MagicMock()
+        pdf.epw = 200
+        manifest = {
+            "frame_plan": [
+                {"label": "Valid", "year": 2021, "season": "spring", "start": "2021-01-01", "end": "2021-03-01"},
+                {"label": "Invalid", "year": 2022, "season": "spring", "start": "2022-01-01", "end": "2022-03-01"},
+            ],
+            "ndvi_stats": [
+                {"mean": 0.5, "min": 0.2, "max": 0.8, "scene_id": "valid-scene"},
+                {"mean": 1.04, "min": 0.8, "max": 1.2, "scene_id": "invalid-scene"},
+            ],
+        }
+
+        _audit_appendix(pdf, manifest)
+
+        text = "\n".join(str(call.args[2]) for call in pdf.cell.call_args_list if len(call.args) > 2)
+        assert "1.040" not in text
+        assert "1.200" not in text
+
+    def test_appendix_uses_start_date_before_year_fallback(self):
+        from treesight.exports.pdf_audit import _audit_appendix
+
+        pdf = MagicMock()
+        pdf.epw = 200
+        manifest = {
+            "frame_plan": [
+                {"label": "Pre-cutoff", "year": 2021, "start": "2020-06-01"},
+                {"label": "Invalid year", "year": float("inf")},
+                {"label": "Post-cutoff", "year": 2022},
+            ],
+            "ndvi_stats": [
+                {"mean": 0.4, "min": 0.2, "max": 0.8},
+                {"mean": 0.5, "min": 0.3, "max": 0.7},
+                {"mean": 0.6, "min": 0.4, "max": 0.8},
+            ],
+        }
+
+        _audit_appendix(pdf, manifest)
+
+        text = "\n".join(str(call.args[2]) for call in pdf.cell.call_args_list if len(call.args) > 2)
+        assert "Pre-cutoff" not in text
+        assert "Invalid year" not in text
+        assert "Post-cutoff" in text
 
     def test_with_operator_context(self, eudr_manifest):
         """Operator metadata should be accepted."""

@@ -432,6 +432,118 @@ class TestMonitoringEndpoints:
         resp = monitoring_endpoint(req)
         assert resp.status_code == 400
 
+    def test_create_monitor_rejects_malformed_polygon(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Malformed",
+            "aoi_geometry": {
+                "centroid": [0.5, 0.5],
+                "type": "Polygon",
+                "coordinates": ["bad"],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 400
+
+    @pytest.mark.parametrize("geometry_type", [[], {}], ids=["list", "object"])
+    def test_create_monitor_rejects_unhashable_geometry_type(
+        self, geometry_type, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Unhashable geometry type",
+            "aoi_geometry": {
+                "centroid": [0.5, 0.5],
+                "type": geometry_type,
+                "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 0.0]]],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        response = monitoring_endpoint(req)
+
+        assert response.status_code == 400
+        assert "valid Polygon" in response.get_body().decode()
+
+    def test_create_monitor_rejects_multipolygon_beyond_supported_span(
+        self, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Disjoint regions",
+            "aoi_geometry": {
+                "centroid": [5.0, 5.0],
+                "type": "MultiPolygon",
+                "coordinates": [
+                    [[[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.1], [0.0, 0.0]]],
+                    [[[10.0, 10.0], [10.1, 10.0], [10.1, 10.1], [10.0, 10.1], [10.0, 10.0]]],
+                ],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 400
+
+    def test_create_monitor_error_explains_polygon_only_support(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Nearby islands",
+            "aoi_geometry": {
+                "centroid": [36.81, -1.3],
+                "type": "MultiPolygon",
+                "coordinates": [
+                    [[[36.8, -1.3], [36.801, -1.3], [36.801, -1.299], [36.8, -1.299], [36.8, -1.3]]],
+                    [[[36.82, -1.3], [36.821, -1.3], [36.821, -1.299], [36.82, -1.299], [36.82, -1.3]]],
+                ],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        response = monitoring_endpoint(req)
+        assert response.status_code == 400
+        response_body = response.get_body().decode()
+        assert "supported MultiPolygon" not in response_body
+        assert "valid Polygon" in response_body
+
+    def test_create_monitor_rejects_polygon_outside_epsg4326_bounds(
+        self, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Out of bounds",
+            "aoi_geometry": {
+                "centroid": [180.0, 0.0],
+                "type": "Polygon",
+                "coordinates": [[[179.0, -1.0], [181.0, -1.0], [181.0, 1.0], [179.0, 1.0], [179.0, -1.0]]],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 400
+
+    def test_create_monitor_rejects_polygon_with_non_finite_bounds(
+        self, _mock_cosmos, _mock_auth, _mock_pro_subscription
+    ):
+        from blueprints.monitoring import monitoring_endpoint
+
+        body = {
+            "aoi_name": "Non-finite bounds",
+            "aoi_geometry": {
+                "centroid": [0.0, 0.0],
+                "type": "Polygon",
+                "coordinates": [[[0.0, 0.0], [float("inf"), 0.0], [1.0, 1.0], [0.0, 0.0]]],
+            },
+        }
+        req = make_test_request("/api/monitoring", method="POST", body=body)
+
+        assert monitoring_endpoint(req).status_code == 400
+
     def test_create_monitor_invalid_cadence(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
         from blueprints.monitoring import monitoring_endpoint
 
@@ -584,13 +696,108 @@ class TestMonitoringScheduler:
         timer.past_due = False
         monitoring_scheduler(timer)  # empty store, nothing due
 
+    def test_malformed_legacy_geometry_is_unavailable(self):
+        from blueprints.monitoring import _monitor_geometry_and_coords
+
+        geometry, coords = _monitor_geometry_and_coords({"type": "Polygon", "coordinates": ["bad"]})
+
+        assert geometry is None
+        assert coords == []
+
+    @pytest.mark.parametrize("geometry_type", [[], {}], ids=["list", "object"])
+    def test_process_monitor_skips_legacy_unhashable_geometry_type(self, geometry_type, _mock_cosmos):
+        from treesight.monitoring import create_monitor
+
+        ring = [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]]
+        monitor = create_monitor(
+            user_id="user-1",
+            aoi_name="Malformed geometry type",
+            aoi_geometry={"centroid": [36.8, -1.3], "type": geometry_type, "coordinates": [ring]},
+        )
+
+        from blueprints.monitoring import _process_monitor
+
+        with (
+            patch("treesight.monitoring.advance_schedule") as advance,
+            patch("treesight.pipeline.enrichment.run_enrichment") as enrich,
+        ):
+            _process_monitor(monitor)
+
+        enrich.assert_not_called()
+        advance.assert_called_once_with(monitor, run_id="skipped-unavailable-geometry")
+
+    def test_disjoint_legacy_multipolygon_is_unavailable(self):
+        from blueprints.monitoring import _monitor_geometry_and_coords
+
+        geometry, coords = _monitor_geometry_and_coords(
+            {
+                "type": "MultiPolygon",
+                "coordinates": [
+                    [[[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.1], [0.0, 0.0]]],
+                    [[[10.0, 10.0], [10.1, 10.0], [10.1, 10.1], [10.0, 10.1], [10.0, 10.0]]],
+                ],
+            }
+        )
+
+        assert geometry is None
+        assert coords == []
+
+    def test_process_monitor_skips_legacy_multipolygon(self, _mock_cosmos):
+        from treesight.monitoring import create_monitor
+
+        monitor = create_monitor(
+            user_id="user-1",
+            aoi_name="Legacy multipart",
+            aoi_geometry={
+                "centroid": [36.81, -1.3],
+                "type": "MultiPolygon",
+                "coordinates": [
+                    [[[36.8, -1.3], [36.801, -1.3], [36.801, -1.299], [36.8, -1.3]]],
+                    [[[36.82, -1.3], [36.821, -1.3], [36.821, -1.299], [36.82, -1.3]]],
+                ],
+            },
+        )
+
+        from blueprints.monitoring import _process_monitor
+
+        with (
+            patch("treesight.monitoring.advance_schedule") as advance,
+            patch("treesight.pipeline.enrichment.run_enrichment") as enrich,
+        ):
+            _process_monitor(monitor)
+
+        enrich.assert_not_called()
+        advance.assert_called_once_with(monitor, run_id="skipped-unavailable-geometry")
+
+    def test_multipolygon_cannot_bypass_rejection_with_legacy_exterior(self):
+        from blueprints.monitoring import _validated_monitor_polygon
+
+        assert _validated_monitor_polygon({**_SAMPLE_GEOMETRY, "type": "MultiPolygon"}) is None
+
+    def test_process_monitor_skips_malformed_legacy_exterior(self, _mock_cosmos):
+        from blueprints.monitoring import _process_monitor
+        from treesight.monitoring import create_monitor
+
+        monitor = create_monitor(
+            user_id="user-1",
+            aoi_name="Malformed legacy",
+            aoi_geometry={"centroid": [36.81, -1.3], "exterior_coords": ["bad"]},
+        )
+        with (
+            patch("treesight.monitoring.advance_schedule") as advance,
+            patch("treesight.pipeline.enrichment.run_enrichment", return_value={}) as enrich,
+        ):
+            _process_monitor(monitor)
+        enrich.assert_not_called()
+        advance.assert_called_once_with(monitor, run_id="skipped-unavailable-geometry")
+
     def test_process_monitor_no_centroid(self, _mock_cosmos):
         from treesight.monitoring import create_monitor
 
         m = create_monitor(
             user_id="user-1",
             aoi_name="No Centroid",
-            aoi_geometry={"centroid": [0.0, 0.0]},
+            aoi_geometry={},
         )
 
         from blueprints.monitoring import _process_monitor
@@ -599,6 +806,27 @@ class TestMonitoringScheduler:
             _process_monitor(m)
             mock_advance.assert_called_once()
             assert mock_advance.call_args[1]["run_id"] == "skipped-no-centroid"
+
+    def test_process_monitor_accepts_valid_null_island_centroid(self, _mock_cosmos):
+        from treesight.monitoring import create_monitor
+
+        ring = [[-0.01, -0.01], [0.01, -0.01], [0.01, 0.01], [-0.01, 0.01], [-0.01, -0.01]]
+        monitor = create_monitor(
+            user_id="user-1",
+            aoi_name="Null Island",
+            aoi_geometry={"centroid": [0.0, 0.0], "type": "Polygon", "coordinates": [ring]},
+        )
+
+        from blueprints.monitoring import _process_monitor
+
+        with (
+            patch("treesight.monitoring.advance_schedule") as advance,
+            patch("treesight.pipeline.enrichment.run_enrichment", return_value={}) as enrich,
+        ):
+            _process_monitor(monitor)
+
+        assert enrich.call_args.kwargs["coords"] == ring
+        advance.assert_called_once_with(monitor, run_id=f"monitoring-{monitor.id}")
 
     def test_process_monitor_with_enrichment(self, _mock_cosmos):
         from treesight.monitoring import create_monitor
@@ -629,11 +857,18 @@ class TestMonitoringScheduler:
             patch(
                 "treesight.pipeline.enrichment.run_enrichment",
                 return_value=mock_enrichment,
-            ),
+            ) as mock_run_enrichment,
             patch("treesight.storage.client.BlobStorageClient"),
             patch("treesight.email.send_email", return_value=True),
         ):
             _process_monitor(m)
+
+        run_kwargs = mock_run_enrichment.call_args.kwargs
+        assert run_kwargs["coords"] == _SAMPLE_GEOMETRY["exterior_coords"]
+        assert run_kwargs["geometry"] == {
+            "type": "Polygon",
+            "coordinates": [_SAMPLE_GEOMETRY["exterior_coords"]],
+        }
 
     def test_process_monitor_uses_latest_change_comparison_by_year(self, _mock_cosmos):
         from treesight.monitoring import create_monitor

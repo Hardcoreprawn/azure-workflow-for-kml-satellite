@@ -82,6 +82,18 @@ def test_build_inputs_digest_changes_when_image_config_changes(tmp_path):
     assert d1 != d2
 
 
+def test_build_inputs_digest_changes_when_dockerignore_changes(tmp_path):
+    dockerfile = tmp_path / "Dockerfile.dev"
+    dockerfile.write_bytes(b"FROM base\n")
+    dockerignore = tmp_path / ".dockerignore"
+    dockerignore.write_bytes(b"rust/target/\n")
+    original_digest = build_inputs_digest(dockerfile, root=tmp_path)
+
+    dockerignore.write_bytes(b"rust/target/\nrust/src/optional.rs\n")
+
+    assert build_inputs_digest(dockerfile, root=tmp_path) != original_digest
+
+
 def test_build_inputs_digest_missing_extras_ok(tmp_path):
     df = tmp_path / "Dockerfile.dev"
     df.write_bytes(b"FROM base\n")
@@ -176,12 +188,12 @@ def test_staleness_reason_stale_when_build_inputs_differ():
     assert "build inputs" in reason
 
 
-def test_staleness_reason_fresh_when_build_label_absent_but_lock_matches():
-    # image built before the build-inputs label was introduced — treat as fresh
-    # (no build label = no new check, not stale).
+def test_staleness_reason_stale_when_build_label_absent_but_lock_matches():
     lock_digest = "a" * 64
     build_digest = "c" * 64
-    assert staleness_reason(lock_digest, lock_digest, build_digest, None) is None
+    reason = staleness_reason(lock_digest, lock_digest, build_digest, None)
+    assert reason is not None
+    assert LABEL_KEY_BUILD in reason
 
 
 # ── read_image_label ───────────────────────────────────────────────────────

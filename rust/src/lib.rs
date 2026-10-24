@@ -6,6 +6,8 @@ use numpy::{IntoPyArray, PyArray2, PyReadonlyArray2};
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
+const MIN_VALID_CHANGE_PIXELS: u64 = 4;
+
 /// Helper: extract a contiguous slice from a 2-D array, returning a Python
 /// ValueError instead of panicking if the array is not contiguous.
 fn contiguous_slice<'a, T: numpy::Element>(
@@ -15,6 +17,20 @@ fn contiguous_slice<'a, T: numpy::Element>(
     arr.as_slice().ok_or_else(|| {
         pyo3::exceptions::PyValueError::new_err(format!("{name} array is not contiguous"))
     })
+}
+
+fn require_matching_shapes(
+    left: (usize, usize),
+    right: (usize, usize),
+    left_name: &str,
+    right_name: &str,
+) -> PyResult<()> {
+    if left != right {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "{left_name} and {right_name} arrays must have matching shapes"
+        )));
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -35,6 +51,17 @@ fn compute_ndvi_array<'py>(
 ) -> PyResult<(Bound<'py, PyArray2<f32>>, Bound<'py, PyArray2<bool>>)> {
     let red = red.as_array();
     let nir = nir.as_array();
+    require_matching_shapes(
+        (red.nrows(), red.ncols()),
+        (nir.nrows(), nir.ncols()),
+        "red",
+        "nir",
+    )?;
+    if red.nrows() == 0 || red.ncols() == 0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "NDVI bands must have non-empty dimensions",
+        ));
+    }
 
     let rows = red.nrows();
     let cols = red.ncols();
@@ -79,6 +106,12 @@ fn compute_ndvi_array<'py>(
 fn ndvi_stats(py: Python<'_>, ndvi: PyReadonlyArray2<'_, f32>, valid: PyReadonlyArray2<'_, bool>) -> PyResult<Py<PyAny>> {
     let ndvi = ndvi.as_array();
     let valid = valid.as_array();
+    require_matching_shapes(
+        (ndvi.nrows(), ndvi.ncols()),
+        (valid.nrows(), valid.ncols()),
+        "NDVI",
+        "valid mask",
+    )?;
 
     let mut vals: Vec<f32> = Vec::new();
     let total = ndvi.len();
@@ -154,6 +187,11 @@ fn resample_nearest<'py>(
     let src = src.as_array();
     let src_rows = src.nrows();
     let src_cols = src.ncols();
+    if src_rows == 0 || src_cols == 0 || target_rows == 0 || target_cols == 0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "source and target dimensions must be non-empty",
+        ));
+    }
 
     if src_rows == target_rows && src_cols == target_cols {
         return Ok(src.to_owned().into_pyarray(py));
@@ -308,8 +346,14 @@ fn compute_change<'py>(
 ) -> PyResult<(Bound<'py, PyArray2<f32>>, Py<PyAny>)> {
     let a = ndvi_a.as_array();
     let b = ndvi_b.as_array();
-    let rows = a.nrows().min(b.nrows());
-    let cols = a.ncols().min(b.ncols());
+    require_matching_shapes(
+        (a.nrows(), a.ncols()),
+        (b.nrows(), b.ncols()),
+        "ndvi_a",
+        "ndvi_b",
+    )?;
+    let rows = a.nrows();
+    let cols = a.ncols();
     let size = rows * cols;
     let mut delta_buf = vec![f32::NAN; size];
 
@@ -334,7 +378,7 @@ fn compute_change<'py>(
     let to_array = |buf| Array2::from_shape_vec((rows, cols), buf)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()));
 
-    if acc.n_valid == 0 {
+    if acc.n_valid < MIN_VALID_CHANGE_PIXELS {
         return Ok((to_array(delta_buf)?.into_pyarray(py), py.None().into_any()));
     }
 
@@ -359,9 +403,11 @@ fn apply_scl_mask(
     scl: PyReadonlyArray2<'_, u8>,
     valid_classes: Vec<u8>,
 ) -> PyResult<u64> {
-    use numpy::PyArrayMethods;
+    use numpy::{PyArrayMethods, PyUntypedArrayMethods};
 
     let scl = scl.as_array();
+    let valid_shape = (valid.shape()[0], valid.shape()[1]);
+    require_matching_shapes(valid_shape, (scl.nrows(), scl.ncols()), "valid mask", "SCL")?;
     // SAFETY: No other thread accesses this array during execution.
     // PyO3 holds the GIL, so Python cannot touch it concurrently.
     // We only write `false` (narrowing the valid set), never `true`.
