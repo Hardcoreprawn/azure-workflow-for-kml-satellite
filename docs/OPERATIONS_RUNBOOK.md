@@ -645,6 +645,42 @@ termination SLA. See `docs/LOCAL_RELIABILITY_AUDIT.md` for measured evidence.
 4. Confirm workflow pre-flight passed `GHCR_PULL_TOKEN` contract validation.
 5. After recovery, restart Function App and verify `/api/health` returns 200.
 
+### Compute backing Container App unavailable
+
+The `Configure Function App` step resolves the compute `Microsoft.Web/sites`
+ARM ID and derives its subscription directly, without relying on another
+step's `ARM_SUBSCRIPTION_ID`. Before any compute configuration writes, it
+requires an `azurecontainerapps` site with `managedEnvironmentId` and queries
+the same-named `Microsoft.App/containerApps` resource in that subscription
+and resource group. It checks the returned ID, resource type, and managed
+environment before using the returned ID for KEDA GET/PATCH operations.
+An unrelated Container App or a Flex Consumption site is not a substitute.
+
+On `Compute backing Container App unavailable`, `mismatch`, or
+`Unsupported compute topology`:
+
+1. Capture the workflow annotation and CLI error, including the site ID,
+   subscription, resource group, and managed environment. Do not attach
+   app settings, credentials, or raw resource configuration.
+2. Have the deployment owner verify the Tofu outputs, Azure login target,
+   and deploy identity's read/write access. A failed lookup can mean absent
+   resources or insufficient permission; it is not proof of deletion.
+3. Confirm the hosting topology actually exposes the expected first-class
+   Container App in that managed environment. If it does not, resolve the
+   provisioning/platform mismatch with the infrastructure owner or Azure
+   Support. Do not fabricate an ARM URL, create an ad-hoc replacement, or
+   use Flex-only trigger settings as a fallback.
+4. Keep deployment paused until the owner approves re-entry. This preflight
+   changes no compute configuration on failure, but earlier infrastructure
+   steps may already have changed resources. It does not replace rollback
+   or readiness evidence for the overall deployment.
+
+This resolution check applies to any environment reaching the compute step;
+the existing production freeze and pause guards remain authoritative. Local
+regression tests use only mocked Azure CLI responses, not proof of live
+resource availability. KEDA wake-up/cost policy remains #1528, and immutable
+promotion/rollback remains #1503/#1327. Issue #884 does not authorize a deploy.
+
 ### Function App write blocked by stuck ARM operation
 
 Symptom in deploy logs:
