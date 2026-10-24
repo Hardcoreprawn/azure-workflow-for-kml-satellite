@@ -105,18 +105,18 @@ class TestFivePolygons:
 
 
 class TestMultiPolygon:
-    def test_multi_geometry_produces_multiple_features(self, multi_polygon_kml_bytes: bytes):
+    def test_multi_geometry_produces_one_feature_with_multiple_parts(self, multi_polygon_kml_bytes: bytes):
         features = parse_kml_lxml(multi_polygon_kml_bytes, source_file="multi.kml")
-        assert len(features) == 2
+        assert len(features) == 1
+        assert len(features[0].geometry.parts) == 2
 
-    def test_multi_geometry_names_same(self, multi_polygon_kml_bytes: bytes):
-        """Both polygons from a MultiGeometry share the placemark name."""
+    def test_multi_geometry_keeps_placemark_identity(self, multi_polygon_kml_bytes: bytes):
         features = parse_kml_lxml(multi_polygon_kml_bytes, source_file="multi.kml")
-        assert features[0].name == features[1].name == "Multi Block"
+        assert features[0].name == "Multi Block"
 
-    def test_multi_geometry_distinct_coords(self, multi_polygon_kml_bytes: bytes):
+    def test_multi_geometry_keeps_distinct_parts(self, multi_polygon_kml_bytes: bytes):
         features = parse_kml_lxml(multi_polygon_kml_bytes, source_file="multi.kml")
-        assert features[0].exterior_coords != features[1].exterior_coords
+        assert features[0].geometry.parts[0].outer != features[0].geometry.parts[1].outer
 
 
 # ── Polygon with hole ──────────────────────────────────────
@@ -127,22 +127,27 @@ class TestPolygonWithHole:
         features = parse_kml_lxml(polygon_with_hole_kml_bytes, source_file="hole.kml")
         assert len(features) == 1
 
-    def test_interior_coords_present(self, polygon_with_hole_kml_bytes: bytes):
+    def test_interior_rings_are_explicit_holes(self, polygon_with_hole_kml_bytes: bytes):
         features = parse_kml_lxml(polygon_with_hole_kml_bytes, source_file="hole.kml")
         assert features[0].has_holes is True
-        assert len(features[0].interior_coords) == 1
+        assert len(features[0].geometry.parts[0].inners) == 1
 
     def test_interior_ring_has_coords(self, polygon_with_hole_kml_bytes: bytes):
         features = parse_kml_lxml(polygon_with_hole_kml_bytes, source_file="hole.kml")
-        inner = features[0].interior_coords[0]
+        inner = features[0].geometry.parts[0].inners[0]
         assert len(inner) >= 4  # closed ring: at least 3 vertices + closing point
 
-    def test_aoi_area_excludes_hole_indication(self, polygon_with_hole_kml_bytes: bytes):
-        """AOI should still compute area from exterior ring (hole handling is geometry-level)."""
+    def test_aoi_area_subtracts_holes(self, polygon_with_hole_kml_bytes: bytes):
         features = parse_kml_lxml(polygon_with_hole_kml_bytes, source_file="hole.kml")
         aoi = prepare_aoi(features[0])
+        exterior = [list(point) for point in features[0].geometry.parts[0].outer]
+        hole = [list(point) for point in features[0].geometry.parts[0].inners[0]]
+        exterior_area, exterior_perimeter = _geodesic_area_and_perimeter(exterior)
+        hole_area, hole_perimeter = _geodesic_area_and_perimeter(hole)
+
         assert aoi.area_ha > 0
-        assert aoi.perimeter_km > 0
+        assert aoi.area_ha == pytest.approx(exterior_area - hole_area, rel=1e-6)
+        assert aoi.perimeter_km == pytest.approx(exterior_perimeter + hole_perimeter, rel=1e-6)
 
 
 # ── Tiny polygon ───────────────────────────────────────────
@@ -230,8 +235,8 @@ class TestAdjacentPolygons:
     def test_shared_edge(self, adjacent_polygons_kml_bytes: bytes):
         """North block south edge == South block north edge (lat -1.31)."""
         features = parse_kml_lxml(adjacent_polygons_kml_bytes, source_file="adjacent.kml")
-        bbox_n = _compute_bbox(features[0].exterior_coords)
-        bbox_s = _compute_bbox(features[1].exterior_coords)
+        bbox_n = _compute_bbox([list(point) for point in features[0].geometry.parts[0].outer])
+        bbox_s = _compute_bbox([list(point) for point in features[1].geometry.parts[0].outer])
         assert bbox_n[1] == pytest.approx(bbox_s[3])  # min_lat_N ≈ max_lat_S
 
     def test_distinct_metadata(self, adjacent_polygons_kml_bytes: bytes):
@@ -345,11 +350,11 @@ class TestEdgeCases:
         assert len(features) == 1
         assert features[0].name == "A Polygon"
 
-    def test_polygon_too_few_coords_skipped(self, fixture_bytes):
-        """< 3 vertices → polygon skipped, not an error."""
+    def test_polygon_too_few_coords_rejected(self, fixture_bytes):
+        """Malformed polygon input must not disappear from a submission."""
         kml = fixture_bytes("broken_degenerate_coords.kml")
-        features = parse_kml_lxml(kml)
-        assert len(features) == 0
+        with pytest.raises(ValueError, match="rings must be closed"):
+            parse_kml_lxml(kml)
 
     def test_large_coordinate_precision(self):
         """Coordinates with many decimal places should parse correctly."""
@@ -372,5 +377,5 @@ class TestEdgeCases:
         </kml>"""
         features = parse_kml_lxml(kml)
         assert len(features) == 1
-        coord = features[0].exterior_coords[0]
+        coord = features[0].geometry.parts[0].outer[0]
         assert coord[0] == pytest.approx(36.12345678)

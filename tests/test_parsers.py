@@ -15,6 +15,14 @@ from treesight.parsers.lxml_parser import parse_kml_lxml
 
 
 class TestLxmlParser:
+    def test_ring_closure_does_not_mutate_input(self):
+        from treesight.parsers import ensure_closed
+
+        ring = [[0, 0], [1, 0], [1, 1]]
+        closed = ensure_closed(ring)
+        assert closed == [[0, 0], [1, 0], [1, 1], [0, 0]]
+        assert ring == [[0, 0], [1, 0], [1, 1]]
+
     def test_parse_two_placemarks(self, sample_kml_bytes: bytes):
         features = parse_kml_lxml(sample_kml_bytes, source_file="sample.kml")
         assert len(features) == 2
@@ -32,20 +40,20 @@ class TestLxmlParser:
         assert features[0].metadata.get("crop") == "apple"
         assert features[0].metadata.get("variety") == "fuji"
 
-    def test_exterior_coords_count(self, sample_kml_bytes: bytes):
+    def test_exterior_ring_vertex_count(self, sample_kml_bytes: bytes):
         features = parse_kml_lxml(sample_kml_bytes, source_file="sample.kml")
         # 5 coords (closed ring)
-        assert len(features[0].exterior_coords) == 5
+        assert len(features[0].geometry.parts[0].outer) == 5
 
     def test_coords_are_lon_lat(self, sample_kml_bytes: bytes):
         features = parse_kml_lxml(sample_kml_bytes, source_file="sample.kml")
-        first = features[0].exterior_coords[0]
+        first = features[0].geometry.parts[0].outer[0]
         assert first[0] == pytest.approx(36.8)  # lon
         assert first[1] == pytest.approx(-1.3)  # lat
 
     def test_polygon_closed(self, sample_kml_bytes: bytes):
         features = parse_kml_lxml(sample_kml_bytes, source_file="sample.kml")
-        coords = features[0].exterior_coords
+        coords = features[0].geometry.parts[0].outer
         assert coords[0] == coords[-1]
 
     def test_source_file_set(self, sample_kml_bytes: bytes):
@@ -70,10 +78,14 @@ class TestLxmlParser:
         features = parse_kml_lxml(sample_kml_bytes, source_file="sample.kml")
         assert features[0].description == "Test orchard block"
 
-    def test_polygon_with_less_than_3_coords_skipped(self, fixture_bytes):
-        """A polygon with < 3 vertices should be skipped."""
-        features = parse_kml_lxml(fixture_bytes("broken_degenerate_coords.kml"))
-        assert len(features) == 0
+    def test_polygon_with_less_than_3_coords_is_rejected(self, fixture_bytes):
+        with pytest.raises(ValueError, match="rings must be closed"):
+            parse_kml_lxml(fixture_bytes("broken_degenerate_coords.kml"))
+
+    def test_malformed_coordinate_cannot_silently_change_a_polygon(self, sample_kml_bytes: bytes):
+        malformed = sample_kml_bytes.replace(b"36.81,-1.3,0", b"invalid,-1.3,0", 1)
+        with pytest.raises(ValueError, match="Invalid KML coordinate"):
+            parse_kml_lxml(malformed)
 
     @pytest.mark.parametrize(
         "namespace",
@@ -115,6 +127,36 @@ def _make_kmz(kml_bytes: bytes, entry_name: str = "doc.kml") -> bytes:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(entry_name, kml_bytes)
     return buf.getvalue()
+
+
+@pytest.mark.parametrize("multipart", [False, True])
+def test_fiona_keeps_all_rings_in_one_feature(monkeypatch, multipart: bool):
+    from treesight.models.geometry import PolygonGeometry, PolygonPart
+    from treesight.parsers.fiona_parser import parse_kml_fiona
+
+    outer = ((0, 0), (5, 0), (5, 5), (0, 5), (0, 0))
+    hole = ((1, 1), (2, 1), (2, 2), (1, 2), (1, 1))
+    second_hole = ((3, 3), (4, 3), (4, 4), (3, 4), (3, 3))
+    parts = (PolygonPart(outer=outer, inners=(hole, second_hole)),)
+    if multipart:
+        parts += (PolygonPart(outer=((1.2, 1.2), (1.8, 1.2), (1.8, 1.8), (1.2, 1.8), (1.2, 1.2))),)
+    geometry = PolygonGeometry(parts=parts)
+    monkeypatch.setattr(
+        "treesight.parsers.fiona_parser._fiona_open_and_collect",
+        lambda *args: [{"geometry": geometry.to_geojson(), "properties": {"Name": "Whole plot"}}],
+    )
+
+    features = parse_kml_fiona(b"<kml/>", source_file="whole.kml")
+    assert len(features) == 1
+    assert features[0].geometry == geometry
+    assert features[0].name == "Whole plot"
+
+
+def test_fiona_rejects_incomplete_position_instead_of_dropping_it():
+    from treesight.parsers.fiona_parser import _normalise_ring
+
+    with pytest.raises(ValueError, match="longitude and latitude"):
+        _normalise_ring([(0, 0), (1,), (1, 1)])
 
 
 class TestMaybeUnzip:
@@ -325,13 +367,16 @@ class TestCorpusFixtures:
             "broken_no_placemarks.kml",
             "broken_points_only.kml",
             "broken_linestrings_only.kml",
-            "broken_degenerate_coords.kml",
-            "broken_out_of_range_coords.kml",
         ],
     )
     def test_rejected_or_non_polygon_inputs_produce_no_features(self, fixture_name: str, fixture_bytes):
         features = parse_kml_lxml(fixture_bytes(fixture_name), source_file=fixture_name)
         assert len(features) == 0
+
+    @pytest.mark.parametrize("fixture_name", ["broken_degenerate_coords.kml", "broken_out_of_range_coords.kml"])
+    def test_invalid_polygon_inputs_are_rejected(self, fixture_name: str, fixture_bytes):
+        with pytest.raises(ValueError):
+            parse_kml_lxml(fixture_bytes(fixture_name), source_file=fixture_name)
 
     @pytest.mark.parametrize(
         ("fixture_name", "expected_count"),
@@ -339,11 +384,10 @@ class TestCorpusFixtures:
             ("real_google_earth_export.kml", 1),
             ("real_qgis_export.kml", 1),
             ("edge_antimeridian.kml", 2),
-            ("edge_self_intersecting.kml", 1),
             ("edge_nested_folders.kml", 1),
             ("edge_mixed_geometries.kml", 1),
             ("edge_networklink.kml", 0),
-            ("edge_multigeometry.kml", 2),
+            ("edge_multigeometry.kml", 1),
             ("edge_cdata_description.kml", 1),
             ("edge_empty_name.kml", 2),
         ],
@@ -352,7 +396,11 @@ class TestCorpusFixtures:
         features = parse_kml_lxml(fixture_bytes(fixture_name), source_file=fixture_name)
         assert len(features) == expected_count
         if expected_count:
-            assert all(len(feature.exterior_coords) >= 4 for feature in features)
+            assert all(len(feature.geometry.parts[0].outer) >= 4 for feature in features)
+
+    def test_self_intersecting_polygon_is_rejected(self, fixture_bytes):
+        with pytest.raises(ValueError, match="valid polygon"):
+            parse_kml_lxml(fixture_bytes("edge_self_intersecting.kml"), source_file="edge_self_intersecting.kml")
 
     def test_xxe_fixture_rejected_before_network_attempt(self, fixture_bytes):
         with pytest.raises(ValueError, match=r"DOCTYPE|DTD|[Ee]ntit"):
@@ -439,7 +487,7 @@ class TestLxmlParserProperty:
                 assert isinstance(result, list)
                 for f in result:
                     assert isinstance(f.name, str)
-                    assert isinstance(f.exterior_coords, list)
+                    assert isinstance(f.geometry.parts[0].outer, tuple)
             except (ValueError, XMLSyntaxError):
                 pass  # expected — malformed XML or validation error
 
@@ -450,9 +498,11 @@ class TestLxmlParserProperty:
         """Generate minimal but structurally valid KML and verify feature invariants."""
         from hypothesis import assume, given, settings
         from hypothesis import strategies as st
+        from shapely.geometry import MultiPoint, Polygon
 
-        # Strategies for coordinate components in WGS-84 range
-        lon_st = st.floats(min_value=-180.0, max_value=180.0, allow_nan=False, allow_infinity=False)
+        # Keep generated valid polygons within a hemisphere; dateline rejection
+        # has its own deterministic regression.
+        lon_st = st.floats(min_value=-90.0, max_value=90.0, allow_nan=False, allow_infinity=False)
         lat_st = st.floats(min_value=-90.0, max_value=90.0, allow_nan=False, allow_infinity=False)
 
         coord_st = st.tuples(lon_st, lat_st)
@@ -471,6 +521,9 @@ class TestLxmlParserProperty:
         def _inner(name: str, coords: list[tuple[float, float]]) -> None:
             # Require all coordinate components to be finite
             assume(all(abs(lon) <= 180 and abs(lat) <= 90 for lon, lat in coords))
+            polygon = MultiPoint(coords).convex_hull
+            assume(isinstance(polygon, Polygon) and polygon.area > 0)
+            coords = list(polygon.exterior.coords)
 
             coord_str = " ".join(f"{lon},{lat},0" for lon, lat in coords)
             kml = (
@@ -492,7 +545,7 @@ class TestLxmlParserProperty:
                 # CRS must always be EPSG:4326
                 assert f.crs == "EPSG:4326"
                 # Exterior ring must be closed (first == last coord)
-                ext = f.exterior_coords
+                ext = f.geometry.parts[0].outer
                 assert len(ext) >= 3
                 assert ext[0] == ext[-1], "Exterior ring must be closed"
                 # feature_index must be a non-negative integer

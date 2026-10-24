@@ -19,6 +19,7 @@ import re
 
 from treesight.constants import METRES_PER_DEGREE_LATITUDE
 from treesight.models.feature import Feature
+from treesight.models.geometry import PolygonGeometry, PolygonPart
 from treesight.parsers import ensure_closed
 
 logger = logging.getLogger(__name__)
@@ -127,7 +128,7 @@ def parse_coordinate_text(
         features.append(
             Feature(
                 name=f"Point ({lat:.6f}, {lon:.6f})",
-                exterior_coords=ring,
+                geometry=_polygon_geometry(ring),
                 source_file=source_file,
                 feature_index=0,
             )
@@ -139,7 +140,7 @@ def parse_coordinate_text(
             features.append(
                 Feature(
                     name=f"Point ({lat:.6f}, {lon:.6f})",
-                    exterior_coords=ring,
+                    geometry=_polygon_geometry(ring),
                     source_file=source_file,
                     feature_index=i,
                 )
@@ -152,7 +153,7 @@ def parse_coordinate_text(
         features.append(
             Feature(
                 name="Coordinate polygon",
-                exterior_coords=ring,
+                geometry=_polygon_geometry(ring),
                 source_file=source_file,
                 feature_index=0,
             )
@@ -222,7 +223,7 @@ def parse_csv(
         features.append(
             Feature(
                 name=fname,
-                exterior_coords=ring,
+                geometry=_polygon_geometry(ring),
                 source_file=source_file,
                 feature_index=i,
             )
@@ -232,6 +233,12 @@ def parse_csv(
         raise ValueError("CSV contains no data rows")
 
     return features
+
+
+def _polygon_geometry(ring: list[list[float]]) -> PolygonGeometry:
+    return PolygonGeometry(
+        parts=(PolygonPart(outer=tuple((position[0], position[1]) for position in ring)),),
+    )
 
 
 def _find_column(headers: dict[str, str], candidates: set[str]) -> str | None:

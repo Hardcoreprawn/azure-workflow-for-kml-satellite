@@ -18,6 +18,7 @@ os.environ.setdefault("GDAL_DISABLE_READDIR_ON_OPEN", "EMPTY_DIR")
 
 from treesight.log import logger
 from treesight.models.feature import Feature
+from treesight.models.geometry import PolygonGeometry, PolygonPart
 from treesight.parsers import ensure_closed as _ensure_closed
 
 _NAME_KEYS = frozenset({"name", "description"})
@@ -74,8 +75,7 @@ def parse_kml_fiona(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
             if geom_type == "Polygon":
                 features.append(_polygon_to_feature(geom, props, source_file, len(features)))
             elif geom_type == "MultiPolygon":
-                for poly_coords in geom.get("coordinates", []):
-                    features.append(_multi_polygon_part_to_feature(poly_coords, props, source_file, len(features)))
+                features.append(_multi_polygon_to_feature(geom, props, source_file, len(features)))
             else:
                 logger.warning(
                     "fiona_parser: skipping non-polygon type=%s index=%d source=%s",
@@ -116,20 +116,12 @@ def _coords_to_feature(
     index: int,
 ) -> Feature:
     """Build a Feature from a list of coordinate rings [exterior, *interiors]."""
-    exterior = _normalise_ring(rings[0]) if rings else []
-    interior = [_normalise_ring(ring) for ring in rings[1:]] if len(rings) > 1 else []
-
     name, description = _extract_name_description(props, index)
     metadata = _extract_metadata(props)
-    exterior = _ensure_closed(exterior)
-    interior = [_ensure_closed(ring) for ring in interior]
-
     return Feature(
         name=name,
         description=description,
-        exterior_coords=exterior,
-        interior_coords=interior,
-        crs="EPSG:4326",
+        geometry=PolygonGeometry(parts=(_coords_to_part(rings),)),
         metadata=metadata,
         source_file=source_file,
         feature_index=index,
@@ -146,20 +138,42 @@ def _polygon_to_feature(
     return _coords_to_feature(geom.get("coordinates", []), props, source_file, index)
 
 
-def _multi_polygon_part_to_feature(
-    poly_coords: list[Any],
+def _multi_polygon_to_feature(
+    geom: dict[str, Any],
     props: dict[str, Any],
     source_file: str,
     index: int,
 ) -> Feature:
-    """Convert a single polygon part from a MultiPolygon to a Feature."""
-    return _coords_to_feature(poly_coords, props, source_file, index)
+    """Convert a MultiPolygon geometry to one feature preserving its parts."""
+    polygons = geom.get("coordinates", [])
+    parts = tuple(_coords_to_part(rings) for rings in polygons)
+    name, description = _extract_name_description(props, index)
+    return Feature(
+        name=name,
+        description=description,
+        geometry=PolygonGeometry(parts=parts),
+        metadata=_extract_metadata(props),
+        source_file=source_file,
+        feature_index=index,
+    )
+
+
+def _coords_to_part(rings: list[Any]) -> PolygonPart:
+    if not rings:
+        raise ValueError("Polygon geometry has no exterior ring")
+    exterior = _ensure_closed(_normalise_ring(rings[0]))
+    holes = [_ensure_closed(_normalise_ring(ring)) for ring in rings[1:]]
+    return PolygonPart(
+        outer=tuple((point[0], point[1]) for point in exterior),
+        inners=tuple(tuple((point[0], point[1]) for point in ring) for ring in holes),
+    )
 
 
 def _normalise_ring(ring: list[Any]) -> list[list[float]]:
     """Convert coordinate tuples to [lon, lat], discarding altitude."""
     normalised: list[list[float]] = []
     for coord in ring:
-        if len(coord) >= 2:
-            normalised.append([float(coord[0]), float(coord[1])])
+        if len(coord) < 2:
+            raise ValueError("Polygon position must contain longitude and latitude")
+        normalised.append([float(coord[0]), float(coord[1])])
     return normalised

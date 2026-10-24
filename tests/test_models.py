@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from treesight.models.aoi import AOI
 from treesight.models.blob_event import BlobEvent
 from treesight.models.feature import Feature
+from treesight.models.geometry import PolygonGeometry, PolygonPart
 from treesight.models.imagery import ImageryFilters, SearchResult
 from treesight.models.outcomes import (
     DownloadResult,
@@ -23,13 +24,21 @@ from treesight.models.outcomes import (
 # Feature
 # ---------------------------------------------------------------------------
 
+SIMPLE_GEOMETRY = PolygonGeometry(
+    parts=(
+        PolygonPart(
+            outer=((0, 0), (1, 0), (1, 1), (0, 1), (0, 0)),
+        ),
+    ),
+)
+
 
 class TestFeature:
     def test_create_minimal(self):
-        f = Feature(name="Test")
+        f = Feature(name="Test", geometry=SIMPLE_GEOMETRY)
         assert f.name == "Test"
         assert f.crs == "EPSG:4326"
-        assert f.vertex_count == 0
+        assert f.vertex_count == 5
         assert f.has_holes is False
 
     def test_computed_vertex_count(self, sample_feature: Feature):
@@ -41,8 +50,14 @@ class TestFeature:
     def test_computed_has_holes_true(self):
         f = Feature(
             name="WithHoles",
-            exterior_coords=[[0, 0], [1, 0], [1, 1], [0, 0]],
-            interior_coords=[[[0.2, 0.2], [0.3, 0.2], [0.3, 0.3], [0.2, 0.2]]],
+            geometry=PolygonGeometry(
+                parts=(
+                    PolygonPart(
+                        outer=((0, 0), (1, 0), (1, 1), (0, 1), (0, 0)),
+                        inners=(((0.2, 0.2), (0.3, 0.2), (0.3, 0.3), (0.2, 0.3), (0.2, 0.2)),),
+                    ),
+                ),
+            ),
         )
         assert f.has_holes is True
 
@@ -55,18 +70,18 @@ class TestFeature:
 
         restored = Feature.model_validate(d)
         assert restored.name == sample_feature.name
-        assert restored.exterior_coords == sample_feature.exterior_coords
+        assert restored.geometry == sample_feature.geometry
 
     def test_metadata_preserved(self, sample_feature: Feature):
         assert sample_feature.metadata["crop"] == "apple"
         assert sample_feature.metadata["variety"] == "fuji"
 
     def test_dedup_key_uses_source_and_index(self):
-        f = Feature(name="Block A", source_file="farm.kml", feature_index=7)
+        f = Feature(name="Block A", geometry=SIMPLE_GEOMETRY, source_file="farm.kml", feature_index=7)
         assert f.dedup_key == "farm.kml:7"
 
     def test_dedup_key_uses_placeholder_without_source(self):
-        f = Feature(name="Block A")
+        f = Feature(name="Block A", geometry=SIMPLE_GEOMETRY)
         assert f.dedup_key == "<unspecified>:0"
 
 
@@ -77,7 +92,7 @@ class TestFeature:
 
 class TestAOI:
     def test_create_minimal(self):
-        aoi = AOI(feature_name="Test AOI")
+        aoi = AOI(feature_name="Test AOI", geometry=SIMPLE_GEOMETRY)
         assert aoi.feature_name == "Test AOI"
         assert aoi.buffer_m == 100.0
         assert aoi.crs == "EPSG:4326"
@@ -91,15 +106,15 @@ class TestAOI:
         assert restored.centroid == [36.805, -1.305]
 
     def test_area_warning_empty_by_default(self):
-        aoi = AOI(feature_name="Small")
+        aoi = AOI(feature_name="Small", geometry=SIMPLE_GEOMETRY)
         assert aoi.area_warning == ""
 
     def test_dedup_key_uses_source_and_index(self):
-        aoi = AOI(feature_name="Block A", source_file="farm.kml", feature_index=7)
+        aoi = AOI(feature_name="Block A", geometry=SIMPLE_GEOMETRY, source_file="farm.kml", feature_index=7)
         assert aoi.dedup_key == "farm.kml:7"
 
     def test_dedup_key_uses_placeholder_without_source(self):
-        aoi = AOI(feature_name="Block A")
+        aoi = AOI(feature_name="Block A", geometry=SIMPLE_GEOMETRY)
         assert aoi.dedup_key == "<unspecified>:0"
 
 

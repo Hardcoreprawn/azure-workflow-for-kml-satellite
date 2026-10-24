@@ -8,6 +8,7 @@ import logging
 from typing import Any
 
 from treesight.constants import DEFAULT_PROVIDER
+from treesight.models.geometry import PolygonGeometry
 
 logger = logging.getLogger(__name__)
 
@@ -16,40 +17,25 @@ def _collect_enrichment_coords(aois: list[dict[str, Any]]) -> list[list[float]]:
     """Extract representative coordinates from AOIs for enrichment."""
     all_coords: list[list[float]] = []
     for aoi in aois:
-        ext = aoi.get("exterior_coords", [])
-        if ext:
-            all_coords.extend(ext)
-
-    if not all_coords:
-        # Intentional: use first AOI's bbox only. Enrichment (weather, NDVI)
-        # targets a single representative location, not the union of all AOIs.
-        for aoi in aois:
-            bb = aoi.get("bbox") or aoi.get("buffered_bbox")
-            if bb and len(bb) == 4:
-                min_lon, min_lat, max_lon, max_lat = bb
-                all_coords = [
-                    [min_lon, min_lat],
-                    [max_lon, min_lat],
-                    [max_lon, max_lat],
-                    [min_lon, max_lat],
-                    [min_lon, min_lat],
-                ]
-                break
+        geometry = _aoi_geometry(aoi)
+        all_coords.extend(
+            [list(position) for part in geometry.parts for position in part.outer],
+        )
     return all_coords
 
 
-def _collect_per_aoi_coords(
+def _collect_per_aoi_geometries(
     aois: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Extract per-AOI coordinate data for per-AOI enrichment.
+    """Extract exact polygon geometry and evidence metadata for each AOI.
 
     Assigns a ``cluster`` label so downstream consumers (enrichment, spatial
     clustering #581) can identify spatially proximate AOIs.
 
     Returns a list of dicts, one per AOI, each containing:
     - ``name``: the feature name
-    - ``coords``: the exterior coordinates (or bbox-derived ring)
-    - ``area_ha``: area in hectares (derived from buffer polygon)
+    - ``geometry``: canonical polygon parts, including all inner rings
+    - ``area_ha``: net geodesic area in hectares
     - ``cluster``: zero-based cluster index from spatial grouping
     - ``source_geometry_type``: ``"Point"`` or ``"Polygon"`` when present in AOI
       metadata (set by :func:`treesight.pipeline.eudr.coords_to_kml` via
@@ -59,42 +45,32 @@ def _collect_per_aoi_coords(
     """
     result: list[dict[str, Any]] = []
     for aoi in aois:
-        coords = aoi.get("exterior_coords", [])
-        if not coords:
-            bb = aoi.get("bbox") or aoi.get("buffered_bbox")
-            if bb and len(bb) == 4:
-                min_lon, min_lat, max_lon, max_lat = bb
-                coords = [
-                    [min_lon, min_lat],
-                    [max_lon, min_lat],
-                    [max_lon, max_lat],
-                    [min_lon, max_lat],
-                    [min_lon, min_lat],
-                ]
-        if coords:
-            entry: dict[str, Any] = {
-                "name": aoi.get("feature_name", ""),
-                "coords": coords,
-                "area_ha": aoi.get("area_ha", 0.0),
-            }
-            # Propagate supplier-declared geometry type and area from KML ExtendedData
-            # so DDS exports use supplier-declared values, not derived buffer geometry
-            # (EUDR Article 2(28)).  Set by coords_to_kml via build_geolocation_provenance.
-            meta: dict[str, str] = aoi.get("metadata", {})
-            source_geometry_type = meta.get("source_geometry_type", "")
-            if source_geometry_type:
-                entry["source_geometry_type"] = source_geometry_type
-            plot_area_ha_str = meta.get("plot_area_ha", "")
-            if plot_area_ha_str:
-                try:
-                    entry["plot_area_ha"] = float(plot_area_ha_str)
-                except ValueError:
-                    logger.warning(
-                        "Could not parse plot_area_ha %r for AOI %r; field omitted",
-                        plot_area_ha_str,
-                        entry.get("name", ""),
-                    )
-            result.append(entry)
+        geometry = _aoi_geometry(aoi)
+        centroid = aoi.get("centroid", [0.0, 0.0])
+        entry: dict[str, Any] = {
+            "name": aoi.get("feature_name", ""),
+            "geometry": geometry.model_dump(mode="json"),
+            "bbox": aoi.get("bbox", []),
+            "center": {"lon": centroid[0], "lat": centroid[1]},
+            "area_ha": aoi.get("area_ha", 0.0),
+        }
+        # Propagate supplier-declared geometry type and area from KML ExtendedData
+        # so DDS exports use supplier-declared values, not derived buffer geometry.
+        meta: dict[str, str] = aoi.get("metadata", {})
+        source_geometry_type = meta.get("source_geometry_type", "")
+        if source_geometry_type:
+            entry["source_geometry_type"] = source_geometry_type
+        plot_area_ha_str = meta.get("plot_area_ha", "")
+        if plot_area_ha_str:
+            try:
+                entry["plot_area_ha"] = float(plot_area_ha_str)
+            except ValueError:
+                logger.warning(
+                    "Could not parse plot_area_ha %r for AOI %r; field omitted",
+                    plot_area_ha_str,
+                    entry.get("name", ""),
+                )
+        result.append(entry)
 
     # Assign spatial cluster labels (#581)
     if len(result) > 1:
@@ -108,6 +84,12 @@ def _collect_per_aoi_coords(
         result[0]["cluster"] = 0
 
     return result
+
+
+def _aoi_geometry(aoi: dict[str, Any]) -> PolygonGeometry:
+    if "geometry" not in aoi:
+        raise ValueError("AOI payload must include source geometry")
+    return PolygonGeometry.model_validate(aoi["geometry"])
 
 
 def _build_order_lookups(

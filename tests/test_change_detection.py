@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 import rasterio
 
 from tests.tiff_helpers import make_ndvi_tiff
@@ -21,6 +22,22 @@ def _make_ndvi_tiff(
 
 
 class TestComputeChangeMap:
+    @pytest.mark.parametrize(
+        "after,bounds",
+        [
+            (np.full((4, 4), 0.3, dtype=np.float32), (1, 0, 101, 100)),
+            (np.full((3, 4), 0.3, dtype=np.float32), (0, 0, 100, 100)),
+        ],
+    )
+    def test_misaligned_grids_are_unavailable_not_pixelwise_compared(self, after, bounds, caplog):
+        from treesight.pipeline.enrichment.change_detection import compute_change_map
+
+        before = _make_ndvi_tiff(np.full((4, 4), 0.6, dtype=np.float32))
+        result = compute_change_map(before, _make_ndvi_tiff(after, bounds))
+
+        assert result is None
+        assert "same raster grid" in caplog.text
+
     def test_uniform_no_change(self):
         from treesight.pipeline.enrichment.change_detection import compute_change_map
 

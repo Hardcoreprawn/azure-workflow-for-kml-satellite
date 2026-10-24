@@ -114,6 +114,25 @@ authorize a fallback publication.
 
 ## Trigger and Orchestrator Entry Points
 
+### Polygon Geometry
+
+Feature/AOI claims and per-AOI enrichment entries carry `geometry` as
+`{"parts": [{"outer": [[lon, lat], ...], "inners": [[[lon, lat], ...], ...]}],
+"crs": "EPSG:4326"}`. Rings are closed and validated; `inners` defaults to
+empty. Multiple parts belong to the same AOI and retain their own holes.
+The [enrichment contract](ENRICHMENT_AOI_MODEL.md#polygon-model) owns topology
+and analytical semantics. Flat `exterior_coords`, `interior_coords` and per-AOI
+`coords` are not alternative geometry formats.
+
+Ingestion transports `per_aoi_geometries` through enrichment activities and
+finalization. A bbox cannot replace missing source geometry. This is a direct
+pre-live schema change: regenerate local claims/manifests and restart in-flight
+local orchestrations rather than mixing old and new activity payloads.
+
+Monitoring creation requires `aoi_geometry.geometry` in this same canonical form,
+alongside `aoi_geometry.centroid`. Scheduled enrichment receives the complete
+polygon, not just the centroid. Invalid geometry returns `400`.
+
 ### Completion Semantics
 
 Durable `runtimeStatus: Completed` means orchestration code returned, not that all

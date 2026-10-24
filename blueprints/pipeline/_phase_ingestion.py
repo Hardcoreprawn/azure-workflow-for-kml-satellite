@@ -18,7 +18,7 @@ from treesight.pipeline.contracts import (
     ensure_parse_kml_output,
 )
 
-from ._payloads import _collect_enrichment_coords, _collect_per_aoi_coords
+from ._payloads import _collect_enrichment_coords, _collect_per_aoi_geometries
 
 _PhaseGen = Generator[Any, Any, dict[str, Any]]
 
@@ -60,7 +60,7 @@ def _phase_ingestion(
 
     # Claim-check: extract enrichment coords before offloading AOIs
     all_coords = _collect_enrichment_coords(aois)
-    per_aoi_coords = _collect_per_aoi_coords(aois)
+    per_aoi_geometries = _collect_per_aoi_geometries(aois)
 
     # Extract area_ha per AOI for batch routing (before claim-check offload)
     aoi_area_by_name: dict[str, float] = {a.get("feature_name", ""): a.get("area_ha", 0.0) for a in aois}
@@ -120,7 +120,7 @@ def _phase_ingestion(
         },
         "aoi_refs": aoi_refs,
         "all_coords": all_coords,
-        "per_aoi_coords": per_aoi_coords,
+        "per_aoi_geometries": per_aoi_geometries,
         "aoi_area_by_name": aoi_area_by_name,
         "aoi_centroids": aoi_centroids,
     }

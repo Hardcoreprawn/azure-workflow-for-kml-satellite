@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from treesight.log import logger
 from treesight.models.feature import Feature
+from treesight.models.geometry import PolygonGeometry, PolygonPart
 from treesight.parsers import ensure_closed as _ensure_closed
 from treesight.parsers import validate_kml_bytes as _validate_kml_bytes
 
@@ -30,20 +30,24 @@ def parse_kml_lxml(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
         description = _text(placemark, f"{kml_ns}description") or ""
         metadata = _parse_extended_data(placemark, kml_ns)
 
+        polygon_parts: list[PolygonPart] = []
         for polygon in placemark.iter(f"{kml_ns}Polygon"):
             exterior, interior = _parse_polygon(polygon, kml_ns)
-            if len(exterior) < 3:
-                logger.warning("Skipping polygon with < 3 coords: %s", name)
-                continue
             exterior = _ensure_closed(exterior)
             interior = [_ensure_closed(ring) for ring in interior]
+            polygon_parts.append(
+                PolygonPart(
+                    outer=tuple((point[0], point[1]) for point in exterior),
+                    inners=tuple(tuple((point[0], point[1]) for point in ring) for ring in interior),
+                )
+            )
+
+        if polygon_parts:
             features.append(
                 Feature(
                     name=name,
                     description=description,
-                    exterior_coords=exterior,
-                    interior_coords=interior,
-                    crs="EPSG:4326",
+                    geometry=PolygonGeometry(parts=tuple(polygon_parts)),
                     metadata=metadata,
                     source_file=source_file,
                     feature_index=len(features),
@@ -66,10 +70,7 @@ def _parse_polygon(
         exterior = _parse_coordinates(outer.text)
 
     for inner_elem in polygon.findall(f"{kml_ns}innerBoundaryIs/{kml_ns}LinearRing/{kml_ns}coordinates"):
-        if inner_elem.text:
-            ring = _parse_coordinates(inner_elem.text)
-            if ring:
-                interior.append(ring)
+        interior.append(_parse_coordinates(inner_elem.text or ""))
 
     return exterior, interior
 
@@ -79,12 +80,13 @@ def _parse_coordinates(text: str) -> list[list[float]]:
     coords: list[list[float]] = []
     for token in text.strip().split():
         parts = token.strip().split(",")
-        if len(parts) >= 2:
-            try:
-                lon, lat = float(parts[0]), float(parts[1])
-                coords.append([lon, lat])
-            except ValueError:
-                continue
+        if len(parts) < 2:
+            raise ValueError(f"Invalid KML coordinate: {token!r}")
+        try:
+            lon, lat = float(parts[0]), float(parts[1])
+        except ValueError as exc:
+            raise ValueError(f"Invalid KML coordinate: {token!r}") from exc
+        coords.append([lon, lat])
     return coords
 
 

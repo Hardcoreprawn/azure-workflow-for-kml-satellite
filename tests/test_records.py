@@ -20,6 +20,22 @@ from treesight.models.records import (
     UserRecord,
 )
 
+_TEST_GEOMETRY = {
+    "parts": [
+        {
+            "outer": [
+                [-50.0, -10.0],
+                [-49.0, -10.0],
+                [-49.0, -9.0],
+                [-50.0, -9.0],
+                [-50.0, -10.0],
+            ],
+            "inners": [],
+        }
+    ],
+    "crs": "EPSG:4326",
+}
+
 # ---------------------------------------------------------------------------
 # RunRecord
 # ---------------------------------------------------------------------------
@@ -284,7 +300,7 @@ class TestEnrichmentManifestV2:
                         "aoi_index": 0,
                         "name": "Solo Farm",
                         "area_ha": 50.0,
-                        "coords": [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]],
+                        "geometry": _TEST_GEOMETRY,
                         "bbox": [[-50.0, -10.0], [-49.0, -9.0]],
                         "center": {"lat": -9.5, "lon": -49.5},
                         "frame_plan": [],
@@ -298,6 +314,7 @@ class TestEnrichmentManifestV2:
         assert len(manifest.per_aoi_enrichment) == 1
         assert manifest.per_aoi_enrichment[0].aoi_index == 0
         assert manifest.per_aoi_enrichment[0].name == "Solo Farm"
+        assert manifest.per_aoi_enrichment[0].geometry.parts[0].outer[0] == (-50.0, -10.0)
 
     def test_schema_version_is_required_for_v2_writes(self):
         with pytest.raises(ValueError, match="schema_version"):
@@ -329,7 +346,7 @@ class TestEnrichmentManifestV2:
                 "aoi_index": 0,
                 "name": "Plot",
                 "area_ha": 1.0,
-                "coords": [[0.0, 0.0]],
+                "geometry": _TEST_GEOMETRY,
                 "bbox": [[0.0, 0.0]],
                 "center": {"lat": 0.0, "lon": 0.0},
                 "weather_daily": {"dates": ["2024-01-01"], "temperature_2m_mean": [20.0]},
@@ -344,7 +361,7 @@ class TestEnrichmentManifestV2:
                 "aoi_index": 0,
                 "name": "Plot",
                 "area_ha": 1.0,
-                "coords": [[0.0, 0.0]],
+                "geometry": _TEST_GEOMETRY,
                 "bbox": [[0.0, 0.0]],
                 "center": {"lat": 0.0, "lon": 0.0},
                 "custom_evidence": {"provider": "test"},
@@ -354,7 +371,7 @@ class TestEnrichmentManifestV2:
         assert entry.model_extra["custom_evidence"] == {"provider": "test"}
 
     def test_per_aoi_entry_requires_canonical_identity_fields(self):
-        with pytest.raises(ValueError, match=r"name|area_ha|coords|bbox|center"):
+        with pytest.raises(ValueError, match=r"name|area_ha|geometry|bbox|center"):
             PerAoiEnrichment.model_validate({"aoi_index": 0})
 
     def test_per_aoi_entry_accepts_dict_weather_daily_payload(self):
@@ -363,7 +380,7 @@ class TestEnrichmentManifestV2:
                 "aoi_index": 0,
                 "name": "Plot",
                 "area_ha": 1.0,
-                "coords": [[0.0, 0.0]],
+                "geometry": _TEST_GEOMETRY,
                 "bbox": [[0.0, 0.0]],
                 "center": {"lat": 0.0, "lon": 0.0},
                 "weather_daily": {"dates": ["2026-01-01"], "temp": [24.0]},

@@ -185,7 +185,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
             inp,
             ctx,
             ing["all_coords"],
-            ing["per_aoi_coords"],
+            ing["per_aoi_geometries"],
             output_container,
         )
         summary = build_pipeline_summary(

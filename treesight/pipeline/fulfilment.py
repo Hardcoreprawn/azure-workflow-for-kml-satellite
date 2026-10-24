@@ -174,7 +174,7 @@ def post_process_imagery(
                 sq_bbox = square_bbox(aoi.bbox, padding_pct=frame_padding_pct)
                 output_bytes = _clip_to_bbox(src, sq_bbox)
                 clipped = True
-            elif enable_clipping and aoi.exterior_coords:
+            elif enable_clipping and aoi.geometry.parts:
                 output_bytes = _clip_to_bbox(src, aoi.buffered_bbox)
                 clipped = True
 
