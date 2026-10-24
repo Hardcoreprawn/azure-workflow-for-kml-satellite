@@ -29,7 +29,7 @@ Usage
     # Only fetch specific export formats:
     uv run python scripts/real_acquisition_runner.py --formats eudr-pdf eudr-geojson
 
-Exports are written to ``.real-acquisition-output/<fixture-stem>/`` for
+Exports are written to ``.real-acquisition-output/<fixture-stem>/<instance-id>/`` for
 manual review. See issue #1379's acceptance checklist for what to look for
 (NDVI/land-cover plausibility, EUDR post-2020 date framing, AI narrative
 coherence) — none of that is checked automatically here.
@@ -38,8 +38,13 @@ coherence) — none of that is checked automatically here.
 from __future__ import annotations
 
 import argparse
+import csv
+import io
+import json
+import logging
 import os
 import sys
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +60,8 @@ from e2e_local import (
     wait_for_func_host,
 )
 from simulate_upload import DEFAULT_CONTAINER, fire_event_grid, upload_kml
+
+from treesight.constants import LOCAL_AUDIT_MAX_ARTIFACT_BYTES
 
 SCENARIOS_DIR = REPO_ROOT / "tests" / "fixtures" / "eudr_scenarios"
 OUTPUT_DIR = REPO_ROOT / ".real-acquisition-output"
@@ -128,31 +135,125 @@ def _configure_real_acquisition_environment() -> None:
     os.environ.setdefault("ENRICHMENT_FRAME_CONCURRENCY", _RUNNER_FRAME_CONCURRENCY)
 
 
-def _fetch_export(instance_id: str, fmt: str, dest_dir: Path) -> Path | None:
-    """Download one export format for *instance_id*, or return None on failure."""
+@dataclass(frozen=True)
+class ExportResult:
+    format: str
+    status: str
+    http_status: int | None = None
+    bytes_received: int = 0
+    path: str | None = None
+
+
+@dataclass(frozen=True)
+class RunResult:
+    fixture: str
+    instance_id: str
+    success: bool
+    status: str
+    exports: tuple[ExportResult, ...]
+    schema_version: int = 1
+
+
+def _write_result(dest_dir: Path, result: RunResult) -> bool:
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        (dest_dir / "result.json").write_text(json.dumps(asdict(result), indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        print(f"  FAIL (result_write_error): {result.instance_id}", file=sys.stderr)
+        return False
+    return result.success
+
+
+def _validate_csv(content: bytes) -> None:
+    rows = csv.reader(io.StringIO(content.decode("utf-8-sig")), strict=True)
+    header = next(rows, [])
+    if not {"parcel_name", "determination_status"}.issubset(header) or len(set(header)) != len(header):
+        raise ValueError("Invalid CSV header")
+    row_count = 0
+    for row in rows:
+        if len(row) != len(header):
+            raise ValueError("Invalid CSV row")
+        row_count += 1
+    if not row_count:
+        raise ValueError("Empty CSV")
+
+
+def _validate_geojson(content: bytes) -> None:
+    from shapely.geometry import shape
+
+    document = json.loads(content)
+    if not isinstance(document, dict) or document.get("type") != "FeatureCollection":
+        raise ValueError("Invalid GeoJSON collection")
+    features = document.get("features")
+    if not isinstance(features, list) or not features:
+        raise ValueError("Empty GeoJSON collection")
+    for feature in features:
+        if not isinstance(feature, dict) or feature.get("type") != "Feature":
+            raise ValueError("Invalid GeoJSON feature")
+        if not isinstance(feature.get("properties"), dict) or "geometry" not in feature:
+            raise ValueError("Invalid GeoJSON feature members")
+        if feature["geometry"] is not None:
+            shape(feature["geometry"])
+
+
+def _validate_pdf(content: bytes) -> None:
+    from pypdf import PdfReader
+
+    logger = logging.getLogger("pypdf")
+    previous_level = logger.level
+    logger.setLevel(logging.CRITICAL + 1)
+    try:
+        reader = PdfReader(io.BytesIO(content), strict=True)
+        if reader.is_encrypted or not reader.pages:
+            raise ValueError("Unreadable PDF")
+        for page in reader.pages:
+            page.extract_text()
+    finally:
+        logger.setLevel(previous_level)
+
+
+def _fetch_export(instance_id: str, fmt: str, dest_dir: Path) -> ExportResult:
+    """Fetch and parse a bounded export, returning only body-free diagnostics."""
+    validators = {"eudr-csv": _validate_csv, "eudr-geojson": _validate_geojson, "eudr-pdf": _validate_pdf}
+    if fmt not in validators:
+        return ExportResult(fmt, "unsupported_format")
     url = f"{FUNC_BASE}/api/export/{instance_id}/{fmt}"
     headers = {"X-MS-CLIENT-PRINCIPAL": _test_principal_header(_RUNNER_USER_ID)}
+    http_status = None
+    content = bytearray()
     try:
-        resp = httpx.get(url, headers=headers, timeout=60.0)
-    except httpx.TransportError as exc:
-        print(f"  WARN: export {fmt!r} request failed: {exc}", file=sys.stderr)
-        return None
-    if resp.status_code != 200:
-        print(f"  WARN: export {fmt!r} returned HTTP {resp.status_code}: {resp.text[:200]}", file=sys.stderr)
-        return None
-    dest_dir.mkdir(parents=True, exist_ok=True)
+        with httpx.stream("GET", url, headers=headers, timeout=60.0) as response:
+            http_status = response.status_code
+            if http_status != 200:
+                return ExportResult(fmt, "http_error", http_status)
+            for chunk in response.iter_bytes(chunk_size=LOCAL_AUDIT_MAX_ARTIFACT_BYTES + 1):
+                if len(content) + len(chunk) > LOCAL_AUDIT_MAX_ARTIFACT_BYTES:
+                    return ExportResult(fmt, "too_large", http_status, len(content) + len(chunk))
+                content.extend(chunk)
+    except httpx.HTTPError:
+        return ExportResult(fmt, "transport_error", http_status, len(content))
+    if not content:
+        return ExportResult(fmt, "missing", http_status)
+    try:
+        validators[fmt](bytes(content))
+    except Exception:
+        return ExportResult(fmt, "invalid_content", http_status, len(content))
     ext = fmt.split("-", 1)[-1] if "-" in fmt else fmt
     dest = dest_dir / f"{fmt}.{ext}"
-    dest.write_bytes(resp.content)
-    return dest
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(content)
+    except OSError:
+        return ExportResult(fmt, "write_error", http_status, len(content))
+    return ExportResult(fmt, "passed", http_status, len(content), str(dest))
 
 
 def run_fixture(fixture: Path, *, formats: tuple[str, ...]) -> bool:
     """Upload *fixture* through the real pipeline and fetch review exports.
 
     Returns ``True`` if the run completed with real output, ``False`` on
-    failure. Never raises — failures are reported and the caller moves on
-    to the next fixture, matching ``corpus_runner.py``'s behaviour.
+    failure. Expected polling and export failures are reported so the caller
+    can move on to the next fixture. Unexpected setup errors propagate.
     """
     print(f"\n{'─' * 60}")
     print(f"Fixture: {fixture.name}")
@@ -165,28 +266,32 @@ def run_fixture(fixture: Path, *, formats: tuple[str, ...]) -> bool:
     _upload_ticket(blob_name, DEFAULT_CONTAINER, tier=_RUNNER_TIER, user_id=_RUNNER_USER_ID, eudr_mode=True)
 
     instance_id = fire_event_grid(blob_url, blob_name, content_length, DEFAULT_CONTAINER)
+    print(f"  instance_id: {instance_id}")
+    dest_dir = OUTPUT_DIR / fixture.stem / instance_id
 
     print("  Polling orchestration against the REAL imagery provider (this can take a while)...")
     try:
         status_payload = poll_orchestration(instance_id, timeout=900.0)
-    except TimeoutError as exc:
-        print(f"  FAIL (timeout): {exc}", file=sys.stderr)
-        return False
-
-    try:
         assert_pipeline_succeeded(status_payload)
-    except AssertionError as exc:
-        print(f"  FAIL (pipeline): {exc}", file=sys.stderr)
-        return False
+    except (TimeoutError, AssertionError) as exc:
+        status = "timeout" if isinstance(exc, TimeoutError) else "pipeline_failure"
+        print(f"  FAIL ({status}): {instance_id}", file=sys.stderr)
+        exports = tuple(ExportResult(fmt, "not_attempted") for fmt in formats)
+        return _write_result(dest_dir, RunResult(str(fixture), instance_id, False, status, exports))
 
     summary = _build_run_summary(status_payload)
     print(f"  summary: {summary}")
 
-    dest_dir = OUTPUT_DIR / fixture.stem
-    for fmt in formats:
-        dest = _fetch_export(instance_id, fmt, dest_dir)
-        if dest is not None:
-            print(f"  saved {fmt} -> {dest.relative_to(REPO_ROOT)}")
+    exports = tuple(_fetch_export(instance_id, fmt, dest_dir) for fmt in formats)
+    for export in exports:
+        if export.status != "passed":
+            print(f"  FAIL (export): {export.format} for {instance_id}: {export.status}", file=sys.stderr)
+        else:
+            print(f"  saved {export.format} -> {export.path}")
+    success = bool(exports) and all(export.status == "passed" for export in exports)
+    result = RunResult(str(fixture), instance_id, success, "passed" if success else "export_failure", exports)
+    if not _write_result(dest_dir, result):
+        return False
 
     print("  PASS (mechanical) — human review still required, see checklist below.")
     return True
@@ -243,7 +348,7 @@ def main() -> None:
     finally:
         stop_func_host(proc)
 
-    print(f"\nExports saved under {OUTPUT_DIR.relative_to(REPO_ROOT)}/<fixture-name>/")
+    print(f"\nRun results under {OUTPUT_DIR.relative_to(REPO_ROOT)}/<fixture-name>/<instance-id>/result.json")
     print("\nManual review still required before signing off #1379 (human decision gate):")
     for item in _REVIEW_CHECKLIST:
         print(f"  [ ] {item}")
