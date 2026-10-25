@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import orjson
 from corpus_runner import _upload_ticket
 from e2e_local import (
     FUNC_BASE,
@@ -181,7 +182,7 @@ def _validate_csv(content: bytes) -> None:
 def _validate_geojson(content: bytes) -> None:
     from shapely.geometry import shape
 
-    document = json.loads(content)
+    document = orjson.loads(content)
     if not isinstance(document, dict) or document.get("type") != "FeatureCollection":
         raise ValueError("Invalid GeoJSON collection")
     features = document.get("features")

@@ -97,6 +97,15 @@ class TestDefaultFormats:
         ("eudr-geojson", b'{"type":"FeatureCollection","features":[{"type":"Feature"}]}'),
         (
             "eudr-geojson",
+            b'{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"value":NaN},"geometry":null}]}',
+        ),
+        (
+            "eudr-geojson",
+            b'{"type":"FeatureCollection","features":[{"type":"Feature",'
+            b'"properties":{"value":Infinity},"geometry":null}]}',
+        ),
+        (
+            "eudr-geojson",
             b'{"type":"FeatureCollection","features":[{"type":"Feature",'
             b'"properties":{},"geometry":{"type":"Polygon","coordinates":"invalid"}}]}',
         ),
