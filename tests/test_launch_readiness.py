@@ -980,10 +980,41 @@ class TestDeployWorkflowSettings:
         assert "outcome: failure" in body, "deploy-marker-infra-failure job must record outcome: failure"
 
 
+def test_compute_missing_jq_cannot_pass_gate(tmp_path: Path) -> None:
+    binary_dir = tmp_path / "bin"
+    binary_dir.mkdir()
+    bash = shutil.which("bash")
+    assert bash is not None, "bash is required to exercise the compute resolver tests"
+    (binary_dir / "bash").symlink_to(bash)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            f"{__file__}::TestComputeResourceResolution::test_compute_resolves_subscription_without_arm_environment",
+            "-o",
+            "addopts=",
+            "-q",
+            "--tb=short",
+        ],
+        cwd=ROOT,
+        env={**os.environ, "PATH": str(binary_dir)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 1, output
+    assert "jq is required" in output, output
+    assert "Dockerfile.dev" in output, output
+    assert "1 failed" in output, output
+    assert "skipped" not in output, output
+
+
 class TestComputeResourceResolution:
     """Execute the compute configure step without Azure access or inherited subscription state."""
 
-    pytestmark = pytest.mark.skipif(shutil.which("jq") is None, reason="jq binary required")
     subscription = "11111111-2222-3333-4444-555555555555"
     resource_group_id = f"/subscriptions/{subscription}/resourceGroups/rg-compute"
     site_id = f"{resource_group_id}/providers/Microsoft.Web/sites/compute"
@@ -999,6 +1030,12 @@ class TestComputeResourceResolution:
         site_overrides: dict[str, object] | None = None,
         container_overrides: dict[str, object] | None = None,
     ) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
+        if shutil.which("jq") is None:
+            pytest.fail(
+                "jq is required for compute resource resolution tests; "
+                "rebuild/publish the Dockerfile.dev dev image and rerun the gate "
+                "(outside the image, install jq with apt-get install jq)."
+            )
         workflow = yaml.safe_load(DEPLOY_YML.read_text())
         step = next(step for step in workflow["jobs"]["deploy-infra"]["steps"] if step.get("id") == "configure-app")
         script = step["run"].replace("${{ needs.build-image.outputs.image_uri }}", "example.invalid/compute:test")
