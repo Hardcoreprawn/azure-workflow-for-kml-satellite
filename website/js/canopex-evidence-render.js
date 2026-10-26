@@ -3,7 +3,7 @@
  *
  * Extracted from app-shell.js. These functions take data and render
  * to DOM elements. No shell state, no API calls.
- * Depends on: CanopexHelpers (setStatGrid, createCallout).
+ * Depends on: CanopexHelpers (setStatGrid, createCallout), CanopexEvidenceMap.
  * Exposes window.CanopexEvidenceRender.
  */
 (function () {
@@ -19,9 +19,12 @@
     var canvas = document.getElementById('app-evidence-ndvi-canvas');
     if (!grid) return;
 
-    var ndvi = (manifest.ndvi_stats || []).filter(function(f) { return f != null; });
+    const observations = manifest.ndvi_stats || [];
+    const ndvi = observations.filter(window.CanopexEvidenceMap.isUsableNdvi);
+    if (canvas) canvas.hidden = ndvi.length < 2;
     if (!ndvi.length) {
-      setStatGrid(grid, [['Status', 'No NDVI data', '']]);
+      setStatGrid(grid, [['Status', 'NDVI unavailable', '']]);
+      if (note) note.textContent = ndviUnavailableReasons(observations);
       return;
     }
 
@@ -31,15 +34,16 @@
     var overallMax = means.length ? Math.max.apply(null, means) : null;
 
     // Trajectory — prefer backend season-aware change detection
-    var trajectory = 'Stable';
+    var trajectory = 'Unavailable';
     var trajectoryTone = '';
     var cdSummary = manifest.change_detection && manifest.change_detection.summary;
-    if (cdSummary && cdSummary.trajectory) {
+    if (means.length > 1 && cdSummary && cdSummary.comparisons > 0 && cdSummary.trajectory) {
       var t = cdSummary.trajectory;
       if (t === 'Improving') { trajectory = 'Improving \u2191'; trajectoryTone = 'positive'; }
       else if (t === 'Declining') { trajectory = 'Declining \u2193'; trajectoryTone = 'negative'; }
       else { trajectory = 'Stable'; trajectoryTone = ''; }
     } else if (means.length >= 4) {
+      trajectory = 'Stable';
       var firstHalf = means.slice(0, Math.floor(means.length / 2));
       var secondHalf = means.slice(Math.floor(means.length / 2));
       var avgFirst = firstHalf.reduce(function(a, b) { return a + b; }, 0) / firstHalf.length;
@@ -61,10 +65,17 @@
       ['Trajectory', trajectory, trajectoryTone]
     ]);
 
-    if (note) note.textContent = means.length + ' frames sampled across the analysis period.';
+    if (note) note.textContent = means.length + ' frames sampled across the analysis period. ' + ndviUnavailableReasons(observations);
 
     // Draw sparkline
     if (canvas && means.length > 1) drawNdviSparkline(canvas, ndvi);
+  }
+
+  function ndviUnavailableReasons(observations) {
+    const reasons = observations.filter(function (entry) {
+      return entry && !window.CanopexEvidenceMap.isUsableNdvi(entry);
+    }).map(function (entry) { return entry.unavailable_reason || entry.reason || 'Invalid NDVI observation'; });
+    return Array.from(new Set(reasons)).join('; ');
   }
 
   function drawNdviSparkline(canvas, ndviStats) {
@@ -399,12 +410,14 @@
     }
 
     // NDVI from per-AOI enrichment
-    var ndvi = (aoiData.ndvi_stats || []).filter(function(f) { return f != null; });
-    var means = ndvi.map(function(f) { return f.mean; }).filter(function(v) { return v != null && !isNaN(v); });
+    var ndvi = (aoiData.ndvi_stats || []).filter(window.CanopexEvidenceMap.isUsableNdvi);
+    var means = ndvi.map(function(f) { return f.mean; });
     if (means.length) {
       var avg = means.reduce(function(a, b) { return a + b; }, 0) / means.length;
       var tone = avg > 0.4 ? 'positive' : avg < 0.2 ? 'negative' : '';
       stats.push(['NDVI', avg.toFixed(3), tone]);
+    } else {
+      stats.push(['NDVI', 'Unavailable', '']);
     }
 
     // Weather from per-AOI enrichment
@@ -419,7 +432,7 @@
 
     // Change detection
     var cd = aoiData.change_detection;
-    if (cd && cd.summary) {
+    if (means.length > 1 && cd && cd.summary && cd.summary.comparisons > 0) {
       var traj = cd.summary.trajectory || 'Stable';
       var trajTone = traj === 'Improving' ? 'positive' : traj === 'Declining' ? 'negative' : '';
       stats.push(['Trend', traj, trajTone]);

@@ -76,7 +76,7 @@ class TestParseKmlFromBlob:
         f = features[0]
 
         assert f.name
-        assert len(f.exterior_coords) >= 3
+        assert len(f.geometry.parts[0].outer) >= 3
 
     def test_source_file_set_from_blob_name(self) -> None:
         """The ``source_file`` field is the filename part of the blob path."""
@@ -237,6 +237,29 @@ class TestWriteMetadata:
         assert "geometry" in doc
         assert doc["geometry"]["crs"] == "EPSG:4326"
 
+    def test_metadata_schema_preserves_multipart_holes(self, sample_aoi: AOI) -> None:
+        import json
+        from pathlib import Path
+
+        from jsonschema import Draft202012Validator
+
+        from treesight.models.geometry import PolygonGeometry, PolygonPart
+        from treesight.pipeline.ingestion import write_metadata
+
+        outer = ((0, 0), (4, 0), (4, 4), (0, 4), (0, 0))
+        inner = ((1, 1), (2, 1), (2, 2), (1, 2), (1, 1))
+        island = ((1.2, 1.2), (1.8, 1.2), (1.8, 1.8), (1.2, 1.8), (1.2, 1.2))
+        geometry = PolygonGeometry(parts=(PolygonPart(outer=outer, inners=(inner,)), PolygonPart(outer=island)))
+        aoi = sample_aoi.model_copy(update={"geometry": geometry})
+        result = write_metadata(aoi, "run", "timestamp", "tenant", "plot.kml", "output", MagicMock())
+        document = json.loads(json.dumps(result["metadata"]))
+        schema = json.loads((Path(__file__).parents[1] / "docs/schemas/aoi-metadata-v2.schema.json").read_text())
+        Draft202012Validator(schema).validate(document)
+        restored = PolygonGeometry.from_geojson(document["geometry"]["source_geometry"])
+        assert restored == geometry
+        assert document["geometry"]["part_count"] == 2
+        assert document["geometry"]["interior_ring_count"] == 1
+
     def test_result_contains_paths(self, sample_aoi: AOI) -> None:
         """The return value includes metadata_path and kml_archive_path."""
         from treesight.pipeline.ingestion import write_metadata
@@ -258,19 +281,21 @@ class TestWriteMetadata:
 
     def test_safe_name_sanitisation(self) -> None:
         """Feature names with spaces/slashes are sanitised in the path."""
+        from treesight.models.geometry import PolygonGeometry, PolygonPart
         from treesight.pipeline.ingestion import write_metadata
 
         aoi = AOI(
             feature_name="Block A / Section 2",
             source_file="farm.kml",
             feature_index=0,
-            exterior_coords=[[0, 0], [1, 0], [1, 1], [0, 0]],
+            geometry=PolygonGeometry(
+                parts=(PolygonPart(outer=((0, 0), (1, 0), (1, 1), (0, 1), (0, 0))),),
+            ),
             bbox=[0, 0, 1, 1],
             buffered_bbox=[0, 0, 1, 1],
             area_ha=100.0,
             centroid=[0.5, 0.5],
             buffer_m=100.0,
-            crs="EPSG:4326",
         )
         storage = MagicMock()
         result = write_metadata(

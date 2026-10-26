@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from treesight.models.geometry import PolygonGeometry, PolygonPart
 from treesight.pipeline.enrichment.runner import (
     _SAFE_MODE_ALL_SKIPS,
     _enrich_single_aoi,
@@ -40,6 +41,16 @@ BBOX = [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0], [-49.0, -10.0]]
 COORDS = [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]]
 
 
+def _geometry(coords: list[list[float]]) -> dict:
+    ring = tuple((point[0], point[1]) for point in coords)
+    if ring[0] != ring[-1]:
+        ring = (*ring, ring[0])
+    return PolygonGeometry(parts=(PolygonPart(outer=ring),)).model_dump(mode="json")
+
+
+GEOMETRY = PolygonGeometry.model_validate(_geometry(COORDS))
+
+
 @pytest.fixture(autouse=True)
 def _block_network_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fail fast if enrichment tests try to open real network sockets."""
@@ -70,11 +81,11 @@ class TestMosaicNdviParallel:
         # Each mosaic call returns a unique search ID
         mock_mosaic.side_effect = lambda coll, start, end, bbox, extra, cl: f"sid-{start}-{coll}"
         # Each NDVI call returns stats keyed by year+season for traceability
-        mock_ndvi.side_effect = lambda bbox, start, end: {"mean": 0.5, "scene_id": f"s-{start}"}
+        mock_ndvi.side_effect = lambda bbox, start, end, **kwargs: {"mean": 0.5, "scene_id": f"s-{start}"}
         storage = MagicMock()
         results: dict = {}
 
-        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, results)
 
         assert len(stats) == 3
         assert len(raster_paths) == 3
@@ -100,7 +111,7 @@ class TestMosaicNdviParallel:
 
         _run_mosaic_ndvi_phase(
             BBOX,
-            COORDS,
+            GEOMETRY,
             [_make_frame(), _make_frame(season="summer")],
             "proj",
             "ts",
@@ -134,7 +145,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, results)
 
         # At least 2 of 3 search_ids should be populated (one frame failed)
         populated = [s for s in results["search_ids"] if s is not None]
@@ -151,7 +162,7 @@ class TestMosaicNdviParallel:
         mock_mosaic.return_value = "sid-1"
         call_count = 0
 
-        def _ndvi_side_effect(bbox, start, end):
+        def _ndvi_side_effect(bbox, start, end, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -162,7 +173,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        stats, _ = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        stats, _ = _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, results)
 
         # One should have succeeded, one should be None
         populated = [s for s in stats if s is not None]
@@ -179,7 +190,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, results)
 
         assert "naip" in sids
         assert "sentinel-2-l2a" in sids
@@ -203,7 +214,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, results)
 
         assert results["search_ids"][0] == "sid-sentinel-2-l2a"
         assert results["display_collections"][0] == "sentinel-2-l2a"
@@ -225,7 +236,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, results)
 
         mock_mosaic.assert_called_once()
         assert results["search_ids"][0] is None
@@ -251,7 +262,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, results)
 
         # RGB mosaic skipped — search_ids[0] must be None
         assert results["search_ids"][0] is None
@@ -275,7 +286,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, results)
 
         provenance = frames[0].get("provenance")
         assert provenance is not None
@@ -298,7 +309,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, results)
 
         storage.upload_bytes.assert_called_once()
         call_args = storage.upload_bytes.call_args
@@ -322,8 +333,8 @@ class TestMosaicNdviParallel:
         mock_ndvi.return_value = {"mean": 0.5, "geotiff_bytes": b"\x00TIFF"}
         storage = MagicMock()
 
-        _, paths_a = _run_mosaic_ndvi_phase(BBOX, COORDS, frames_a, "proj", "ts", "out", storage, {}, aoi_index=0)
-        _, paths_b = _run_mosaic_ndvi_phase(BBOX, COORDS, frames_b, "proj", "ts", "out", storage, {}, aoi_index=1)
+        _, paths_a = _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames_a, "proj", "ts", "out", storage, {}, aoi_index=0)
+        _, paths_b = _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames_b, "proj", "ts", "out", storage, {}, aoi_index=1)
 
         assert paths_a[0] != paths_b[0]
 
@@ -338,7 +349,7 @@ class TestMosaicNdviParallel:
         mock_ndvi.return_value = {"mean": 0.7, "geotiff_bytes": b"\x00TIFF"}
         storage = MagicMock()
 
-        _, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, {})
+        _, raster_paths = _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, {})
 
         assert raster_paths[0] == "enrichment/proj/ts/ndvi/2025_winter.tif"
 
@@ -349,18 +360,18 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, [], "proj", "ts", "out", storage, results)
+        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, GEOMETRY, [], "proj", "ts", "out", storage, results)
 
         assert stats == []
         assert raster_paths == []
         mock_mosaic.assert_not_called()
         mock_ndvi.assert_not_called()
 
-    @patch("treesight.pipeline.enrichment._phase_runners.fetch_ndvi_stat")
+    @patch("treesight.pipeline.enrichment.ndvi.fetch_ndvi_stat")
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
-    def test_fallback_to_tile_when_cog_returns_none(self, mock_mosaic, mock_ndvi, mock_fetch_stat):
-        """When compute_ndvi returns None, fall back to tile-based fetch_ndvi_stat."""
+    def test_missing_cog_never_falls_back_to_unmasked_tile(self, mock_mosaic, mock_ndvi, mock_fetch_stat):
+        """Tile statistics cannot substitute for plot-masked observations."""
         frames = [_make_frame()]
         mock_mosaic.return_value = "sid-1"
         mock_ndvi.return_value = None
@@ -368,13 +379,13 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, results)
 
-        mock_fetch_stat.assert_called_once()
-        assert stats[0] == {"mean": 0.4}
+        mock_fetch_stat.assert_not_called()
+        assert stats[0]["available"] is False
         assert raster_paths[0] is None
 
-    @patch("treesight.pipeline.enrichment._phase_runners.fetch_ndvi_stat")
+    @patch("treesight.pipeline.enrichment.ndvi.fetch_ndvi_stat")
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_no_mosaic_and_no_cog_returns_none_stat(self, mock_mosaic, mock_ndvi, mock_fetch_stat):
@@ -385,10 +396,10 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, results)
 
         mock_fetch_stat.assert_not_called()
-        assert stats[0] is None
+        assert stats[0]["available"] is False
         assert raster_paths[0] is None
 
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
@@ -404,7 +415,7 @@ class TestMosaicNdviParallel:
         results: dict = {}
         acc = ResourceAccumulator()
 
-        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results, acc=acc)
+        _run_mosaic_ndvi_phase(BBOX, GEOMETRY, frames, "proj", "ts", "out", storage, results, acc=acc)
 
         acc_dict = acc.to_dict()
         assert acc_dict["mosaic_registrations"] == 1
@@ -423,14 +434,14 @@ class TestPerAoiEnrichment:
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
     def test_per_aoi_enrichment_runs_per_aoi(self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change):
-        """With per_aoi_coords containing 2+ AOIs, each gets its own enrichment."""
+        """With per_aoi_geometries containing 2+ AOIs, each gets its own enrichment."""
         mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
         mock_mosaic.return_value = ([], [])
         storage = MagicMock()
 
         per_aoi = [
-            {"name": "Farm A", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 100},
-            {"name": "Farm B", "coords": [[30, 1], [30, 2], [31, 2]], "area_ha": 200},
+            {"name": "Farm A", "geometry": _geometry([[-50, -10], [-50, -9], [-49, -9]]), "area_ha": 100},
+            {"name": "Farm B", "geometry": _geometry([[30, 1], [30, 2], [31, 2]]), "area_ha": 200},
         ]
 
         result = run_enrichment(
@@ -439,7 +450,7 @@ class TestPerAoiEnrichment:
             timestamp="20240101",
             output_container="out",
             storage=storage,
-            per_aoi_coords=per_aoi,
+            per_aoi_geometries=per_aoi,
         )
 
         assert "per_aoi_enrichment" in result
@@ -464,7 +475,7 @@ class TestPerAoiEnrichment:
         per_aoi = [
             {
                 "name": "Solo Farm",
-                "coords": [[-50, -10], [-50, -9], [-49, -9]],
+                "geometry": _geometry([[-50, -10], [-50, -9], [-49, -9]]),
                 "area_ha": 50,
                 "source_geometry_type": "polygon",
                 "plot_area_ha": 49.5,
@@ -477,7 +488,7 @@ class TestPerAoiEnrichment:
             timestamp="20240101",
             output_container="out",
             storage=storage,
-            per_aoi_coords=per_aoi,
+            per_aoi_geometries=per_aoi,
         )
 
         assert result["schema_version"] == "enrichment-manifest/v2"
@@ -486,7 +497,7 @@ class TestPerAoiEnrichment:
         assert entry["aoi_index"] == 0
         assert entry["name"] == "Solo Farm"
         assert entry["area_ha"] == 50
-        assert entry["coords"] == per_aoi[0]["coords"]
+        assert entry["geometry"] == per_aoi[0]["geometry"]
         assert entry["source_geometry_type"] == "polygon"
         assert entry["plot_area_ha"] == 49.5
         assert entry["ndvi_raster_paths"] == [unscoped_path]
@@ -510,8 +521,8 @@ class TestPerAoiEnrichment:
         storage = MagicMock()
 
         per_aoi = [
-            {"name": "Farm A", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 100},
-            {"name": "Farm B", "coords": [[30, 1], [30, 2], [31, 2]], "area_ha": 200},
+            {"name": "Farm A", "geometry": _geometry([[-50, -10], [-50, -9], [-49, -9]]), "area_ha": 100},
+            {"name": "Farm B", "geometry": _geometry([[30, 1], [30, 2], [31, 2]]), "area_ha": 200},
         ]
 
         with patch(
@@ -524,7 +535,7 @@ class TestPerAoiEnrichment:
                 timestamp="20240101",
                 output_container="out",
                 storage=storage,
-                per_aoi_coords=per_aoi,
+                per_aoi_geometries=per_aoi,
             )
 
         assert "per_aoi_enrichment" in result
@@ -546,7 +557,10 @@ class TestPerAoiEnrichment:
         mock_mosaic.return_value = ([], [])
         storage = MagicMock()
 
-        per_aoi = [{"name": f"Farm {i}", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 10} for i in range(4)]
+        per_aoi = [
+            {"name": f"Farm {i}", "geometry": _geometry([[-50, -10], [-50, -9], [-49, -9]]), "area_ha": 10}
+            for i in range(4)
+        ]
 
         submitted: list[int] = []
         real_tpe = ThreadPoolExecutor
@@ -563,7 +577,7 @@ class TestPerAoiEnrichment:
                 timestamp="20240101",
                 output_container="out",
                 storage=storage,
-                per_aoi_coords=per_aoi,
+                per_aoi_geometries=per_aoi,
             )
 
         # At least one pool was created for the per-AOI fan-out
@@ -601,7 +615,10 @@ class TestPerAoiEnrichment:
 
         mock_plan.side_effect = plan_side_effect
 
-        per_aoi = [{"name": f"Farm {i}", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 10} for i in range(3)]
+        per_aoi = [
+            {"name": f"Farm {i}", "geometry": _geometry([[-50, -10], [-50, -9], [-49, -9]]), "area_ha": 10}
+            for i in range(3)
+        ]
 
         with patch("treesight.pipeline.enrichment.runner._enrich_single_aoi", side_effect=slow_enrich):
             result = run_enrichment(
@@ -610,7 +627,7 @@ class TestPerAoiEnrichment:
                 timestamp="20240101",
                 output_container="out",
                 storage=storage,
-                per_aoi_coords=per_aoi,
+                per_aoi_geometries=per_aoi,
             )
 
         enrichment = result["per_aoi_enrichment"]
@@ -634,7 +651,10 @@ class TestPerAoiEnrichment:
         mock_mosaic.return_value = ([], [])
         storage = MagicMock()
 
-        per_aoi = [{"name": f"Farm {i}", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 10} for i in range(3)]
+        per_aoi = [
+            {"name": f"Farm {i}", "geometry": _geometry([[-50, -10], [-50, -9], [-49, -9]]), "area_ha": 10}
+            for i in range(3)
+        ]
 
         seen_workers: list[int | None] = []
 
@@ -650,7 +670,7 @@ class TestPerAoiEnrichment:
                 timestamp="20240101",
                 output_container="out",
                 storage=storage,
-                per_aoi_coords=per_aoi,
+                per_aoi_geometries=per_aoi,
             )
 
         # Pool is capped: no more workers than AOIs, never exceeds the constant.
@@ -658,48 +678,48 @@ class TestPerAoiEnrichment:
         assert expected in seen_workers
 
 
-class TestCollectPerAoiCoords:
-    """Test _collect_per_aoi_coords helper (#578)."""
+class TestCollectPerAoiGeometries:
+    """Test _collect_per_aoi_geometries helper (#578)."""
 
-    def test_extracts_from_exterior_coords(self):
-        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+    def test_preserves_source_geometry(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_geometries
 
         aois = [
             {
                 "feature_name": "Farm A",
-                "exterior_coords": [[-50, -10], [-50, -9], [-49, -9]],
+                "geometry": _geometry(COORDS),
+                "centroid": [-49.5, -9.5],
                 "area_ha": 100,
             },
             {
                 "feature_name": "Farm B",
-                "exterior_coords": [[30, 1], [30, 2], [31, 2]],
+                "geometry": _geometry([[30, 1], [30, 2], [31, 2]]),
+                "centroid": [30.5, 1.5],
                 "area_ha": 200,
             },
         ]
-        result = _collect_per_aoi_coords(aois)
+        result = _collect_per_aoi_geometries(aois)
         assert len(result) == 2
         assert result[0]["name"] == "Farm A"
-        assert result[0]["coords"] == [[-50, -10], [-50, -9], [-49, -9]]
+        assert result[0]["geometry"] == aois[0]["geometry"]
         assert result[1]["area_ha"] == 200
 
-    def test_falls_back_to_bbox(self):
-        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+    def test_bbox_cannot_replace_source_geometry(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_geometries
 
         aois = [{"feature_name": "Box", "bbox": [-50, -10, -49, -9], "area_ha": 50}]
-        result = _collect_per_aoi_coords(aois)
-        assert len(result) == 1
-        assert len(result[0]["coords"]) == 5  # bbox → closed ring
+        with pytest.raises(ValueError, match="source geometry"):
+            _collect_per_aoi_geometries(aois)
 
-    def test_skips_aois_without_coords(self):
-        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+    def test_missing_geometry_is_explicit_error(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_geometries
 
         aois = [
-            {"feature_name": "Good", "exterior_coords": [[1, 2], [3, 4]]},
+            {"feature_name": "Good", "geometry": _geometry(COORDS)},
             {"feature_name": "Empty"},
         ]
-        result = _collect_per_aoi_coords(aois)
-        assert len(result) == 1
-        assert result[0]["name"] == "Good"
+        with pytest.raises(ValueError, match="source geometry"):
+            _collect_per_aoi_geometries(aois)
 
 
 # ---------------------------------------------------------------------------
@@ -748,7 +768,7 @@ class TestEnrichDataSources:
                 timestamp="t",
                 output_container="out",
                 storage=storage,
-                per_aoi_coords=[{"name": "Solo", "coords": COORDS, "area_ha": 1}],
+                per_aoi_geometries=[{"name": "Solo", "geometry": _geometry(COORDS), "area_ha": 1}],
                 eudr_mode=True,
             )
 
@@ -784,8 +804,8 @@ class TestEnrichDataSources:
         mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-06-01"}]
         storage = MagicMock()
         per_aoi = [
-            {"name": "Farm A", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 100},
-            {"name": "Farm B", "coords": [[30, 1], [30, 2], [31, 2]], "area_ha": 200},
+            {"name": "Farm A", "geometry": _geometry([[-50, -10], [-50, -9], [-49, -9]]), "area_ha": 100},
+            {"name": "Farm B", "geometry": _geometry([[30, 1], [30, 2], [31, 2]]), "area_ha": 200},
         ]
 
         with patch("treesight.config.SAFE_MODE", True):
@@ -795,7 +815,7 @@ class TestEnrichDataSources:
                 timestamp="t",
                 output_container="out",
                 storage=storage,
-                per_aoi_coords=per_aoi,
+                per_aoi_geometries=per_aoi,
             )
 
         assert result["safe_mode"] is True
@@ -947,7 +967,7 @@ class TestEnrichSingleAoiStep:
 
         with patch("treesight.config.SAFE_MODE", True):
             result = enrich_single_aoi_step(
-                {"name": "safe-aoi", "coords": [[1, 2], [1, 3], [2, 3]], "area_ha": 10},
+                {"name": "safe-aoi", "geometry": _geometry([[1, 2], [1, 3], [2, 3]]), "area_ha": 10},
                 project_name="p",
                 timestamp="t",
                 output_container="out",
@@ -965,7 +985,7 @@ class TestEnrichSingleAoiStep:
     def test_safe_mode_uses_shared_skip_report(self):
         with patch("treesight.config.SAFE_MODE", True):
             result = _enrich_single_aoi(
-                {"name": "safe-aoi", "coords": COORDS, "area_ha": 10},
+                {"name": "safe-aoi", "geometry": _geometry(COORDS), "area_ha": 10},
                 date_start=None,
                 date_end=None,
                 cadence="maximum",
@@ -984,7 +1004,7 @@ class TestEnrichSingleAoiStep:
         mock_inner.return_value = {"name": "forest-a", "ndvi": 0.7}
         storage = MagicMock()
         result = enrich_single_aoi_step(
-            {"name": "forest-a", "coords": [[1, 2]]},
+            {"name": "forest-a", "geometry": _geometry(COORDS)},
             project_name="p",
             timestamp="t",
             output_container="out",
@@ -998,7 +1018,7 @@ class TestEnrichSingleAoiStep:
         mock_inner.side_effect = RuntimeError("boom")
         storage = MagicMock()
         result = enrich_single_aoi_step(
-            {"name": "bad-aoi", "coords": [[1, 2]]},
+            {"name": "bad-aoi", "geometry": _geometry(COORDS)},
             project_name="p",
             timestamp="t",
             output_container="out",
@@ -1020,7 +1040,7 @@ class TestEnrichSingleAoiStep:
         storage = MagicMock()
         with patch("treesight.config.SAFE_MODE", True):
             result = enrich_single_aoi_step(
-                {"name": "safe-aoi", "coords": COORDS},
+                {"name": "safe-aoi", "geometry": _geometry(COORDS)},
                 project_name="p",
                 timestamp="t",
                 output_container="out",
@@ -1041,14 +1061,14 @@ class TestEnrichFinalize:
     def test_multi_aoi_unavailable_weather_preserves_manifest(self):
         storage = MagicMock()
         per_aoi = [
-            {"name": "a", "coords": [[1, 2]], "area_ha": 10},
-            {"name": "b", "coords": [[3, 4]], "area_ha": 20},
+            {"name": "a", "geometry": _geometry(COORDS), "area_ha": 10},
+            {"name": "b", "geometry": _geometry(COORDS), "area_ha": 20},
         ]
         result = enrich_finalize(
             {"frame_plan": []},
             {},
             [{"weather_daily": None}, {"weather_daily": {"temperature": [20]}}],
-            per_aoi_coords=per_aoi,
+            per_aoi_geometries=per_aoi,
             project_name="p",
             timestamp="t",
             output_container="out",
@@ -1078,15 +1098,15 @@ class TestEnrichFinalize:
     def test_includes_per_aoi_results(self):
         storage = MagicMock()
         per_aoi = [
-            {"name": "a", "coords": [[1, 2]], "area_ha": 10},
-            {"name": "b", "coords": [[3, 4]], "area_ha": 20},
+            {"name": "a", "geometry": _geometry(COORDS), "area_ha": 10},
+            {"name": "b", "geometry": _geometry(COORDS), "area_ha": 20},
         ]
         per_aoi_results = [{"name": "a"}, {"name": "b", "error": "enrichment_failed"}]
         result = enrich_finalize(
             {"frame_plan": []},
             {},
             per_aoi_results,
-            per_aoi_coords=per_aoi,
+            per_aoi_geometries=per_aoi,
             project_name="p",
             timestamp="t",
             output_container="out",
@@ -1101,7 +1121,7 @@ class TestEnrichFinalize:
         result = enrich_finalize(
             {
                 "frame_plan": [{"start": "2024-01-01", "end": "2024-03-01"}],
-                "coords": [[-50, -10], [-50, -9], [-49, -9]],
+                "geometry": _geometry([[-50, -10], [-50, -9], [-49, -9]]),
                 "bbox": [[-50, -10], [-49, -9]],
                 "center": {"lat": -9.5, "lon": -49.5},
                 "weather_daily": [{"temp": 20}],
@@ -1111,10 +1131,10 @@ class TestEnrichFinalize:
                 "ndvi_raster_paths": ["enrichment/p/t/ndvi/2024_spring.tif"],
             },
             [],
-            per_aoi_coords=[
+            per_aoi_geometries=[
                 {
                     "name": "Solo Farm",
-                    "coords": [[-50, -10], [-50, -9], [-49, -9]],
+                    "geometry": _geometry([[-50, -10], [-50, -9], [-49, -9]]),
                     "area_ha": 50,
                 }
             ],
@@ -1135,14 +1155,14 @@ class TestEnrichFinalize:
         assert entry["ndvi_raster_paths"] == ["enrichment/p/t/ndvi/2024_spring.tif"]
         assert "/aoi-0/" not in entry["ndvi_raster_paths"][0]
 
-    def test_single_aoi_finalize_derives_geometry_from_per_aoi_coords(self):
+    def test_single_aoi_finalize_derives_geometry_from_per_aoi_geometries(self):
         storage = MagicMock()
         coords = [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0], [-49.0, -10.0], [-50.0, -10.0]]
         result = enrich_finalize(
             {"safe_mode": True, "frame_plan": []},
             {"safe_mode": True},
             [],
-            per_aoi_coords=[{"name": "Solo Farm", "coords": coords, "area_ha": 50}],
+            per_aoi_geometries=[{"name": "Solo Farm", "geometry": _geometry(coords), "area_ha": 50}],
             project_name="p",
             timestamp="t",
             output_container="out",
@@ -1170,7 +1190,7 @@ class TestEnrichFinalize:
             {},
             {},
             [],
-            per_aoi_coords=[],
+            per_aoi_geometries=[],
             eudr_mode=True,
             date_start="2021-01-01",
             project_name="p",
@@ -1190,8 +1210,8 @@ class TestIsMultiRegion:
         from treesight.pipeline.enrichment.runner import _is_multi_region
 
         aois = [
-            {"coords": [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]]},
-            {"coords": [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]]},
+            {"geometry": _geometry([[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]])},
+            {"geometry": _geometry([[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]])},
         ]
         assert not _is_multi_region(aois)
 
@@ -1201,8 +1221,8 @@ class TestIsMultiRegion:
 
         # Two AOIs ~100 km apart in Brazil
         aois = [
-            {"coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]]},
-            {"coords": [[-46.0, -23.0], [-46.0, -22.5], [-45.5, -22.5]]},
+            {"geometry": _geometry([[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]])},
+            {"geometry": _geometry([[-46.0, -23.0], [-46.0, -22.5], [-45.5, -22.5]])},
         ]
         assert not _is_multi_region(aois)
 
@@ -1211,8 +1231,8 @@ class TestIsMultiRegion:
         from treesight.pipeline.enrichment.runner import _is_multi_region
 
         aois = [
-            {"coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]]},  # São Paulo
-            {"coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]]},  # Jakarta
+            {"geometry": _geometry([[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]])},  # São Paulo
+            {"geometry": _geometry([[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]])},  # Jakarta
         ]
         assert _is_multi_region(aois)
 
@@ -1221,8 +1241,8 @@ class TestIsMultiRegion:
         from treesight.pipeline.enrichment.runner import _is_multi_region
 
         aois = [
-            {"coords": [[-4.0, 5.0], [-4.0, 5.5], [-3.5, 5.5]]},  # Côte d'Ivoire
-            {"coords": [[103.0, 1.0], [103.0, 1.5], [103.5, 1.5]]},  # Singapore area
+            {"geometry": _geometry([[-4.0, 5.0], [-4.0, 5.5], [-3.5, 5.5]])},  # Côte d'Ivoire
+            {"geometry": _geometry([[103.0, 1.0], [103.0, 1.5], [103.5, 1.5]])},  # Singapore area
         ]
         assert _is_multi_region(aois)
 
@@ -1230,7 +1250,7 @@ class TestIsMultiRegion:
         """A single AOI should never trigger multi-region detection."""
         from treesight.pipeline.enrichment.runner import _is_multi_region
 
-        aois = [{"coords": [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]]}]
+        aois = [{"geometry": _geometry([[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]])}]
         assert not _is_multi_region(aois)
 
     def test_empty_list_is_not_multi_region(self):
@@ -1246,8 +1266,8 @@ class TestIsMultiRegion:
         # ~490 km north along same longitude from (0, 0)
         # 1 degree latitude ≈ 111.32 km, 490/111.32 ≈ 4.4 degrees
         aois = [
-            {"coords": [[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]]},
-            {"coords": [[0.0, 4.3], [0.1, 4.3], [0.0, 4.4]]},
+            {"geometry": _geometry([[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]])},
+            {"geometry": _geometry([[0.0, 4.3], [0.1, 4.3], [0.0, 4.4]])},
         ]
         assert not _is_multi_region(aois)
 
@@ -1257,8 +1277,8 @@ class TestIsMultiRegion:
 
         # ~560 km north (5 degrees latitude)
         aois = [
-            {"coords": [[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]]},
-            {"coords": [[0.0, 5.0], [0.1, 5.0], [0.0, 5.1]]},
+            {"geometry": _geometry([[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]])},
+            {"geometry": _geometry([[0.0, 5.0], [0.1, 5.0], [0.0, 5.1]])},
         ]
         assert _is_multi_region(aois)
 
@@ -1293,12 +1313,12 @@ class TestMultiRegionRunEnrichment:
         per_aoi = [
             {
                 "name": "Farm A",
-                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "geometry": _geometry([[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]]),
                 "area_ha": 100,
             },
             {
                 "name": "Farm B",
-                "coords": [[-46.0, -23.0], [-46.0, -22.5], [-45.5, -22.5]],
+                "geometry": _geometry([[-46.0, -23.0], [-46.0, -22.5], [-45.5, -22.5]]),
                 "area_ha": 200,
             },
         ]
@@ -1309,7 +1329,7 @@ class TestMultiRegionRunEnrichment:
             timestamp="20240101",
             output_container="out",
             storage=storage,
-            per_aoi_coords=per_aoi,
+            per_aoi_geometries=per_aoi,
         )
 
         assert result.get("multi_region") is not True
@@ -1344,12 +1364,12 @@ class TestMultiRegionRunEnrichment:
         per_aoi = [
             {
                 "name": "Brazil Farm",
-                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "geometry": _geometry([[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]]),
                 "area_ha": 100,
             },
             {
                 "name": "Jakarta Farm",
-                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "geometry": _geometry([[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]]),
                 "area_ha": 200,
             },
         ]
@@ -1360,7 +1380,7 @@ class TestMultiRegionRunEnrichment:
             timestamp="20240101",
             output_container="out",
             storage=storage,
-            per_aoi_coords=per_aoi,
+            per_aoi_geometries=per_aoi,
         )
 
         assert result.get("multi_region") is True
@@ -1391,12 +1411,12 @@ class TestMultiRegionRunEnrichment:
         per_aoi = [
             {
                 "name": "Brazil Farm",
-                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "geometry": _geometry([[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]]),
                 "area_ha": 100,
             },
             {
                 "name": "Jakarta Farm",
-                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "geometry": _geometry([[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]]),
                 "area_ha": 200,
             },
         ]
@@ -1407,7 +1427,7 @@ class TestMultiRegionRunEnrichment:
             timestamp="20240101",
             output_container="out",
             storage=storage,
-            per_aoi_coords=per_aoi,
+            per_aoi_geometries=per_aoi,
         )
 
         mock_mosaic.assert_not_called()
@@ -1439,12 +1459,12 @@ class TestMultiRegionRunEnrichment:
         per_aoi = [
             {
                 "name": "Brazil Farm",
-                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "geometry": _geometry([[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]]),
                 "area_ha": 100,
             },
             {
                 "name": "Jakarta Farm",
-                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "geometry": _geometry([[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]]),
                 "area_ha": 200,
             },
         ]
@@ -1455,7 +1475,7 @@ class TestMultiRegionRunEnrichment:
             timestamp="20240101",
             output_container="out",
             storage=storage,
-            per_aoi_coords=per_aoi,
+            per_aoi_geometries=per_aoi,
         )
 
         mock_weather.assert_called_once()
@@ -1486,12 +1506,12 @@ class TestMultiRegionRunEnrichment:
         per_aoi = [
             {
                 "name": "Brazil Farm",
-                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "geometry": _geometry([[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]]),
                 "area_ha": 100,
             },
             {
                 "name": "Jakarta Farm",
-                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "geometry": _geometry([[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]]),
                 "area_ha": 200,
             },
         ]
@@ -1502,7 +1522,7 @@ class TestMultiRegionRunEnrichment:
             timestamp="20240101",
             output_container="out",
             storage=storage,
-            per_aoi_coords=per_aoi,
+            per_aoi_geometries=per_aoi,
             eudr_mode=True,
         )
 
@@ -1539,12 +1559,12 @@ class TestMultiRegionRunEnrichment:
         per_aoi = [
             {
                 "name": "Brazil Farm",
-                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "geometry": _geometry([[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]]),
                 "area_ha": 100,
             },
             {
                 "name": "Jakarta Farm",
-                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "geometry": _geometry([[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]]),
                 "area_ha": 200,
             },
         ]
@@ -1555,7 +1575,7 @@ class TestMultiRegionRunEnrichment:
             timestamp="20240101",
             output_container="out",
             storage=storage,
-            per_aoi_coords=per_aoi,
+            per_aoi_geometries=per_aoi,
         )
 
         assert "per_aoi_enrichment" in result
@@ -1592,12 +1612,12 @@ class TestMultiRegionRunEnrichment:
         per_aoi = [
             {
                 "name": "Brazil Farm",
-                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "geometry": _geometry([[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]]),
                 "area_ha": 100,
             },
             {
                 "name": "Jakarta Farm",
-                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "geometry": _geometry([[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]]),
                 "area_ha": 200,
             },
         ]
@@ -1608,7 +1628,7 @@ class TestMultiRegionRunEnrichment:
             timestamp="20240101",
             output_container="out",
             storage=storage,
-            per_aoi_coords=per_aoi,
+            per_aoi_geometries=per_aoi,
         )
 
         assert result.get("multi_region") is True
@@ -1657,12 +1677,12 @@ class TestMultiRegionRunEnrichment:
         per_aoi = [
             {
                 "name": "Brazil Farm",
-                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "geometry": _geometry([[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]]),
                 "area_ha": 100,
             },
             {
                 "name": "Jakarta Farm",
-                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "geometry": _geometry([[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]]),
                 "area_ha": 200,
             },
         ]
@@ -1673,7 +1693,7 @@ class TestMultiRegionRunEnrichment:
             timestamp="20240101",
             output_container="out",
             storage=storage,
-            per_aoi_coords=per_aoi,
+            per_aoi_geometries=per_aoi,
             eudr_mode=True,
         )
 

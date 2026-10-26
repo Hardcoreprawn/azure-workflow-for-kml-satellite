@@ -203,11 +203,32 @@
     showEvidenceFrame(state.frameIndex, ctx);
   }
 
+  function loadImagery(source, ctx) {
+    const state = ctx.state;
+    stopEvidencePlay(ctx);
+    state.mapLayers.forEach(function (frame) {
+      if (frame.rgb) state.map.removeLayer(frame.rgb);
+      if (frame.ndvi) state.map.removeLayer(frame.ndvi);
+    });
+    state.mapLayers = [];
+    state.frameIndex = 0;
+    const controls = document.getElementById('app-evidence-frame-controls');
+    const label = document.getElementById('app-map-frame-label');
+    const searchIds = source.search_ids || [];
+    const framePlan = source.frame_plan || [];
+    const hasImagery = searchIds.some(Boolean) && framePlan.length > 0;
+    if (controls) controls.hidden = !hasImagery;
+    if (label) label.textContent = hasImagery ? '' : 'No imagery available for this selection.';
+    if (hasImagery && state.map) {
+      buildEvidenceFrames(framePlan, searchIds, source.ndvi_search_ids || [], ctx);
+    }
+    syncExpandedControls(ctx);
+  }
+
   function initEvidenceMap(manifest, ctx) {
     let state = ctx.state;
     let container = document.getElementById('app-evidence-map');
     let overlay = document.getElementById('app-evidence-map-overlay');
-    let controls = document.getElementById('app-evidence-frame-controls');
     if (!container) return;
 
     if (state.map) { state.map.remove(); state.map = null; }
@@ -215,15 +236,17 @@
     state.frameIndex = 0;
     if (state.playInterval) { clearInterval(state.playInterval); state.playInterval = null; }
 
-    let center = manifest.center || manifest.coords;
+    let perAoi = manifest.per_aoi_enrichment || [];
+    let singleAoi = perAoi.length === 1 ? perAoi[0] : null;
+    let center = manifest.center || (singleAoi && singleAoi.center);
     if (!center) {
       if (overlay) overlay.textContent = 'No location data available.';
       return;
     }
 
-    let lat = Array.isArray(center) ? center[0] : center.lat || center.latitude;
-    let lon = Array.isArray(center) ? center[1] : center.lon || center.longitude;
-    if (!lat || !lon) {
+    let lat = center.lat;
+    let lon = center.lon;
+    if (typeof lat !== 'number' || typeof lon !== 'number') {
       if (overlay) overlay.textContent = 'Invalid coordinates in manifest.';
       return;
     }
@@ -234,14 +257,13 @@
     }).addTo(state.map);
 
     state.aoiPolygons = [];
-    let perAoi = manifest.per_aoi_enrichment || [];
     if (perAoi.length > 1) {
       try {
         let allBounds = L.latLngBounds([]);
         perAoi.forEach(function (aoi, idx) {
-          if (!aoi.coords || !aoi.coords.length) return;
-          let ll = aoi.coords.map(function (c) { return [c[1], c[0]]; });
-          let poly = L.polygon(ll, {
+          let latLngs = window.CanopexGeo.geometryLatLngs(aoi.geometry);
+          if (!latLngs.length) return;
+          let poly = L.polygon(latLngs, {
             color: 'rgba(88,166,255,.7)',
             weight: 2,
             fillOpacity: 0.05
@@ -251,47 +273,26 @@
           poly.bindTooltip(tip, { sticky: true });
           poly.on('click', function () { ctx.selectAoi(idx); });
           state.aoiPolygons.push(poly);
-          allBounds.extend(poly.getBounds());
+          window.CanopexGeo.extendBoundsWithGeometry(allBounds, aoi.geometry);
         });
         if (allBounds.isValid()) state.map.fitBounds(allBounds.pad(0.1));
       } catch (e) { /* skip polygon */ }
-    } else if (manifest.coords && Array.isArray(manifest.coords)) {
+    } else {
       try {
-        let rings = [];
-        let ringStart = 0;
-        for (let ci = ringStart + 3; ci < manifest.coords.length; ci++) {
-          if (Math.abs(manifest.coords[ci][0] - manifest.coords[ringStart][0]) < 1e-5 &&
-            Math.abs(manifest.coords[ci][1] - manifest.coords[ringStart][1]) < 1e-5) {
-            rings.push(manifest.coords.slice(ringStart, ci + 1));
-            ringStart = ci + 1;
-            ci = ringStart + 2;
-          }
-        }
-        if (ringStart < manifest.coords.length) rings.push(manifest.coords.slice(ringStart));
-        if (!rings.length) rings.push(manifest.coords);
-
+        let geometry = singleAoi ? singleAoi.geometry : manifest.geometry;
+        let latLngs = window.CanopexGeo.geometryLatLngs(geometry);
         let singleBounds = L.latLngBounds([]);
-        rings.forEach(function (ring) {
-          let ll = ring.map(function (c) { return [c[1], c[0]]; });
-          L.polygon(ll, { color: 'rgba(88,166,255,.7)', weight: 2, fillOpacity: 0.05 }).addTo(state.map);
-          singleBounds.extend(L.polygon(ll).getBounds());
-        });
-        state.map.fitBounds(singleBounds.pad(0.1));
+        if (latLngs.length) {
+          L.polygon(latLngs, { color: 'rgba(88,166,255,.7)', weight: 2, fillOpacity: 0.05 }).addTo(state.map);
+          window.CanopexGeo.extendBoundsWithGeometry(singleBounds, geometry);
+          state.map.fitBounds(singleBounds.pad(0.1));
+        }
       } catch (e) { /* skip polygon */ }
     }
 
     if (overlay) overlay.hidden = true;
 
-    let searchIds = manifest.search_ids || [];
-    let ndviSearchIds = manifest.ndvi_search_ids || [];
-    let framePlan = manifest.frame_plan || [];
-
-    if (searchIds.length && framePlan.length) {
-      buildEvidenceFrames(framePlan, searchIds, ndviSearchIds, ctx);
-      if (controls) controls.hidden = false;
-    } else if (controls) {
-      controls.hidden = true;
-    }
+    loadImagery(singleAoi || manifest, ctx);
 
     setTimeout(function () { if (state.map) state.map.invalidateSize(); }, 200);
   }
@@ -329,6 +330,7 @@
     initEvidenceMap: initEvidenceMap,
     showEvidenceFrame: showEvidenceFrame,
     toggleEvidencePlay: toggleEvidencePlay,
-    stopEvidencePlay: stopEvidencePlay
+    stopEvidencePlay: stopEvidencePlay,
+    loadImagery: loadImagery
   };
 })();

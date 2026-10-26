@@ -148,7 +148,7 @@ class TestIngestionE2E:
 
         assert len(features) >= 1
         assert features[0].name
-        assert len(features[0].exterior_coords) >= 3
+        assert len(features[0].geometry.parts[0].outer) >= 3
 
     def test_full_ingestion_writes_metadata(self) -> None:
         """KML → parse → prepare AOI → write metadata → verify blob in Azurite."""
@@ -263,6 +263,7 @@ class TestFulfilmentE2E:
         """``post_process_imagery`` writes a clipped blob to Azurite."""
         from tests.stub_provider import get_stub_geotiff
         from treesight.models.aoi import AOI
+        from treesight.models.geometry import PolygonGeometry, PolygonPart
         from treesight.pipeline.fulfilment import post_process_imagery
         from treesight.storage.client import BlobStorageClient
 
@@ -271,13 +272,18 @@ class TestFulfilmentE2E:
             feature_name="Block A",
             source_file="test.kml",
             feature_index=0,
-            exterior_coords=[[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]],
+            geometry=PolygonGeometry(
+                parts=(
+                    PolygonPart(
+                        outer=((36.8, -1.3), (36.81, -1.3), (36.81, -1.31), (36.8, -1.31), (36.8, -1.3)),
+                    ),
+                ),
+            ),
             bbox=[36.8, -1.31, 36.81, -1.3],
             buffered_bbox=[36.79, -1.32, 36.82, -1.29],
             area_ha=12.0,
             centroid=[36.805, -1.305],
             buffer_m=100.0,
-            crs="EPSG:4326",
         )
 
         # Pre-upload a valid GeoTIFF so post_process can download_bytes it
@@ -314,6 +320,7 @@ class TestFulfilmentE2E:
 
         from tests.stub_provider import StubPlanetaryComputerProvider, get_stub_geotiff
         from treesight.models.aoi import AOI
+        from treesight.models.geometry import PolygonGeometry, PolygonPart
         from treesight.pipeline.fulfilment import download_imagery, post_process_imagery
         from treesight.storage.client import BlobStorageClient
 
@@ -323,13 +330,18 @@ class TestFulfilmentE2E:
             feature_name="Block B",
             source_file="test.kml",
             feature_index=1,
-            exterior_coords=[[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.3]],
+            geometry=PolygonGeometry(
+                parts=(
+                    PolygonPart(
+                        outer=((36.8, -1.3), (36.81, -1.3), (36.81, -1.31), (36.8, -1.31), (36.8, -1.3)),
+                    ),
+                ),
+            ),
             bbox=[36.8, -1.31, 36.81, -1.3],
             buffered_bbox=[36.79, -1.32, 36.82, -1.29],
             area_ha=12.0,
             centroid=[36.805, -1.305],
             buffer_m=100.0,
-            crs="EPSG:4326",
         )
 
         outcome = {

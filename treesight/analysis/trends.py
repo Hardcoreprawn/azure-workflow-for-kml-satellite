@@ -6,6 +6,7 @@ are unit-testable in isolation.
 
 from __future__ import annotations
 
+import math
 import re
 import statistics
 from typing import Any
@@ -54,6 +55,16 @@ def default_analysis(text: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def is_usable_ndvi(observation: Any) -> bool:
+    """Only finite numeric NDVI observations count as evidence."""
+    if not isinstance(observation, dict) or observation.get("available") is False:
+        return False
+    mean = observation.get("mean")
+    if isinstance(mean, bool) or not isinstance(mean, (int, float)):
+        return False
+    return -1 <= mean <= 1 and math.isfinite(mean)
+
+
 def calculate_trends(
     ndvi_series: list[dict[str, Any]],
     weather_series: list[dict[str, Any]],
@@ -64,6 +75,7 @@ def calculate_trends(
     year-over-year rather than sequential frames, and uses actual month
     labels for weather analysis.
     """
+    ndvi_series = [entry for entry in ndvi_series if is_usable_ndvi(entry)]
     trends: dict[str, Any] = {}
 
     if ndvi_series:

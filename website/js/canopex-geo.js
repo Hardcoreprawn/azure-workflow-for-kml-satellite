@@ -18,13 +18,16 @@
   }
 
   function parseCoordText(text) {
-    var raw = String(text || '').trim().split(/\s+/).filter(Boolean);
-    var coords = raw.map(function (chunk) {
-      var parts = chunk.split(',');
-      return [parseFloat(parts[1]), parseFloat(parts[0])];
-    }).filter(function (coord) {
-      return !isNaN(coord[0]) && !isNaN(coord[1]);
+    const raw = String(text || '').trim().split(/\s+/).filter(Boolean);
+    const coords = raw.map(function (chunk) {
+      const parts = chunk.split(',');
+      if (parts.length < 2 || !parts[0].trim() || !parts[1].trim()) return [NaN, NaN];
+      return [Number(parts[1]), Number(parts[0])];
     });
+    if (coords.some(function (coord) {
+      return !Number.isFinite(coord[0]) || !Number.isFinite(coord[1]) ||
+        coord[0] < -90 || coord[0] > 90 || coord[1] < -180 || coord[1] > 180;
+    })) return null;
     if (coords.length < 3) return null;
     if (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1]) {
       coords.push(coords[0].slice());
@@ -33,49 +36,64 @@
   }
 
   function parseKmlGeometry(text) {
-    var parser = new DOMParser();
-    var doc = parser.parseFromString(text, 'text/xml');
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, 'text/xml');
     if (doc.getElementsByTagName('parsererror').length) {
       return { error: 'Could not parse the KML markup. Check that the XML is complete.' };
     }
 
-    var placemarks = doc.getElementsByTagName('Placemark');
-    var polygons = [];
-    for (var p = 0; p < placemarks.length; p++) {
-      var nameEl = placemarks[p].getElementsByTagName('name')[0];
-      var polygonName = nameEl ? nameEl.textContent.trim() : 'Polygon ' + (polygons.length + 1);
-      // Only extract outer boundary coordinates — inner boundaries (holes)
-      // must not be counted as separate polygons (#580).
-      var outerEls = placemarks[p].getElementsByTagName('outerBoundaryIs');
-      if (outerEls.length) {
-        for (var o = 0; o < outerEls.length; o++) {
-          var outerCoordEls = outerEls[o].getElementsByTagName('coordinates');
-          for (var c = 0; c < outerCoordEls.length; c++) {
-            var coords = parseCoordText(outerCoordEls[c].textContent);
-            if (coords) polygons.push({ name: polygonName, coords: coords });
-          }
-        }
-      } else {
-        var coordEls = placemarks[p].getElementsByTagName('coordinates');
-        for (var c = 0; c < coordEls.length; c++) {
-          var coords = parseCoordText(coordEls[c].textContent);
-          if (coords) polygons.push({ name: polygonName, coords: coords });
-        }
+    const placemarks = Array.from(doc.getElementsByTagName('Placemark'));
+    const polygons = [];
+    for (const placemark of placemarks) {
+      const parts = Array.from(placemark.getElementsByTagName('Polygon')).map(parsePolygonPart);
+      if (parts.some(function (part) { return part === null; })) {
+        return { error: 'A polygon boundary is incomplete. Check the outer and inner rings.' };
       }
-    }
-
-    if (!polygons.length) {
-      var allCoords = doc.getElementsByTagName('coordinates');
-      for (var i = 0; i < allCoords.length; i++) {
-        var fallbackCoords = parseCoordText(allCoords[i].textContent);
-        if (fallbackCoords) polygons.push({ name: 'Polygon ' + (polygons.length + 1), coords: fallbackCoords });
+      if (!parts.length) continue;
+      const geometry = { parts: parts, crs: 'EPSG:4326' };
+      if (!geometryLatLngs(geometry).length) {
+        return { error: 'A polygon contains an invalid ring. Check its coordinates.' };
       }
+      const nameEl = placemark.getElementsByTagName('name')[0];
+      polygons.push({
+        name: nameEl ? nameEl.textContent.trim() : 'Polygon ' + (polygons.length + 1),
+        geometry: geometry
+      });
     }
 
     return {
       featureCount: placemarks.length || polygons.length,
       polygons: polygons,
     };
+  }
+
+  function parseBoundary(boundary) {
+    const coordinate = boundary && boundary.getElementsByTagName('coordinates')[0];
+    const coords = coordinate && parseCoordText(coordinate.textContent);
+    return coords ? coords.map(function (point) { return [point[1], point[0]]; }) : null;
+  }
+
+  function parsePolygonPart(polygon) {
+    const outer = parseBoundary(polygon.getElementsByTagName('outerBoundaryIs')[0]);
+    const inners = Array.from(polygon.getElementsByTagName('innerBoundaryIs')).map(parseBoundary);
+    if (!outer || inners.some(function (ring) { return ring === null; })) return null;
+    return { outer: outer, inners: inners };
+  }
+
+  function geometryAreaHa(geometry) {
+    return geometry.parts.reduce(function (total, part) {
+      const ringArea = function (ring) {
+        return polygonAreaHa(ring.map(function (position) { return [position[1], position[0]]; }));
+      };
+      return total + ringArea(part.outer) - part.inners.reduce(function (sum, ring) { return sum + ringArea(ring); }, 0);
+    }, 0);
+  }
+
+  function geometryCentroid(geometry) {
+    const points = geometry.parts.flatMap(function (part) { return part.outer.slice(0, -1); });
+    const lon = points.reduce(function (sum, point) { return sum + point[0]; }, 0) / points.length;
+    const lat = points.reduce(function (sum, point) { return sum + point[1]; }, 0) / points.length;
+    return [lat, lon];
   }
 
   function haversineKm(lat1, lon1, lat2, lon2) {
@@ -126,6 +144,67 @@
     if (ha == null || isNaN(ha)) return '\u2014';
     if (ha < 1) return ha.toFixed(1) + ' ha';
     return Math.round(ha).toLocaleString() + ' ha';
+  }
+
+  function geometryLatLngs(geometry) {
+    if (!geometry || geometry.crs !== 'EPSG:4326' ||
+        !Array.isArray(geometry.parts) || !geometry.parts.length) return [];
+
+    var polygons = [];
+    for (var partIndex = 0; partIndex < geometry.parts.length; partIndex++) {
+      var part = geometry.parts[partIndex];
+      if (!part || !Array.isArray(part.outer) || !Array.isArray(part.inners)) return [];
+
+      var rings = [part.outer].concat(part.inners);
+      var latLngRings = [];
+      for (var ringIndex = 0; ringIndex < rings.length; ringIndex++) {
+        var ring = rings[ringIndex];
+        if (!Array.isArray(ring) || ring.length < 4) return [];
+        if (!samePosition(ring[0], ring[ring.length - 1])) return [];
+
+        var latLngRing = [];
+        var uniquePositions = new Set();
+        for (var positionIndex = 0; positionIndex < ring.length; positionIndex++) {
+          var position = ring[positionIndex];
+          if (!Array.isArray(position) || position.length !== 2 ||
+              !Number.isFinite(position[0]) || !Number.isFinite(position[1]) ||
+              position[0] < -180 || position[0] > 180 ||
+              position[1] < -90 || position[1] > 90) return [];
+          if (positionIndex < ring.length - 1) {
+            uniquePositions.add(position[0] + ',' + position[1]);
+          }
+          latLngRing.push([position[1], position[0]]);
+        }
+        if (uniquePositions.size < 3) return [];
+        latLngRings.push(latLngRing);
+      }
+      polygons.push(latLngRings);
+    }
+
+    return polygons.length === 1 ? polygons[0] : polygons;
+  }
+
+  function samePosition(first, second) {
+    return Array.isArray(first) && Array.isArray(second) &&
+      first.length === 2 && second.length === 2 &&
+      first[0] === second[0] && first[1] === second[1];
+  }
+
+  function extendBoundsWithGeometry(bounds, geometry) {
+    if (!bounds || typeof bounds.extend !== 'function') return false;
+
+    var latLngs = geometryLatLngs(geometry);
+    if (!latLngs.length) return false;
+
+    var polygons = geometry.parts.length === 1 ? [latLngs] : latLngs;
+    var rings = [];
+    polygons.forEach(function (polygon) {
+      polygon.forEach(function (ring) { rings.push(ring); });
+    });
+    rings.forEach(function (ring) {
+      ring.forEach(function (position) { bounds.extend(position); });
+    });
+    return true;
   }
 
   function determineProcessingMode(aoiCount, maxSpreadKm) {
@@ -185,6 +264,10 @@
     haversineKm: haversineKm,
     polygonCentroid: polygonCentroid,
     polygonAreaHa: polygonAreaHa,
+    geometryAreaHa: geometryAreaHa,
+    geometryCentroid: geometryCentroid,
+    geometryLatLngs: geometryLatLngs,
+    extendBoundsWithGeometry: extendBoundsWithGeometry,
     formatDistance: formatDistance,
     formatHectares: formatHectares,
     determineProcessingMode: determineProcessingMode,

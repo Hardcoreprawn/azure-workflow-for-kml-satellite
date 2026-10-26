@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from treesight.models.geometry import PolygonGeometry
+
 ENRICHMENT_MANIFEST_V2_SCHEMA = "enrichment-manifest/v2"
 
 
@@ -34,7 +36,7 @@ class PerAoiEnrichment(BaseModel):
     aoi_index: int
     name: str
     area_ha: float
-    coords: list[list[float]]
+    geometry: PolygonGeometry
     bbox: list[Any]
     center: CenterPoint
     source_geometry_type: str | None = None
@@ -56,6 +58,7 @@ class EnrichmentManifestV2(BaseModel):
     schema_version: Literal["enrichment-manifest/v2"]
     run: dict[str, Any]
     summary: RunSummary
+    geometry: PolygonGeometry | None = None
     per_aoi_enrichment: list[PerAoiEnrichment] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="allow")

@@ -14,12 +14,12 @@ from treesight.constants import (
 def ensure_closed(ring: list[list[float]]) -> list[list[float]]:
     """Ensure a coordinate ring is closed (first == last).
 
-    Appends a copy of the first coordinate if the ring has ≥ 3 vertices
+    Returns a copy with the first coordinate appended if the ring has ≥ 3 vertices
     and is not already closed.
     """
     if len(ring) >= 3 and ring[0] != ring[-1]:
-        ring.append(ring[0][:])
-    return ring
+        return [*ring, ring[0][:]]
+    return list(ring)
 
 
 # ZIP local-file-header magic bytes (PK\x03\x04)
