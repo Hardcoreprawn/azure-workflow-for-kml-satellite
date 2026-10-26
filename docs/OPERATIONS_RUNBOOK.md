@@ -190,6 +190,36 @@ After changing the devcontainer configuration, rebuild/reopen it. Verify with
 the editor. Confirm no running containers remain with this project's Compose
 label after host shutdown. GPU execution requires its own hardware validation.
 
+### Real-Acquisition Proof Artifacts
+
+The on-demand `scripts/real_acquisition_runner.py` requires the `dev` extra
+(including `pypdf`). Every requested export is required: missing bodies, HTTP
+errors, unreadable content, or local write failures fail the fixture and the
+overall command, even if later fixtures succeed. Downloads are bounded by
+`LOCAL_AUDIT_MAX_ARTIFACT_BYTES` (16 MiB). CSV is parsed with required EUDR
+columns and consistent row widths; GeoJSON must contain a nonempty
+FeatureCollection with parseable geometry (null geometry remains permitted);
+PDFs must open with `pypdf` and have readable page content. These checks do not
+establish geographic plausibility or compliance correctness.
+
+Inspect `.real-acquisition-output/<fixture-stem>/<instance-id>/result.json`
+for each run. Schema version 1 contains `fixture`, `instance_id`, `success`,
+`status`, and `exports`. Run status is `passed`, `export_failure`, `timeout`,
+or `pipeline_failure`. Each requested export records `format`, `status`,
+`http_status` (null if unavailable), `bytes_received`, and `path` (null unless
+the current download was validated and saved). Export statuses are `passed`,
+`missing`, `http_error`, `transport_error`, `too_large`, `invalid_content`,
+`write_error`, `unsupported_format`, or `not_attempted`. Diagnostics exclude
+response bodies and exception messages. Failure to write the result file also
+fails the command. Prior files, including files already in the current output
+directory, never substitute for a successful current download; use the current
+result manifest, not directory contents, as the mechanical acceptance record.
+
+Authentication is unchanged. An export authorization failure is failed proof,
+not a reason to enable an auth bypass. Offline tests use producer-generated
+artifacts and mocked HTTP; a real-provider run with inspected artifacts and
+human review is still required before signing off #1379.
+
 ### Reset Mode (pipeline reset in progress)
 
 The checked-in deploy workflow has a release-safety `preflight` gate. This
