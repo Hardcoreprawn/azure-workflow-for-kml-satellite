@@ -501,7 +501,7 @@ The workflow uses the **Durable Functions Fan-Out / Fan-In** pattern:
     └────────────────────────┘          └───────────────────────┘
 ```
 
-The active provider is selected via configuration (environment variable / App Configuration), enabling zero-code-change provider switching. Phase 3 uses the **Microsoft Planetary Computer** adapter (free STAC API, Sentinel-2 at 10 m / NAIP at ~60 cm) for all environments. Commercial imagery adapters (e.g., SkyWatch EarthCache with ≤ 50 cm resolution) are deferred to Phase 5+ pending API account provisioning and budget approval (PID D-2, D-5).
+The active provider is selected via configuration (environment variable / App Configuration), enabling zero-code-change provider switching. Phase 3 uses the **Microsoft Planetary Computer** adapter (free STAC API, Sentinel-2 at 10 m / NAIP generally at ~60 cm; legacy pre-2015 NAIP is 1 m) for all environments. Commercial imagery adapters (e.g., SkyWatch EarthCache with ≤ 50 cm resolution) are deferred to Phase 5+ pending API account provisioning and budget approval (PID D-2, D-5).
 
 ### 7.4 Engineering Philosophy & Design Principles
 

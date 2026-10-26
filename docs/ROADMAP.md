@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. The project board holds the live queue.
 
-Last updated: 2026-10-04
+Last updated: 2026-10-26
 
 ---
 
@@ -108,14 +108,22 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
-| #1586 | Minimal Pillow 13.0.0 and certifi 2026.10.19 security lock update (closes #1585). Local checks and hosted filesystem, integration and Pipeline e2e gates passed; deployment remains paused. |
-| #1564 | Workspace runtime coverage includes blueprints, scripts and root entrypoints, with generated artifacts excluded and executable fail/pass gate probes (closes #1524). Owner merged as c571055; deployment remains paused. |
-| #1550 | Cosmos run history is authoritative; failed writes/readbacks fail explicitly, and ticket revocation precedes refunds across failed submissions (closes #1531). Regression-tested review repairs landed as 4a6bfb4; no deployment implied. |
-| #1553 | Virtualenv 21.7.13 and python-discovery 1.6.1 security update (closes #1563). Verified actual locked-runtime versions, fresh environment/hook bootstrap, development-inclusive scan, and required CI; owner merged as 9de80f0. Deployment remains paused. |
-| #1561 | Coordinated PyJWT 2.15.0 and urllib3 2.8.0 security lock update (closes #1560). Full local checks, fresh vulnerability scan, and required CI passed; merged as b34a243. Deployment remains paused. |
-| #1462 | Representative serial/parallel local E2E harness, synthetic weather/provider isolation, and stricter result/artifact validation (closes #1453, #1488, #1491). Fresh isolated matrices passed 3/3 in both modes; broader recovery, capacity, and scientific validation remain separate. |
+| #1575 | Best-available multispectral NDVI source selection with unavailable-source fallback and parcel masking (closes #612). Integrated canonical geometry, security updates and strict proof validation; native and real-data scientific acceptance remain separate. |
+| #1603 | Grouped CodeQL v4.39.0 pins (closes #1605). Local checks and hosted CodeQL 2.27.3 analysis plus SARIF publication passed; no deployment implied. |
+| #1582 | Canonical Polygon/MultiPolygon geometry preserves holes through parsing, exports and NDVI masking (closes #1554). Local and hosted integration/Pipeline e2e gates passed. |
+| #1594 | Real-acquisition proof fails on missing, malformed or unreadable CSV/GeoJSON/PDF exports and writes per-run evidence (closes #1482). Real-provider and human acceptance remain separate. |
+| #1593 | Filelock 4.2.1 security update without new suppressions (closes #1590). Fresh development-inclusive dependency scans and required CI passed. |
+| #1592 | Virtualenv and OpenTelemetry advisory fixes (closes #1589). Local checks, dependency scans and required CI passed; deployment remains paused. |
 | —  | **MILESTONE (2026-07-12): Domain-model overhaul begun — Organisation as the single ownership root** (epic #1057; model documented in `docs/DATA_MODEL.md` — conceptual/logical/physical + D1–D5 divergences). **D3 landed**: per-user quota retired, org pool is the sole accounting unit. D1 (auth active-org resolution) in progress; D2 (org-partitioning) sequenced after D1. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
+
+**Return-to-live status:** `DEPLOY_PAUSED=true`; these code merges do not
+certify a live release. #1013 and #1583 retain the acceptance ledger, including
+real-data proof (#1379), scientific/native validation (#1223, #1521), and
+deployed golden-journey evidence (#708). Truthful evidence presentation (#1588)
+and explicit compute-resource deployment handling (#884) remain unmerged.
+Infracost PR #1604 is held for a successful, non-deploying v5 setup and
+cost-estimation run; its action-only change does not trigger that workflow.
 
 ---
 

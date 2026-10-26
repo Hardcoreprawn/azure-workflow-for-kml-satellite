@@ -48,10 +48,10 @@ def _pdf_scene_provenance_section(pdf: Any, frame_plan: list[dict[str, Any]]) ->
     pdf.ln(3)
 
     # Column widths (fractions of effective page width)
-    col_ratios = [0.18, 0.14, 0.12, 0.28, 0.12, 0.16]
+    col_ratios = [0.12, 0.13, 0.16, 0.08, 0.08, 0.23, 0.08, 0.12]
     page_w = pdf.epw
     col_widths = [round(r * page_w, 1) for r in col_ratios]
-    headers = ["Label", "Collection", "Res (m)", "Scene ID", "Cloud %", "Acquired"]
+    headers = ["Label", "Display", "Analysis", "Disp m", "NDVI m", "Scene ID", "Cloud %", "Acquired"]
 
     pdf.set_font("Helvetica", "B", 8)
     for i, h in enumerate(headers):
@@ -62,15 +62,19 @@ def _pdf_scene_provenance_section(pdf: Any, frame_plan: list[dict[str, Any]]) ->
     for frame in frame_plan:
         prov = frame.get("provenance") or {}
         scene_id = prov.get("ndvi_scene_id") or prov.get("display_search_id") or "--"
-        resolution = prov.get("resolution_m")
+        display_source = prov.get("display_source") or prov.get("collection") or frame.get("collection") or "--"
+        analysis_source = prov.get("analysis_source") or (frame.get("ndvi_stat") or {}).get("source") or "--"
+        display_resolution = prov.get("resolution_m")
+        analysis_resolution = prov.get("analysis_resolution_m")
         cloud = prov.get("cloud_cover_pct")
         acquired = (prov.get("acquired_at") or "")[:10]
-        collection = prov.get("collection") or frame.get("collection") or "--"
 
         row = [
             _safe_text(frame.get("label", ""))[:18],
-            collection[:14],
-            str(resolution) if resolution is not None else "--",
+            _safe_text(str(display_source))[:14],
+            _safe_text(str(analysis_source))[:14],
+            str(display_resolution) if display_resolution is not None else "--",
+            str(analysis_resolution) if analysis_resolution is not None else "--",
             _safe_text(str(scene_id))[:28],
             f"{float(cloud):.1f}" if cloud is not None else "--",
             acquired or "--",

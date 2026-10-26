@@ -350,7 +350,10 @@ class TestBuildCSV:
             "display_search_id": "sid-s2-spring-2023",
             "ndvi_search_id": "sid-s2-spring-2023",
             "ndvi_scene_id": "S2A_123",
-            "resolution_m": 10.0,
+            "display_source": "naip",
+            "analysis_source": "landsat-c2-l2",
+            "resolution_m": 1.0,
+            "analysis_resolution_m": 30.0,
             "cloud_cover_pct": 8.5,
             "acquired_at": "2023-03-17T10:20:00Z",
             "artifact_path": "enrichment/run-1/ndvi/2023_spring.tif",
@@ -360,6 +363,10 @@ class TestBuildCSV:
         row = next(reader)
         assert row["display_search_id"] == "sid-s2-spring-2023"
         assert row["ndvi_scene_id"] == "S2A_123"
+        assert row["display_source"] == "naip"
+        assert row["analysis_source"] == "landsat-c2-l2"
+        assert row["resolution_m"] == "1.0"
+        assert row["analysis_resolution_m"] == "30.0"
         assert row["artifact_path"] == "enrichment/run-1/ndvi/2023_spring.tif"
         assert reader.fieldnames is not None
         assert "mean_temp_c" in reader.fieldnames
@@ -498,6 +505,53 @@ class TestBuildPDF:
         _pdf_scene_provenance_section(pdf, frame_plan)
         result = bytes(pdf.output())
         assert result.startswith(b"%PDF")
+
+    def test_pdf_provenance_distinguishes_display_and_analysis_sources(self):
+        class RecordingPdf:
+            epw = 190
+
+            def __init__(self):
+                self.cells = []
+
+            def set_text_color(self, *_args):
+                pass
+
+            def set_font(self, *_args):
+                pass
+
+            def cell(self, _width, _height, text, **_kwargs):
+                self.cells.append(str(text))
+
+            def multi_cell(self, *_args):
+                pass
+
+            def ln(self, *_args):
+                pass
+
+        pdf = RecordingPdf()
+        frame_plan = [
+            {
+                "label": "Summer 2016",
+                "collection": "landsat-c2-l2",
+                "provenance": {
+                    "display_source": "naip",
+                    "analysis_source": "landsat-c2-l2",
+                    "resolution_m": 1.0,
+                    "analysis_resolution_m": 30.0,
+                    "ndvi_scene_id": "LC08_2016",
+                    "cloud_cover_pct": 5.0,
+                    "acquired_at": "2016-07-10",
+                },
+            }
+        ]
+
+        _pdf_scene_provenance_section(pdf, frame_plan)
+
+        assert "naip" in pdf.cells
+        assert "landsat-c2-l2" in pdf.cells
+        assert "1.0" in pdf.cells
+        assert "30.0" in pdf.cells
+        assert "LC08_2016" in pdf.cells
 
     def test_pdf_scene_provenance_section_tolerates_missing_provenance(self):
         """#647 — section must not crash when provenance key is absent."""
