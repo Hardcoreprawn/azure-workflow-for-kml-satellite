@@ -1,21 +1,3 @@
-# ─────────────────────────────────────────────────────────────
-# Infracost — Cost estimation for infrastructure changes
-#
-# Runs on PRs that touch infra/tofu/** files. Collects live
-# Azure usage metrics, generates a cost estimate, and posts
-# a PR comment with the diff vs current baseline.
-#
-# Required GitHub Secrets (set in 'dev' environment):
-#   AZURE_CLIENT_ID           — SP / managed identity client ID (OIDC)
-#   AZURE_TENANT_ID           — Azure AD tenant
-#   AZURE_SUBSCRIPTION_ID     — Target subscription
-#   TF_STATE_RESOURCE_GROUP   — Resource group holding tfstate storage
-#   TF_STATE_STORAGE_ACCOUNT  — Storage account name for tfstate
-#   TF_STATE_CONTAINER_DEV    — Blob container name for tfstate (dev)
-#   TF_STATE_KEY_DEV          — Blob key for the state file (dev)
-#   INFRACOST_API_KEY         — Infracost Cloud API key (free tier)
-#   DEV_RESOURCE_GROUP        — Resource group name for usage metrics
-# ─────────────────────────────────────────────────────────────
 name: Infracost
 
 on:
@@ -23,198 +5,103 @@ on:
     branches: [main]
     paths:
       - "infra/tofu/**"
+      - ".github/workflows/infracost.yml"
 
 permissions:
   contents: read
-  id-token: write          # OIDC auth to Azure
-  pull-requests: write     # post PR comment
+  pull-requests: write
 
 env:
-  TOFU_VERSION: "1.8.0"
-  PYTHON_VERSION: "3.12"
   BUDGET_GBP: "10"
 
 jobs:
   infracost:
     name: Cost Estimate
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    environment: dev
-    env:
-      TF_VAR_deploy_principal_client_id: ${{ secrets.AZURE_CLIENT_ID }}
-      # Public CIAM values (tenant_subdomain, tenant_id, client_id, api_audience)
-      # are sourced from infra/tofu/environments/*.tfvars. Only the deploy SP
-      # appId is still wired in via env-secret because it gates azuread provider use.
-      TF_VAR_ciam_deploy_client_id: ${{ secrets.TF_VAR_CIAM_DEPLOY_CLIENT_ID || '' }}
+    timeout-minutes: 10
+    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
-
-      # ── Azure auth (OIDC) — needed for tofu plan + metrics ──
-      - name: Azure Login (OIDC)
-        id: azure_login
-        continue-on-error: true
-        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          persist-credentials: false
 
-      # ── Collect live usage metrics ─────────────────────────
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        if: steps.azure_login.outcome == 'success'
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        if: steps.azure_login.outcome == 'success'
-        with:
-          enable-cache: true
-
-      - name: Install metrics collection dependencies
-        if: steps.azure_login.outcome == 'success'
-        run: |
-          uv pip install --system \
-            azure-identity \
-            'azure-monitor-query>=1.4,<2' \
-            azure-mgmt-resource
-
-      - name: Collect Azure usage metrics
-        id: collect_usage_metrics
-        if: steps.azure_login.outcome == 'success'
-        continue-on-error: true
-        run: |
-          python -c "from azure.identity import DefaultAzureCredential; print('SDK import OK')"
-          python scripts/collect_infracost_usage.py \
-            --subscription-id "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            --resource-group "${{ secrets.DEV_RESOURCE_GROUP }}" \
-            --lookback 31 \
-            --output infra/tofu/infracost-usage.yml
-
-      - name: Warn when metrics collection falls back to baseline usage file
-        if: steps.azure_login.outcome == 'success' && steps.collect_usage_metrics.outcome == 'failure'
-        run: |
-          echo "::warning::Cost estimate is using the committed infracost-usage.yml baseline because live metrics collection failed. Re-run Infracost to refresh live usage metrics."
-
-      # ── OpenTofu plan ──────────────────────────────────────
-      - name: Setup OpenTofu
-        if: steps.azure_login.outcome == 'success'
-        uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
-        with:
-          tofu_version: ${{ env.TOFU_VERSION }}
-
-      - name: Cache OpenTofu providers
-        if: steps.azure_login.outcome == 'success'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: infra/tofu/.terraform/providers
-          key: tofu-providers-${{ hashFiles('infra/tofu/.terraform.lock.hcl') }}
-          restore-keys: tofu-providers-
-
-      - name: Tofu Init
-        id: tofu_init
-        if: steps.azure_login.outcome == 'success'
-        continue-on-error: true
-        working-directory: infra/tofu
+      - name: Check Infracost API key
         env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
+          INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
         run: |
-          MAX_RETRIES=3
-          for attempt in $(seq 1 $MAX_RETRIES); do
-            echo "tofu init attempt ${attempt}/${MAX_RETRIES}"
-            if tofu init \
-              -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
-              -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
-              -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER_DEV }}" \
-              -backend-config="key=${{ secrets.TF_STATE_KEY_DEV }}"; then
-              echo "✅ tofu init succeeded on attempt ${attempt}"
-              exit 0
-            fi
-            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
-              echo "⚠️ tofu init failed, retrying in 10s..."
-              sleep 10
-            fi
-          done
-          echo "❌ tofu init failed after ${MAX_RETRIES} attempts"
-          exit 1
+          if [[ -z "$INFRACOST_API_KEY" ]]; then
+            echo "::error::INFRACOST_API_KEY is unavailable. Configure the repository Actions secret; Dependabot runs require a Dependabot secret of the same name."
+            exit 1
+          fi
 
-      - name: Tofu Plan (JSON)
-        if: steps.azure_login.outcome == 'success' && steps.tofu_init.outcome == 'success'
-        working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
-        run: |
-          tofu plan -out=tfplan \
-            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            -var="deploy_principal_client_id=${{ secrets.AZURE_CLIENT_ID }}" \
-            -var-file="environments/dev.tfvars"
-          tofu show -json tfplan > plan.json
-
-      # ── Infracost ──────────────────────────────────────────
       - name: Setup Infracost
-        if: steps.azure_login.outcome == 'success' && steps.tofu_init.outcome == 'success'
-        uses: infracost/actions/setup@fb736a8f219195d6efdca58682069b16fe1bc280 # v4
+        uses: infracost/actions/setup@a5783eb98adc93aa7a0049fce0abb06fdd30770a # v5.0.1
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
+          currency: GBP
 
       - name: Generate Infracost breakdown
-        if: steps.azure_login.outcome == 'success' && steps.tofu_init.outcome == 'success'
         working-directory: infra/tofu
-        env:
-          INFRACOST_CURRENCY: GBP
         run: |
           infracost breakdown \
-            --path=plan.json \
+            --path=. \
+            --project-name="Dev configuration (committed usage baseline; advisory)" \
+            --terraform-var-file=environments/dev.tfvars \
             --usage-file=infracost-usage.yml \
             --format=json \
-            --out-file=/tmp/infracost-base.json
+            --out-file="$RUNNER_TEMP/infracost.json"
+
+      - name: Report configuration estimate
+        shell: bash
+        run: |
+          {
+            echo '## Infracost configuration estimate (advisory)'
+            echo 'Uses dev.tfvars and the committed usage baseline, not live Azure usage or a remote-state plan.'
+            echo 'Unsupported resources and values known only at plan time may be missing; this is not a billing forecast.'
+            echo '```text'
+            infracost output --path="$RUNNER_TEMP/infracost.json" --format=table --show-skipped
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check budget threshold
+        shell: bash
+        run: |
+          infracost output \
+            --path="$RUNNER_TEMP/infracost.json" \
+            --format=json | python3 -c '
+          import json
+          import os
+          import sys
+          from decimal import Decimal
+
+          monthly = Decimal(str(json.load(sys.stdin)["totalMonthlyCost"]))
+          if not monthly.is_finite():
+              raise ValueError("Monthly estimate must be finite")
+          budget = Decimal(os.environ["BUDGET_GBP"])
+          print(f"Estimated monthly cost (GBP): {monthly}")
+          if monthly > budget:
+              print(f"::warning::Estimated cost (GBP {monthly}) exceeds advisory budget (GBP {budget}).")
+          '
 
       - name: Post PR comment
-        if: steps.azure_login.outcome == 'success' && steps.tofu_init.outcome == 'success'
-        run: |
-          infracost comment github \
-            --path=/tmp/infracost-base.json \
-            --repo="${{ github.repository }}" \
-            --github-token="${{ github.token }}" \
-            --pull-request="${{ github.event.pull_request.number }}" \
-            --behavior=update \
-            --tag=infracost
-
-      # ── Budget gate ────────────────────────────────────────
-      - name: Check budget threshold
-        if: steps.azure_login.outcome == 'success' && steps.tofu_init.outcome == 'success'
-        run: |
-          MONTHLY=$(infracost output \
-            --path=/tmp/infracost-base.json \
-            --format=json \
-            | jq -r '.totalMonthlyCost // "0"')
-
-          echo "Estimated monthly cost: £${MONTHLY}"
-          echo "Budget threshold: £${{ env.BUDGET_GBP }}"
-
-          if (( $(echo "$MONTHLY > ${{ env.BUDGET_GBP }}" | bc -l) )); then
-            echo "::warning::Estimated cost (£${MONTHLY}) exceeds budget (£${{ env.BUDGET_GBP }}/month)"
-            # Warn but don't fail — cost estimates have uncertainty.
-            # Change to exit 1 to hard-gate deploys on budget.
-          fi
-
-      # ── Fallback: post a note when Azure auth was unavailable ──
-      - name: Post skip notice
-        if: steps.azure_login.outcome != 'success' || steps.tofu_init.outcome != 'success'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          if [ "${{ steps.azure_login.outcome }}" != "success" ]; then
-            MESSAGE="💰 **Infracost**: Cost estimate skipped — Azure OIDC login was unavailable (transient). Re-run the workflow to retry."
-          else
-            MESSAGE="💰 **Infracost**: Cost estimate skipped — OpenTofu init failed (transient backend/auth issue). Re-run the workflow to retry."
-          fi
-          echo "::notice::${MESSAGE}"
-          gh pr comment "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" \
-            --body "${MESSAGE}" \
-            2>/dev/null || true
+          infracost comment github \
+            --path="$RUNNER_TEMP/infracost.json" \
+            --repo="$GH_REPO" \
+            --github-token="$GH_TOKEN" \
+            --pull-request="$PR_NUMBER" \
+            --behavior=update \
+            --tag=infracost \
+            --show-skipped
+
+      - name: Report unavailable estimate
+        if: failure()
+        run: |
+          echo "::warning::Infracost estimate unavailable. This advisory job does not block merge or deployment; inspect the failed step for details."
+          echo '## Infracost estimate unavailable' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Advisory only. No current cost estimate was produced or fully published; any earlier PR comment may be stale. See the failed step above.' >> "$GITHUB_STEP_SUMMARY"

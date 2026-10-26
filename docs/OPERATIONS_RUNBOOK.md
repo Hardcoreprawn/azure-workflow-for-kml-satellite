@@ -23,6 +23,25 @@ stored in this document; retrieve them from the Azure portal or from
 
 **Note:** The SWA does not proxy `/api/*` — all API calls go directly to the Function App hostname (see Architecture Overview for details). Use `tofu output -raw function_app_orch_default_hostname` to retrieve the exact ingress hostname.
 
+## Advisory Infrastructure Costs
+
+The Infracost workflow estimates changes to `infra/tofu/**` and to its own
+workflow using the dev configuration and committed `infracost-usage.yml` baseline.
+It does not log into Azure, read remote state, run OpenTofu, or deploy anything.
+Its PR comment identifies the baseline; the job summary lists unsupported
+resources. Plan-time-only values may be missing, so this is not a billing forecast.
+
+Cost estimates are advisory: neither an exceeded budget nor an Infracost failure
+blocks merge or deployment. Failed steps remain visible and the job summary says
+when the estimate is unavailable; an old PR comment may then be stale. A missing
+total is never interpreted as zero. Do not add Cost Estimate to required checks.
+
+Set `INFRACOST_API_KEY` as a repository Actions secret. Dependabot-triggered runs
+need the same-named Dependabot secret; fork PRs do not run this credentialed job.
+Missing keys produce an actionable diagnostic without printing their values.
+The live-usage collector remains available separately for deliberately refreshing
+the committed baseline; live Azure access is not a prerequisite for PR estimates.
+
 ## Deploy
 
 ### Local Container Lifecycle

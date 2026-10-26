@@ -2485,6 +2485,11 @@ class TestInfracostCostGate:
         content = INFRACOST_YML.read_text()
         assert "infra/tofu/**" in content, "Infracost workflow must trigger on infra/tofu/** changes"
 
+    def test_infracost_workflow_triggers_on_its_own_changes(self):
+        workflow = yaml.safe_load(INFRACOST_YML.read_text())
+        triggers = workflow.get("on", workflow.get(True))
+        assert ".github/workflows/infracost.yml" in triggers["pull_request"]["paths"]
+
     def test_infracost_workflow_has_budget_check(self):
         content = INFRACOST_YML.read_text()
         assert "budget" in content.lower(), "Infracost workflow must include a budget threshold check"
@@ -2507,47 +2512,100 @@ class TestInfracostCostGate:
         script = ROOT / "scripts" / "collect_infracost_usage.py"
         assert script.exists(), "Usage metrics collection script missing at scripts/collect_infracost_usage.py"
 
-    def test_infracost_metrics_collection_is_non_blocking(self):
+    def test_infracost_estimate_needs_no_azure_credentials_or_remote_state(self):
+        workflow = yaml.safe_load(INFRACOST_YML.read_text())
+        job = workflow["jobs"]["infracost"]
+        assert "id-token" not in workflow["permissions"]
+        assert "environment" not in job
+        assert "github.event.pull_request.head.repo.full_name == github.repository" in job["if"]
         content = INFRACOST_YML.read_text()
-        assert "id: collect_usage_metrics" in content, (
-            "Infracost workflow must assign an id to the metrics collection step"
-        )
-        assert "continue-on-error: true" in content, (
-            "Infracost workflow must treat live metrics collection as non-blocking so transient Azure failures "
-            "do not fail the entire cost gate"
-        )
+        assert "azure/login" not in content
+        assert "tofu init" not in content
+        assert "tofu plan" not in content
 
-    def test_infracost_warns_on_metrics_fallback(self):
-        content = INFRACOST_YML.read_text()
-        assert "Warn when metrics collection falls back to baseline usage file" in content, (
-            "Infracost workflow must emit a warning when it falls back to committed usage baseline"
-        )
-        assert "steps.collect_usage_metrics.outcome == 'failure'" in content, (
-            "Infracost fallback warning must be gated on collect_usage_metrics failure"
-        )
+    def test_infracost_uses_dev_configuration_and_explicit_baseline(self):
+        workflow = yaml.safe_load(INFRACOST_YML.read_text())
+        steps = {step.get("name"): step for step in workflow["jobs"]["infracost"]["steps"]}
+        breakdown = steps["Generate Infracost breakdown"]
+        assert breakdown["working-directory"] == "infra/tofu"
+        assert "--path=." in breakdown["run"]
+        assert "--terraform-var-file=environments/dev.tfvars" in breakdown["run"]
+        assert "--usage-file=infracost-usage.yml" in breakdown["run"]
+        assert '--project-name="Dev configuration (committed usage baseline; advisory)"' in breakdown["run"]
 
-    def test_infracost_tofu_init_is_non_blocking(self):
-        content = INFRACOST_YML.read_text()
-        assert "id: tofu_init" in content, "Infracost workflow must define a tofu_init step id"
-        assert "- name: Tofu Init" in content and "continue-on-error: true" in content, (
-            "Infracost workflow must treat Tofu Init as non-blocking so transient backend failures "
-            "do not hard-fail the cost gate"
-        )
+    def test_infracost_is_advisory_without_hiding_failed_steps(self):
+        workflow = yaml.safe_load(INFRACOST_YML.read_text())
+        job = workflow["jobs"]["infracost"]
+        assert job["continue-on-error"] is True
+        steps = job["steps"]
+        assert all(not step.get("continue-on-error") for step in steps)
+        for name in ("Setup Infracost", "Generate Infracost breakdown", "Post PR comment"):
+            step = next(step for step in steps if step.get("name") == name)
+            assert "if" not in step
+        failure_notice = next(step for step in steps if step.get("name") == "Report unavailable estimate")
+        assert failure_notice["if"] == "failure()"
+        assert "GITHUB_STEP_SUMMARY" in failure_notice["run"]
+        assert "::warning::" in failure_notice["run"]
 
-    def test_infracost_steps_require_successful_tofu_init(self):
-        content = INFRACOST_YML.read_text()
-        assert "steps.tofu_init.outcome == 'success'" in content, (
-            "Infracost plan, breakdown, comment, and budget steps must run only when tofu_init succeeds"
+    @pytest.mark.parametrize("api_key,expected_returncode", [("", 1), ("test-placeholder", 0)])
+    def test_infracost_key_preflight_is_actionable_without_exposing_key(self, api_key, expected_returncode):
+        workflow = yaml.safe_load(INFRACOST_YML.read_text())
+        step = next(
+            step for step in workflow["jobs"]["infracost"]["steps"] if step.get("name") == "Check Infracost API key"
         )
+        result = subprocess.run(
+            ["bash", "-e", "-c", step["run"]],
+            env={**os.environ, "INFRACOST_API_KEY": api_key},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == expected_returncode
+        if api_key:
+            assert api_key not in result.stdout + result.stderr
+        else:
+            assert "INFRACOST_API_KEY" in result.stdout
 
-    def test_infracost_posts_skip_notice_when_tofu_init_fails(self):
-        content = INFRACOST_YML.read_text()
-        assert "steps.tofu_init.outcome != 'success'" in content, (
-            "Infracost skip notice must trigger when tofu_init fails"
+    @pytest.mark.parametrize(
+        "output,has_estimate,over_budget",
+        [
+            ('{"totalMonthlyCost":"12.50"}', True, True),
+            ('{"totalMonthlyCost":"5"}', True, False),
+            ('{"totalMonthlyCost":"0"}', True, False),
+            ('{"totalMonthlyCost":null}', False, False),
+            ('{"totalMonthlyCost":"NaN"}', False, False),
+            ('{"totalMonthlyCost":"Infinity"}', False, False),
+            ("{}", False, False),
+            ("invalid-json", False, False),
+        ],
+    )
+    def test_infracost_budget_is_advisory_but_missing_cost_is_not_zero(
+        self, tmp_path, output, has_estimate, over_budget
+    ):
+        workflow = yaml.safe_load(INFRACOST_YML.read_text())
+        step = next(
+            step for step in workflow["jobs"]["infracost"]["steps"] if step.get("name") == "Check budget threshold"
         )
-        assert "OpenTofu init failed" in content, (
-            "Infracost skip notice must explain tofu init failures as transient and retryable"
+        executable = tmp_path / "infracost"
+        executable.write_text('#!/bin/bash\nprintf "%s\\n" "$INFRACOST_TEST_OUTPUT"\n')
+        executable.chmod(0o755)
+        (tmp_path / "python3").symlink_to(sys.executable)
+        result = subprocess.run(
+            ["/bin/bash", "-e", "-o", "pipefail", "-c", step["run"]],
+            env={
+                **os.environ,
+                "PATH": str(tmp_path),
+                "RUNNER_TEMP": str(tmp_path),
+                "BUDGET_GBP": "10",
+                "INFRACOST_TEST_OUTPUT": output,
+            },
+            capture_output=True,
+            text=True,
+            check=False,
         )
+        assert (result.returncode == 0) is has_estimate
+        assert ("::warning::" in result.stdout) is over_budget
+        assert ("Estimated monthly cost" in result.stdout) is has_estimate
 
     def test_infracost_optional_deps_defined(self):
         pyproject = ROOT / "pyproject.toml"
