@@ -155,6 +155,7 @@ def proof_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.setattr(runner, "fire_event_grid", Mock(return_value="current-run"))
     monkeypatch.setattr(runner, "poll_orchestration", Mock(return_value={"runtimeStatus": "Completed"}))
     monkeypatch.setattr(runner, "assert_pipeline_succeeded", Mock())
+    monkeypatch.setattr(runner, "_persist_pending_run", Mock(return_value="current-run"))
     return tmp_path / "plot.kml"
 
 
@@ -259,7 +260,7 @@ def test_pipeline_failure_preserves_instance_and_unattempted_export_diagnostics(
         )
     fetch = Mock()
     monkeypatch.setattr(runner, "_fetch_export", fetch)
-    assert not runner.run_fixture(proof_run, formats=DEFAULT_FORMATS)
+    assert not runner.run_fixture(proof_run, formats=DEFAULT_FORMATS, org_id="local-org")
     result = json.loads((runner.OUTPUT_DIR / proof_run.stem / "current-run" / "result.json").read_text())
     assert result["instance_id"] == "current-run"
     assert result["success"] is False
@@ -277,7 +278,7 @@ def test_result_write_failure_prevents_success(
 ) -> None:
     monkeypatch.setattr(runner, "_fetch_export", Mock(return_value=runner.ExportResult("eudr-csv", "passed")))
     monkeypatch.setattr(Path, "write_text", Mock(side_effect=OSError("private-response-token")))
-    assert not runner.run_fixture(proof_run, formats=("eudr-csv",))
+    assert not runner.run_fixture(proof_run, formats=("eudr-csv",), org_id="local-org")
     captured = capsys.readouterr()
     assert "result_write_error" in captured.err
     assert "PASS (mechanical)" not in captured.out
@@ -308,7 +309,7 @@ def test_failed_run_records_identity_and_every_export_without_reusing_stale_file
 
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
         monkeypatch.setattr(runner.httpx, "stream", client.stream)
-        assert not runner.run_fixture(proof_run, formats=DEFAULT_FORMATS)
+        assert not runner.run_fixture(proof_run, formats=DEFAULT_FORMATS, org_id="local-org")
 
     result = json.loads((current_dir / "result.json").read_text())
     assert result["schema_version"] == 1
@@ -338,7 +339,7 @@ def test_successful_run_records_readable_exports_for_current_identity(
 
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
         monkeypatch.setattr(runner.httpx, "stream", client.stream)
-        assert runner.run_fixture(proof_run, formats=DEFAULT_FORMATS)
+        assert runner.run_fixture(proof_run, formats=DEFAULT_FORMATS, org_id="local-org")
     result = json.loads((runner.OUTPUT_DIR / proof_run.stem / "current-run" / "result.json").read_text())
     assert result["success"] is True
     assert result["status"] == "passed"
@@ -362,6 +363,7 @@ def test_cli_continues_after_failure_but_exits_nonzero(
     monkeypatch.setattr(runner, "start_func_host", Mock(return_value="host"))
     monkeypatch.setattr(runner, "wait_for_func_host", Mock())
     monkeypatch.setattr(runner, "stop_func_host", stop)
+    monkeypatch.setattr(runner, "_prepare_local_ownership", Mock(return_value="local-org"))
     with pytest.raises(SystemExit) as error:
         runner.main()
     assert error.value.code == 1
@@ -375,7 +377,7 @@ def test_required_export_failure_fails_fixture(
 ) -> None:
     with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(404))) as client:
         monkeypatch.setattr(runner.httpx, "stream", client.stream)
-        assert not runner.run_fixture(proof_run, formats=DEFAULT_FORMATS)
+        assert not runner.run_fixture(proof_run, formats=DEFAULT_FORMATS, org_id="local-org")
     captured = capsys.readouterr()
     assert "PASS (mechanical)" not in captured.out
     assert "current-run" in captured.out + captured.err
@@ -401,3 +403,180 @@ class TestWdpaConfiguration:
         monkeypatch.setenv("ENRICHMENT_FRAME_CONCURRENCY", "2")
         _configure_real_acquisition_environment()
         assert os.environ["ENRICHMENT_FRAME_CONCURRENCY"] == "2"
+
+
+def test_missing_local_cosmos_stops_before_host_or_submission(monkeypatch: pytest.MonkeyPatch) -> None:
+    from treesight import config
+
+    monkeypatch.setattr(config, "COSMOS_ENDPOINT", "")
+    monkeypatch.setattr(runner.sys, "argv", ["runner", "cattle.kml"])
+    start = Mock()
+    submit = Mock()
+    monkeypatch.setattr(runner, "start_func_host", start)
+    monkeypatch.setattr(runner, "run_fixture", submit)
+    monkeypatch.setattr(runner, "wait_for_func_host", Mock())
+    monkeypatch.setattr(runner, "stop_func_host", Mock())
+    with pytest.raises(RuntimeError, match="local Cosmos emulator"):
+        runner.main()
+    start.assert_not_called()
+    submit.assert_not_called()
+
+
+@pytest.mark.parametrize("endpoint", ["https://prod.documents.azure.com", "http://example.com:8081"])
+def test_ownership_setup_refuses_nonlocal_cosmos(monkeypatch: pytest.MonkeyPatch, endpoint: str) -> None:
+    from treesight import config
+    from treesight.storage import cosmos
+
+    monkeypatch.setattr(config, "COSMOS_ENDPOINT", endpoint)
+    monkeypatch.setattr(config, "COSMOS_KEY", "test-key")
+    container = Mock()
+    monkeypatch.setattr(cosmos, "get_container", container)
+    with pytest.raises(RuntimeError, match="local Cosmos emulator"):
+        runner._prepare_local_ownership()
+    container.assert_not_called()
+
+
+def test_ownership_setup_checks_containers_before_creating_membership(monkeypatch: pytest.MonkeyPatch) -> None:
+    from treesight import config
+    from treesight.security import orgs
+    from treesight.storage import cosmos
+
+    monkeypatch.setattr(config, "COSMOS_ENDPOINT", "http://cosmos:8081")
+    monkeypatch.setattr(config, "COSMOS_KEY", "test-key")
+    containers = {name: Mock() for name in ("orgs", "users", "runs")}
+    monkeypatch.setattr(cosmos, "get_container", containers.__getitem__)
+    monkeypatch.setattr(orgs, "get_user_org_strict", Mock(return_value=None))
+    org = {"org_id": "local-org", "members": [{"user_id": runner._RUNNER_USER_ID}]}
+
+    def create(user_id: str, *, name: str) -> dict[str, object]:
+        assert user_id == runner._RUNNER_USER_ID
+        for container in containers.values():
+            container.read.assert_called_once()
+        return org
+
+    monkeypatch.setattr(orgs, "create_org", create)
+    assert runner._prepare_local_ownership() == "local-org"
+
+
+@pytest.mark.parametrize("failed_container", ["orgs", "users", "runs"])
+def test_unavailable_container_prevents_org_creation(monkeypatch: pytest.MonkeyPatch, failed_container: str) -> None:
+    from azure.core.exceptions import ServiceRequestError
+
+    from treesight import config
+    from treesight.security import orgs
+    from treesight.storage import cosmos
+
+    monkeypatch.setattr(config, "COSMOS_ENDPOINT", "http://cosmos:8081")
+    monkeypatch.setattr(config, "COSMOS_KEY", "test-key")
+    containers = {name: Mock() for name in ("orgs", "users", "runs")}
+    containers[failed_container].read.side_effect = ServiceRequestError("unreachable")
+    monkeypatch.setattr(cosmos, "get_container", containers.__getitem__)
+    create = Mock()
+    monkeypatch.setattr(orgs, "create_org", create)
+    with pytest.raises(RuntimeError, match="orgs, users and runs"):
+        runner._prepare_local_ownership()
+    create.assert_not_called()
+
+
+def test_pending_record_matches_event_identity_and_is_not_completed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from treesight.storage import cosmos
+
+    container = Mock()
+    monkeypatch.setattr(cosmos, "get_container", Mock(return_value=container))
+    instance = runner._persist_pending_run("plot.kml", 123, "local-org")
+    record = container.create_item.call_args.kwargs["body"]
+    assert record["id"] == record["instance_id"] == record["submission_id"] == instance
+    assert record["user_id"] == runner._RUNNER_USER_ID
+    assert record["org_id"] == "local-org"
+    assert record["status"] == "Pending"
+    assert record["kml_blob_name"] == "plot.kml"
+    assert record["kml_size_bytes"] == 123
+    assert record["eudr_mode"] is True
+    assert "completed_at" not in record
+    from blueprints.pipeline.blob_trigger import _derive_instance_id, _enrich_from_ticket
+    from treesight.pipeline.run_access import assert_run_write_access
+
+    assert _derive_instance_id("plot.kml", instance) == record["id"]
+    payload: dict[str, object] = {}
+    _enrich_from_ticket(payload, {"user_id": record["user_id"], "org_id": record["org_id"], "tier": "enterprise"})
+    org = {"org_id": payload["org_id"], "members": [{"user_id": payload["user_id"]}]}
+    assert_run_write_access(record, runner._RUNNER_USER_ID, active_org=org)
+    with pytest.raises(ValueError, match="permission"):
+        assert_run_write_access(record, "wrong-user", active_org=org)
+    with pytest.raises(ValueError, match="permission"):
+        assert_run_write_access(record, runner._RUNNER_USER_ID, active_org={**org, "org_id": "wrong-org"})
+
+
+def test_record_failure_prevents_ticket_and_event(monkeypatch: pytest.MonkeyPatch, proof_run: Path) -> None:
+    persist = Mock(side_effect=RuntimeError("run write unavailable"))
+    monkeypatch.setattr(runner, "_persist_pending_run", persist)
+    ticket = Mock()
+    event = Mock()
+    monkeypatch.setattr(runner, "_upload_ticket", ticket)
+    monkeypatch.setattr(runner, "fire_event_grid", event)
+    with pytest.raises(RuntimeError, match="run write unavailable"):
+        runner.run_fixture(proof_run, formats=DEFAULT_FORMATS, org_id="local-org")
+    ticket.assert_not_called()
+    event.assert_not_called()
+
+
+def test_ticket_and_event_use_the_pending_owner_and_identity(monkeypatch: pytest.MonkeyPatch, proof_run: Path) -> None:
+    order = Mock()
+    order.attach_mock(runner._persist_pending_run, "persist")
+    order.attach_mock(runner._upload_ticket, "ticket")
+    order.attach_mock(runner.fire_event_grid, "event")
+    monkeypatch.setattr(runner, "_fetch_export", Mock(return_value=runner.ExportResult("eudr-csv", "passed")))
+    assert runner.run_fixture(proof_run, formats=("eudr-csv",), org_id="local-org")
+    runner._upload_ticket.assert_called_once_with(
+        "plot.kml",
+        runner.DEFAULT_CONTAINER,
+        tier=runner._RUNNER_TIER,
+        user_id=runner._RUNNER_USER_ID,
+        eudr_mode=True,
+        org_id="local-org",
+    )
+    assert runner.fire_event_grid.call_args.kwargs["event_id"] == "current-run"
+    assert [call[0] for call in order.mock_calls] == ["persist", "ticket", "event"]
+
+
+def test_ticket_failure_prevents_event(monkeypatch: pytest.MonkeyPatch, proof_run: Path) -> None:
+    monkeypatch.setattr(runner, "_upload_ticket", Mock(side_effect=RuntimeError("ticket unavailable")))
+    event = Mock()
+    monkeypatch.setattr(runner, "fire_event_grid", event)
+    with pytest.raises(RuntimeError, match="ticket unavailable"):
+        runner.run_fixture(proof_run, formats=DEFAULT_FORMATS, org_id="local-org")
+    event.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("org", "error"),
+    [
+        ({"org_id": "local-org", "members": [{"user_id": runner._RUNNER_USER_ID}]}, None),
+        ({"org_id": "local-org", "members": []}, ValueError),
+        ({"members": [{"user_id": runner._RUNNER_USER_ID}]}, RuntimeError),
+    ],
+)
+def test_existing_org_is_validated_without_recreation(
+    monkeypatch: pytest.MonkeyPatch, org: dict[str, object], error: type[Exception] | None
+) -> None:
+    from treesight import config
+    from treesight.security import orgs
+    from treesight.storage import cosmos
+
+    monkeypatch.setattr(config, "COSMOS_ENDPOINT", "http://cosmos:8081")
+    monkeypatch.setattr(config, "COSMOS_KEY", "test-key")
+    monkeypatch.setattr(cosmos, "get_container", Mock())
+    monkeypatch.setattr(orgs, "get_user_org_strict", Mock(return_value=org))
+    create = Mock()
+    monkeypatch.setattr(orgs, "create_org", create)
+    if error:
+        with pytest.raises(error):
+            runner._prepare_local_ownership()
+    else:
+        assert runner._prepare_local_ownership() == "local-org"
+    create.assert_not_called()
+
+
+def test_empty_org_cannot_create_pending_run() -> None:
+    with pytest.raises(ValueError, match="organisation is required"):
+        runner._persist_pending_run("plot.kml", 123, "")

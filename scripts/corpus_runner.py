@@ -86,6 +86,7 @@ def _upload_ticket(
     tier: str = _CORPUS_TIER,
     user_id: str = _CORPUS_USER_ID,
     eudr_mode: bool = False,
+    org_id: str | None = None,
 ) -> None:
     """Write a submission ticket so the pipeline uses the given tier.
 
@@ -101,6 +102,8 @@ def _upload_ticket(
     """
     stem = Path(blob_name).stem
     ticket: dict[str, Any] = {"tier": tier, "user_id": user_id}
+    if org_id is not None:
+        ticket["org_id"] = org_id
     if eudr_mode:
         ticket["eudr_mode"] = True
     ticket_path = f".tickets/{stem}.json"

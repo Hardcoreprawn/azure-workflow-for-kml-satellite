@@ -212,7 +212,26 @@ label after host shutdown. GPU execution requires its own hardware validation.
 ### Real-Acquisition Proof Artifacts
 
 The on-demand `scripts/real_acquisition_runner.py` requires the `dev` extra
-(including `pypdf`). Every requested export is required: missing bodies, HTTP
+(including `pypdf`), Azurite and a **disposable local Cosmos emulator**.
+Initialise `orgs` (`/org_id`), `users` (`/user_id`) and `runs` (`/user_id`)
+using `scripts/cosmos_init/01-create-containers.csh`. Set `COSMOS_ENDPOINT`
+to `http://cosmos:8081` inside the isolated Docker network (alias `cosmos`),
+or HTTP loopback on the host; set `COSMOS_KEY` to the emulator's documented
+key and `COSMOS_DATABASE_NAME` to the disposable database. Use the same
+settings for the runner and its child Functions host; do not supply cloud
+credentials or connect this synthetic runner to live organisation data.
+
+Before starting the host or submitting fixtures, the runner checks those
+containers and resolves/creates membership for `real-acquisition-runner`.
+Each fixture gets a fresh **Pending**, organisation-owned run record before
+its submission ticket and Event Grid event are published. The record, ticket
+and event share the same owner/instance identity. No completed record is seeded
+and no export auth/ownership gate is bypassed. This remains a Blob/Event Grid
+proof, not a substitute for the authenticated API submission verifier.
+Missing emulator/configuration fails early rather than spending acquisition
+time before returning `503 Organisation lookup unavailable` at export.
+
+Every requested export is required: missing bodies, HTTP
 errors, unreadable content, or local write failures fail the fixture and the
 overall command, even if later fixtures succeed. Downloads are bounded by
 `LOCAL_AUDIT_MAX_ARTIFACT_BYTES` (16 MiB). CSV is parsed with required EUDR
