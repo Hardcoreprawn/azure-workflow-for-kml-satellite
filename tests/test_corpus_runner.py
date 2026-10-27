@@ -14,15 +14,14 @@ from unittest.mock import Mock
 
 import pytest
 
-import scripts.corpus_runner as corpus
-from scripts.corpus_runner import _diff_against_baseline, _extract_actual
+from scripts.corpus_runner import _diff_against_baseline, _extract_actual, _upload_ticket
 
 
 @pytest.mark.parametrize("org_id", [None, "local-proof-org"])
 def test_ticket_preserves_optional_origin_org(monkeypatch: pytest.MonkeyPatch, org_id: str | None) -> None:
     client = Mock()
-    monkeypatch.setattr(corpus.BlobServiceClient, "from_connection_string", Mock(return_value=client))
-    corpus._upload_ticket("plot.kml", "kml-input", org_id=org_id)
+    monkeypatch.setattr("scripts.corpus_runner.BlobServiceClient.from_connection_string", Mock(return_value=client))
+    _upload_ticket("plot.kml", "kml-input", org_id=org_id)
     payload = json.loads(client.get_blob_client.return_value.upload_blob.call_args.args[0])
     if org_id is None:
         assert "org_id" not in payload
