@@ -179,7 +179,8 @@
 .app-evidence-stat strong.neutral{color:var(--c-text)}
 .app-evidence-note{font-size:.78rem;line-height:1.5;color:var(--c-muted);margin-top:4px}
 #app-evidence-ndvi-canvas,#app-evidence-weather-canvas{width:100%;height:80px;border-radius:8px}
-.app-evidence-change-item{padding:10px 12px;border-radius:10px;border:1px solid rgba(248,81,73,.2);background:rgba(248,81,73,.08);font-size:.82rem;line-height:1.5;margin-bottom:6px}
+.app-evidence-change-item{padding:10px 12px;border-radius:10px;border:1px solid rgba(139,148,158,.2);background:rgba(139,148,158,.08);font-size:.82rem;line-height:1.5;margin-bottom:6px}
+.app-evidence-change-item.negative{border-color:rgba(248,81,73,.2);background:rgba(248,81,73,.08)}
 .app-evidence-change-item.positive{border-color:rgba(63,185,80,.2);background:rgba(63,185,80,.08)}
 /* Per-AOI selector */
 .app-evidence-aoi-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}

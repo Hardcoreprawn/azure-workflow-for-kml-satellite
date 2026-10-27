@@ -41,16 +41,7 @@
       var t = cdSummary.trajectory;
       if (t === 'Improving') { trajectory = 'Improving \u2191'; trajectoryTone = 'positive'; }
       else if (t === 'Declining') { trajectory = 'Declining \u2193'; trajectoryTone = 'negative'; }
-      else { trajectory = 'Stable'; trajectoryTone = ''; }
-    } else if (means.length >= 4) {
-      trajectory = 'Stable';
-      var firstHalf = means.slice(0, Math.floor(means.length / 2));
-      var secondHalf = means.slice(Math.floor(means.length / 2));
-      var avgFirst = firstHalf.reduce(function(a, b) { return a + b; }, 0) / firstHalf.length;
-      var avgSecond = secondHalf.reduce(function(a, b) { return a + b; }, 0) / secondHalf.length;
-      var delta = avgSecond - avgFirst;
-      if (delta > 0.05) { trajectory = 'Improving \u2191'; trajectoryTone = 'positive'; }
-      else if (delta < -0.05) { trajectory = 'Declining \u2193'; trajectoryTone = 'negative'; }
+      else if (t === 'Stable') { trajectory = 'Stable'; }
     }
 
     var meanLabel = overallMean != null ? overallMean.toFixed(3) : '\u2014';
@@ -247,32 +238,34 @@
   }
 
   /* ---- Change detection ---- */
+  function renderChangeSummary(list, summary) {
+    const element = document.createElement('div');
+    element.className = 'app-evidence-change-item';
+    const hasComparisons = summary && Number.isFinite(summary.comparisons) && summary.comparisons > 0;
+    if (!hasComparisons) {
+      element.textContent = 'Change detection unavailable: insufficient comparison evidence.';
+    } else {
+      const trajectory = summary.trajectory || 'Unavailable';
+      if (trajectory === 'Improving') element.className += ' positive';
+      else if (trajectory === 'Declining') element.className += ' negative';
+      element.textContent = trajectory + ' \u2014 ' + summary.comparisons + ' comparisons, ' +
+        'net loss ' + (Number.isFinite(summary.total_loss_ha) ? summary.total_loss_ha.toFixed(0) + ' ha' : 'unavailable') +
+        ', net gain ' + (Number.isFinite(summary.total_gain_ha) ? summary.total_gain_ha.toFixed(0) + ' ha' : 'unavailable');
+    }
+    list.appendChild(element);
+    return hasComparisons;
+  }
+
   function renderEvidenceChangeDetection(manifest) {
     var block = document.getElementById('app-evidence-change-block');
     var list = document.getElementById('app-evidence-change-list');
     if (!block || !list) return;
 
-    var cd = manifest.change_detection;
-    if (!cd || (!cd.season_changes && !cd.significant_changes && !cd.events && !cd.summary)) {
-      block.hidden = true;
-      return;
-    }
-
+    const cd = manifest.change_detection || {};
+    list.textContent = '';
     block.hidden = false;
+    if (!renderChangeSummary(list, cd.summary)) return;
     var items = cd.season_changes || cd.significant_changes || cd.events || [];
-
-    // Summary may be an object { comparisons, total_loss_ha, total_gain_ha, avg_mean_delta, trajectory }
-    if (cd.summary) {
-      var s = cd.summary;
-      var summaryText = typeof s === 'string' ? s :
-        (s.trajectory || 'Stable') + ' \u2014 ' + (s.comparisons || 0) + ' comparisons, ' +
-        'net loss ' + (s.total_loss_ha ? s.total_loss_ha.toFixed(0) + ' ha' : '\u2014') +
-        ', net gain ' + (s.total_gain_ha ? s.total_gain_ha.toFixed(0) + ' ha' : '\u2014');
-      var summaryDiv = document.createElement('div');
-      summaryDiv.className = 'app-evidence-change-item positive';
-      summaryDiv.textContent = summaryText;
-      list.appendChild(summaryDiv);
-    }
 
     // Show notable season changes (loss_pct > 20% or gain_pct > 20%)
     var notable = items.filter(function(item) {
@@ -296,6 +289,7 @@
       }
       var cls = 'app-evidence-change-item';
       if (typeof item === 'object' && (item.gain_pct > item.loss_pct || item.mean_delta > 0.02)) cls += ' positive';
+      else cls += ' negative';
       var el = document.createElement('div');
       el.className = cls;
       el.textContent = text;
@@ -433,24 +427,21 @@
     // Change detection
     var cd = aoiData.change_detection;
     if (means.length > 1 && cd && cd.summary && cd.summary.comparisons > 0) {
-      var traj = cd.summary.trajectory || 'Stable';
+      var traj = cd.summary.trajectory || 'Unavailable';
       var trajTone = traj === 'Improving' ? 'positive' : traj === 'Declining' ? 'negative' : '';
       stats.push(['Trend', traj, trajTone]);
+    } else {
+      stats.push(['Trend', 'Unavailable', '']);
     }
 
     setStatGrid(grid, stats);
 
     // EUDR determination
     if (detEl) {
-      var det = aoiData.determination;
-      if (det) {
-        detEl.hidden = false;
-        renderScreeningDetermination(detEl, det);
-        renderFlagCards(det.flags || []);
-      } else {
-        detEl.hidden = true;
-        renderFlagCards([]);
-      }
+      const determination = aoiData.determination || (aoiData.eudr && aoiData.eudr.determination);
+      detEl.hidden = false;
+      renderScreeningDetermination(detEl, determination);
+      renderFlagCards(determination && determination.flags || []);
     }
   }
 

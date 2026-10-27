@@ -11,12 +11,125 @@ import io
 import json
 
 import pytest
+from pypdf import PdfReader
 
 from treesight.exports.csv import _as_dict, _build_bulk_csv, _build_csv, _build_eudr_csv
 from treesight.exports.eudr import _build_eudr_dds, _plot_geolocation
 from treesight.exports.frame_row import FrameRow
 from treesight.exports.geojson import _build_eudr_geojson, _build_geojson, _toplevel_as_single_aoi
-from treesight.exports.pdf_audit import _geometry_vertex_count
+from treesight.exports.pdf_audit import _geometry_vertex_count, build_eudr_audit_pdf
+
+
+def _audit_text(manifest: dict) -> str:
+    report = build_eudr_audit_pdf(manifest, "truthful-evidence-test")
+    return " ".join(" ".join(page.extract_text().split()) for page in PdfReader(io.BytesIO(report)).pages)
+
+
+class TestAuditEvidenceText:
+    def test_requested_dates_are_separate_from_usable_observed_dates(self) -> None:
+        parcel = {
+            "name": "Sparse observations",
+            "frame_plan": [
+                {"start": "2021-01-01", "end": "2021-03-31", "provenance": {"acquired_at": "2021-02-01"}},
+                {"start": "2022-01-01", "end": "2022-03-31", "provenance": {"acquired_at": "2022-02-15"}},
+                {"start": "2023-01-01", "end": "2023-03-31", "provenance": {"acquired_at": "2023-01-20"}},
+                {"start": "2026-01-01", "end": "2026-10-24"},
+            ],
+            "ndvi_stats": [
+                {"available": False, "mean": 0.7, "datetime": "2021-02-01"},
+                {"mean": 0.5},
+                {"mean": 0.4, "datetime": "2023-02-18T09:00:00Z"},
+                {"available": False, "mean": 0.8, "datetime": "2026-10-20"},
+            ],
+        }
+        text = _audit_text({"eudr_date_start": "2021-01-01", "per_aoi_enrichment": [parcel]})
+        assert "Requested period: 2021-01-01 to 2026-10-24" in text
+        assert "Usable NDVI observation dates: 2022-02-15 to 2023-02-18" in text
+        assert "2 usable observations; 2 dated" in text
+        assert "to present" not in text
+        assert "2021-02-01" not in text
+        assert "2023-01-20" not in text
+        assert "2026-10-20" not in text
+
+    @pytest.mark.parametrize("stat", [{"mean": 0.0}, {"mean": 0.4, "datetime": "invalid"}])
+    def test_undated_usable_observation_does_not_inherit_requested_dates(self, stat: dict) -> None:
+        text = _audit_text(
+            {
+                "per_aoi_enrichment": [
+                    {
+                        "frame_plan": [{"start": "2021-01-01", "end": "2026-10-24"}],
+                        "ndvi_stats": [stat],
+                    }
+                ]
+            }
+        )
+        assert "Usable NDVI observation dates: unavailable" in text
+        assert "1 usable observations; 0 dated" in text
+        assert "Requested period: 2021-01-01 to 2026-10-24" in text
+
+    def test_parcel_dates_and_cover_do_not_borrow_unrelated_top_level_observations(self) -> None:
+        text = _audit_text(
+            {
+                "ndvi_stats": [{"mean": 0.7, "datetime": "2026-10-20"}],
+                "per_aoi_enrichment": [
+                    {"name": "Observed parcel", "ndvi_stats": [{"mean": 0.5, "datetime": "2022-02-15"}]},
+                    {"name": "Undated parcel", "ndvi_stats": [{"mean": 0.4}]},
+                    {"name": "Unavailable parcel", "ndvi_stats": [{"mean": 0.8, "available": False}]},
+                ],
+            }
+        )
+        assert "2026-10-20" not in text
+        assert "2 usable observations; 1 dated" in text
+        assert "Usable NDVI observation dates: unavailable" in text.split("3.2 Undated parcel")[1]
+        assert "NDVI: unavailable" in text.split("3.3 Unavailable parcel")[1]
+
+    @pytest.mark.parametrize("summary", [None, {}, {"comparisons": 0, "trajectory": "Stable"}])
+    def test_missing_comparisons_and_context_are_explicitly_unavailable(self, summary: dict | None) -> None:
+        text = _audit_text({"per_aoi_enrichment": [{"change_detection": {"summary": summary}}]})
+        assert "INSUFFICIENT EVIDENCE" in text
+        assert "NDVI: unavailable" in text
+        assert "Change detection: unavailable (no comparison evidence)" in text
+        assert "Change trajectory: Stable" not in text
+        assert "Protected area (WDPA, centre-point query): unknown (not checked)" in text
+        assert "Land cover (WorldCover 2021, bounding-box sample): unavailable" in text
+
+    @pytest.mark.parametrize(
+        "protected, expected",
+        [
+            (False, "No protected area found at sampled point"),
+            (True, "Protected area found at sampled point"),
+            (None, "unknown (result unavailable)"),
+        ],
+    )
+    def test_context_scope_and_nested_flags_survive_pdf_export(self, protected: bool | None, expected: str) -> None:
+        text = _audit_text(
+            {
+                "per_aoi_enrichment": [
+                    {
+                        "eudr": {
+                            "determination": {
+                                "screening_outcome": "insufficient_evidence",
+                                "flags": ["No usable imagery"],
+                            },
+                            "wdpa": {"checked": True, "is_protected": protected},
+                            "worldcover": {"available": True, "land_cover": {"dominant_class": "Tree cover"}},
+                        }
+                    }
+                ]
+            }
+        )
+        assert "No usable imagery" in text
+        assert f"Protected area (WDPA, centre-point query): {expected}" in text
+        assert "Parcel overlap not assessed" in text
+        assert "Land cover (WorldCover 2021, bounding-box sample): Tree cover" in text
+        assert "No overlap" not in text
+        assert "YES -- overlap detected" not in text
+
+    def test_methodology_matches_inclusive_and_loss_thresholds(self) -> None:
+        text = _audit_text({})
+        assert ">=5% of area AND >=1 ha" in text
+        assert ">5% of area or >1 ha" not in text
+        assert "does not constitute an operator risk conclusion or EUDR compliance claim" in text
 
 
 def _polygon_geometry(outer, inners=()):
