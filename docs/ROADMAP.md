@@ -118,14 +118,16 @@ portfolio-level risk visibility.
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 
 **Return-to-live status:** `DEPLOY_PAUSED=true`; these code merges do not
-certify a live release. #1013 and #1583 retain the acceptance ledger, including
+certify a live release. #1013 retains the release acceptance ledger, including
 real-data proof (#1379), scientific/native validation (#1223, #1521), and
 deployed golden-journey evidence (#708). Truthful evidence presentation (#1588)
 and explicit compute-resource deployment handling (#884) remain unmerged.
 Infracost #1604 and repair #1607 are merged; #1607's hosted setup,
 breakdown, artifact retention and PR-comment publication were verified.
-The geometry/sensor review dispositions in #1583 are reconciled; Project
-synchronization remains blocked by missing project access. Five open
+The geometry/sensor review ledger #1583 is closed after verified merge gates
+and owner-authorized Project synchronization (480 items, zero order mismatches).
+Real-provider proof remains blocked by #1615; successful STAC search probes
+are not an end-to-end pipeline or export pass. Five open
 code-scanning findings are tracked separately in #1213, #1214 and #1611;
 a green scanner run is not dismissal of those findings.
 
