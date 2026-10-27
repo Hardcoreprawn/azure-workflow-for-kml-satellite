@@ -2547,6 +2547,16 @@ class TestInfracostCostGate:
         assert "GITHUB_STEP_SUMMARY" in failure_notice["run"]
         assert "::warning::" in failure_notice["run"]
 
+    def test_infracost_report_includes_unchanged_projects_and_audit_artifact(self):
+        workflow = yaml.safe_load(INFRACOST_YML.read_text())
+        steps = workflow["jobs"]["infracost"]["steps"]
+        comment = next(step for step in steps if step.get("name") == "Post PR comment")
+        assert "--show-all-projects" in comment["run"]
+        artifact = next(step for step in steps if step.get("name") == "Retain cost-model evidence")
+        assert artifact["uses"].startswith("actions/upload-artifact@")
+        assert artifact["with"]["if-no-files-found"] == "error"
+        assert artifact["with"]["path"] == "${{ runner.temp }}/infracost.json"
+
     @pytest.mark.parametrize("api_key,expected_returncode", [("", 1), ("test-placeholder", 0)])
     def test_infracost_key_preflight_is_actionable_without_exposing_key(self, api_key, expected_returncode):
         workflow = yaml.safe_load(INFRACOST_YML.read_text())
