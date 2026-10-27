@@ -272,6 +272,49 @@ The 2026-09-16 audit found a stale, non-writable image-owned Python environment
 provides a separate validation path; use the same environment override for tests.
 It does not repair the devcontainer or preserve an image-only Rust extension.
 
+### Why Function App Updates Use the Deployment Workflow
+
+This is an intentional workaround, not permission to make untracked manual
+changes. It applies to both compute and orchestrator Function Apps in dev/prd.
+OpenTofu creates the `Microsoft.Web/sites` resources and supplies desired
+configuration through outputs. The deployment workflow applies subsequent
+container-image, app-settings, platform CORS and scaling updates. Replica limits
+remain OpenTofu inputs; using CLI commands does not make their values independent
+of the infrastructure configuration.
+
+The recorded failure mechanisms are distinct:
+
+- Commit [e9cf3f7](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/commit/e9cf3f79)
+   introduced `ignore_changes = [identity, body]` after modifying the Function App
+   body caused AzAPI to fail with `Missing Resource Identity After Update`.
+   The resource comments record that the provider crash was fixed in AzAPI 2.9.0,
+   but ARM update responses can still omit identity. PR [#741](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/741)
+   added explicit managed-identity verification. This history does not establish
+   that every current provider version still has the original crash.
+- PR [#1302](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/1302)
+   records unnecessary restarts and readiness delays from rewriting app settings
+   and configuration on every deployment. Normalized compare-before-write guards
+   now skip unchanged settings/CORS/scaling. CLI is not inherently restart-free:
+   a real configuration or image change can still restart/revise a host.
+- Container loading has separate prerequisites: registry credentials and image
+   availability must be valid before rollout. See **Function App in
+   ImagePullBackOff** below. Do not attribute every image-pull failure to OpenTofu
+   or assume the identity workaround fixes registry authentication.
+
+The broad body ignore prevents a later infrastructure apply from overwriting
+CLI-managed image/configuration with the creation-time body. It also means a
+clean OpenTofu plan is not proof that live body settings match desired values.
+Use deployment readbacks, identity checks, both hosts' readiness checks and the
+applicable smoke tests. Image rollback is limited to captured previous images;
+it is not a rollback of infrastructure or app settings.
+
+Do not remove the ignore rule or introduce a second writer as routine cleanup.
+An owner-reviewed migration must first demonstrate, in a disposable environment,
+that image/configuration updates preserve identity and registry access, a second
+apply is a no-op, unchanged configuration does not cause avoidable restarts, and
+deliberate drift is detected and reconciled. Keep the deployment freeze intact
+until separately authorized. No ownership migration is made by this documentation.
+
 ### Standard deploy
 
 1. Run CI checks.
