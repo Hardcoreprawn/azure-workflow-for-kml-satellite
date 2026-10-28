@@ -656,6 +656,15 @@ and resource group. It checks the returned ID, resource type, and managed
 environment before using the returned ID for KEDA GET/PATCH operations.
 An unrelated Container App or a Flex Consumption site is not a substitute.
 
+This is a fail-closed check of the existing workflow's expectation, not proof
+that Azure exposes a same-named writable resource in that group. Microsoft
+documents backing resources for the `Microsoft.Web/sites` hosting model in
+[protected managed resource groups](https://learn.microsoft.com/en-us/azure/azure-functions/functions-container-apps-hosting#managed-resource-groups).
+The application is currently local-only. The owner approved shipping the #884
+guard separately; #1620 owns the supported hosting contract and layered
+deployment ownership before shared-cloud re-entry. Do not create an ad-hoc
+backing resource or bypass platform protection to make this check pass.
+
 On `Compute backing Container App unavailable`, `mismatch`, or
 `Unsupported compute topology`:
 
