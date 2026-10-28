@@ -574,6 +574,44 @@ jobs:
           FUNC_RG="${TOFU_RESOURCE_GROUP_NAME}"
           FUNC_NAME="${TOFU_FUNCTION_APP_NAME}"
 
+          FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
+          if [[ ! "$FUNC_ID" =~ ^/subscriptions/([[:xdigit:]-]+)/resourceGroups/([^/]+)/providers/Microsoft.Web/sites/([^/]+)$ ]]; then
+            echo "::error title=Compute Function App ID invalid::Expected an ARM Microsoft.Web/sites ID for ${FUNC_RG}/${FUNC_NAME}. Check the Azure login subscription and Tofu outputs."
+            exit 1
+          fi
+          COMPUTE_SUBSCRIPTION_ID="${BASH_REMATCH[1]}"
+          RESOLVED_RG="${BASH_REMATCH[2]}"
+          RESOLVED_NAME="${BASH_REMATCH[3]}"
+          if [[ "${RESOLVED_RG,,}" != "${FUNC_RG,,}" || "${RESOLVED_NAME,,}" != "${FUNC_NAME,,}" ]]; then
+            echo "::error title=Compute Function App ID mismatch::Resolved ${FUNC_ID} does not match ${FUNC_RG}/${FUNC_NAME}. Check the Tofu outputs before retrying."
+            exit 1
+          fi
+          CURRENT_SITE=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01")
+          if ! MANAGED_ENVIRONMENT_ID=$(echo "$CURRENT_SITE" | jq -er '
+            select(.kind | split(",") | index("azurecontainerapps"))
+            | .properties.managedEnvironmentId | select(type == "string" and length > 0)
+          '); then
+            echo "::error title=Unsupported compute topology::${FUNC_ID} must be an azurecontainerapps Function App with managedEnvironmentId. Do not substitute Flex-only triggers; see docs/OPERATIONS_RUNBOOK.md (Compute backing Container App unavailable)."
+            exit 1
+          fi
+          if ! CURRENT=$(az containerapp show --subscription "$COMPUTE_SUBSCRIPTION_ID" \
+            --resource-group "$RESOLVED_RG" --name "$RESOLVED_NAME" -o json); then
+            echo "::error title=Compute backing Container App unavailable::Cannot resolve Microsoft.App/containerApps/${RESOLVED_NAME} for ${FUNC_ID} in subscription ${COMPUTE_SUBSCRIPTION_ID}. Check resource existence and deploy identity read/write access in ${MANAGED_ENVIRONMENT_ID}; see docs/OPERATIONS_RUNBOOK.md (Compute backing Container App unavailable). No compute configuration was changed."
+            exit 1
+          fi
+          EXPECTED_CONTAINER_APP_ID="${FUNC_ID/Microsoft.Web\/sites/Microsoft.App\/containerApps}"
+          if ! CONTAINER_APP_ID=$(echo "$CURRENT" | jq -er \
+            --arg expected "${EXPECTED_CONTAINER_APP_ID,,}" \
+            --arg environment "${MANAGED_ENVIRONMENT_ID,,}" '
+            select((.type | ascii_downcase) == "microsoft.app/containerapps")
+            | select((.id | ascii_downcase) == $expected)
+            | select((.properties.managedEnvironmentId | ascii_downcase) == $environment)
+            | .id
+          '); then
+            echo "::error title=Compute backing Container App mismatch::Expected ${EXPECTED_CONTAINER_APP_ID} in ${MANAGED_ENVIRONMENT_ID}. Refusing to configure an unrelated resource; see docs/OPERATIONS_RUNBOOK.md (Compute backing Container App unavailable)."
+            exit 1
+          fi
+
           az functionapp config container set \
             --name "$FUNC_NAME" \
             --resource-group "$FUNC_RG" \
@@ -640,7 +678,6 @@ jobs:
             --argjson max "$MAX_INSTANCES" \
             --argjson ready "$ALWAYS_READY" \
             '{properties:{siteConfig:{cors:{allowedOrigins:$origins,supportCredentials:false}},functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
-          FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
           CURRENT_SITE=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01")
           CURRENT_ALLOWED_ORIGINS_JSON=$(echo "$CURRENT_SITE" | jq -c '.properties.siteConfig.cors.allowedOrigins // [] | sort')
           DESIRED_ALLOWED_ORIGINS_JSON=$(echo "$ALLOWED_ORIGINS_JSON" | jq -c 'sort')
@@ -690,7 +727,6 @@ jobs:
           # The system-assigned MI has Storage Queue Data Contributor on the storage
           # account so KEDA authenticates keylessly via identity=system (no shared key).
           STORAGE_ACCOUNT="${TOFU_STORAGE_ACCOUNT_NAME}"
-          CONTAINER_APP_ID="/subscriptions/${ARM_SUBSCRIPTION_ID}/resourceGroups/${FUNC_RG}/providers/Microsoft.App/containerApps/${FUNC_NAME}"
 
           # GET current Container App, inject scale rules, PATCH back.
           # PATCH avoids replacing the whole resource while preserving existing

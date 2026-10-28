@@ -980,6 +980,255 @@ class TestDeployWorkflowSettings:
         assert "outcome: failure" in body, "deploy-marker-infra-failure job must record outcome: failure"
 
 
+@pytest.mark.parametrize(
+    ("available", "failure"),
+    [(True, ""), (False, ""), (False, "update"), (False, "install")],
+)
+def test_ci_provisions_jq_before_workflow_tests(tmp_path: Path, available: bool, failure: str) -> None:
+    workflow = yaml.safe_load(CI_YML.read_text())
+    steps = workflow["jobs"]["test"]["steps"]
+    prerequisite_index = next(
+        index for index, step in enumerate(steps) if step.get("name") == "Ensure workflow test prerequisites"
+    )
+    test_index = next(index for index, step in enumerate(steps) if step.get("run") == "make test")
+    assert prerequisite_index < test_index
+    assert "if" not in steps[prerequisite_index]
+    bash = shutil.which("bash")
+    assert bash is not None
+    calls = tmp_path / "apt-calls"
+    versions = tmp_path / "jq-calls"
+    mock = r"""
+provide_jq() {
+  jq() { printf '%s\n' "$*" >> "$MOCK_JQ_LOG"; }
+}
+apt-get() {
+  printf '%s\n' "$*" >> "$MOCK_APT_LOG"
+  if [[ "$1" == "$MOCK_FAILURE" ]]; then return 7; fi
+  if [[ "$1" == install ]]; then provide_jq; fi
+}
+if [[ "$MOCK_AVAILABLE" == 1 ]]; then provide_jq; fi
+"""
+    result = subprocess.run(
+        [bash, "--noprofile", "--norc", "-euo", "pipefail", "-c", mock + steps[prerequisite_index]["run"]],
+        env={
+            "PATH": str(tmp_path),
+            "MOCK_AVAILABLE": str(int(available)),
+            "MOCK_FAILURE": failure,
+            "MOCK_APT_LOG": str(calls),
+            "MOCK_JQ_LOG": str(versions),
+        },
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == (7 if failure else 0), result.stdout + result.stderr
+    if available:
+        assert not calls.exists()
+    else:
+        expected = ["update"]
+        if failure != "update":
+            expected.append("install -y --no-install-recommends jq")
+        assert calls.read_text().splitlines() == expected
+    if failure:
+        assert not versions.exists()
+    else:
+        assert versions.read_text().splitlines() == ["--version"]
+
+
+def test_compute_missing_jq_cannot_pass_gate(tmp_path: Path) -> None:
+    binary_dir = tmp_path / "bin"
+    binary_dir.mkdir()
+    bash = shutil.which("bash")
+    assert bash is not None, "bash is required to exercise the compute resolver tests"
+    (binary_dir / "bash").symlink_to(bash)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            f"{__file__}::TestComputeResourceResolution::test_compute_resolves_subscription_without_arm_environment",
+            "-o",
+            "addopts=",
+            "-q",
+            "--tb=short",
+        ],
+        cwd=ROOT,
+        env={**os.environ, "PATH": str(binary_dir)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 1, output
+    assert "jq is required" in output, output
+    assert "Dockerfile.dev" in output, output
+    assert "1 failed" in output, output
+    assert "skipped" not in output, output
+
+
+class TestComputeResourceResolution:
+    """Execute the compute configure step without Azure access or inherited subscription state."""
+
+    subscription = "11111111-2222-3333-4444-555555555555"
+    resource_group_id = f"/subscriptions/{subscription}/resourceGroups/rg-compute"
+    site_id = f"{resource_group_id}/providers/Microsoft.Web/sites/compute"
+    container_id = f"{resource_group_id}/providers/Microsoft.App/containerApps/compute"
+    environment_id = f"{resource_group_id}/providers/Microsoft.App/managedEnvironments/compute-env"
+
+    def _run_configure(
+        self,
+        tmp_path: Path,
+        *,
+        missing: bool = False,
+        wrong_environment: bool = False,
+        site_overrides: dict[str, object] | None = None,
+        container_overrides: dict[str, object] | None = None,
+    ) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
+        if shutil.which("jq") is None:
+            pytest.fail(
+                "jq is required for compute resource resolution tests; "
+                "rebuild/publish the Dockerfile.dev dev image and rerun the gate "
+                "(outside the image, install jq with apt-get install jq)."
+            )
+        workflow = yaml.safe_load(DEPLOY_YML.read_text())
+        step = next(step for step in workflow["jobs"]["deploy-infra"]["steps"] if step.get("id") == "configure-app")
+        script = step["run"].replace("${{ needs.build-image.outputs.image_uri }}", "example.invalid/compute:test")
+        site = {
+            "id": self.site_id,
+            "kind": "functionapp,linux,container,azurecontainerapps",
+            "properties": {
+                "managedEnvironmentId": self.environment_id,
+                "siteConfig": {"cors": {"allowedOrigins": ["https://example.invalid"], "supportCredentials": False}},
+                "functionAppConfig": {"scaleAndConcurrency": {"maximumInstanceCount": 3, "alwaysReady": []}},
+            },
+        }
+        container = {
+            "id": self.container_id,
+            "type": "Microsoft.App/containerApps",
+            "location": "uksouth",
+            "identity": {"type": "SystemAssigned"},
+            "properties": {
+                "managedEnvironmentId": self.environment_id + ("-other" if wrong_environment else ""),
+                "configuration": {"activeRevisionsMode": "Single"},
+                "template": {"containers": [{"name": "compute", "image": "example.invalid/compute:test"}]},
+            },
+        }
+        site.update(site_overrides or {})
+        container.update(container_overrides or {})
+        log = tmp_path / "az-calls"
+        environment = {
+            "PATH": os.environ["PATH"],
+            "GITHUB_WORKSPACE": str(ROOT),
+            "TOFU_RESOURCE_GROUP_NAME": "rg-compute",
+            "TOFU_FUNCTION_APP_NAME": "compute",
+            "TOFU_FUNCTION_APP_CLI_APP_SETTINGS_JSON": "{}",
+            "TOFU_BROWSER_ALLOWED_ORIGINS_JSON": '["https://example.invalid"]',
+            "TOFU_FUNCTION_APP_CLI_MAXIMUM_INSTANCE_COUNT": "3",
+            "TOFU_FUNCTION_APP_CLI_MINIMUM_INSTANCE_COUNT": "0",
+            "TOFU_STORAGE_ACCOUNT_NAME": "computestorage",
+            "MOCK_SITE_ID": str(site["id"]),
+            "MOCK_SITE": json.dumps(site),
+            "MOCK_CONTAINER": json.dumps(container),
+            "MOCK_MISSING": str(int(missing)),
+            "MOCK_LOG": str(log),
+        }
+        mock = r"""
+az() {
+    jq -cn --args '$ARGS.positional' -- "$@" >> "$MOCK_LOG"
+  case "$*" in
+    'functionapp show '*) printf '%s\n' "$MOCK_SITE_ID" ;;
+    'rest --method GET --url '*'/providers/Microsoft.Web/sites/'*) printf '%s\n' "$MOCK_SITE" ;;
+    'containerapp show '*)
+      if [[ "$MOCK_MISSING" == 1 ]]; then
+        echo 'ResourceNotFound' >&2
+        return 3
+      fi
+      printf '%s\n' "$MOCK_CONTAINER"
+      ;;
+    'functionapp config container set '*|'webapp config appsettings set '*) ;;
+    'webapp config appsettings list '*) echo '[]' ;;
+    'rest --method GET --url '*'/providers/Microsoft.App/containerApps/'*) printf '%s\n' "$MOCK_CONTAINER" ;;
+    'rest --method PATCH --url '*'/providers/Microsoft.App/containerApps/'*) ;;
+    *) echo "Unexpected az command: $*" >&2; return 99 ;;
+  esac
+}
+sleep() { echo 'Unexpected retry' >&2; exit 98; }
+"""
+        result = subprocess.run(
+            ["bash", "--noprofile", "--norc", "-euo", "pipefail", "-c", mock + script],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        return result, [json.loads(line) for line in log.read_text().splitlines()]
+
+    def test_compute_resolves_subscription_without_arm_environment(self, tmp_path: Path) -> None:
+        result, calls = self._run_configure(tmp_path)
+        assert result.returncode == 0, result.stdout + result.stderr
+        lookup = next(call for call in calls if call[:2] == ["containerapp", "show"])
+        assert lookup[lookup.index("--subscription") + 1] == self.subscription
+        assert lookup[lookup.index("--resource-group") + 1] == "rg-compute"
+        assert lookup[lookup.index("--name") + 1] == "compute"
+        arguments = next(call for call in calls if call[:3] == ["rest", "--method", "PATCH"])
+        assert arguments[arguments.index("--url") + 1] == f"{self.container_id}?api-version=2024-03-01"
+        body = json.loads(arguments[arguments.index("--body") + 1])
+        assert body["properties"]["template"]["containers"][0]["name"] == "compute"
+        assert body["properties"]["template"]["scale"]["rules"][0]["custom"]["identity"] == "system"
+
+    def test_compute_missing_backing_resource_fails_before_writes(self, tmp_path: Path) -> None:
+        result, calls = self._run_configure(tmp_path, missing=True)
+        assert result.returncode != 0
+        assert "::error title=Compute backing Container App unavailable::" in result.stdout
+        assert self.site_id in result.stdout
+        assert self.subscription in result.stdout
+        assert "OPERATIONS_RUNBOOK.md" in result.stdout
+        assert all("set" not in call and "PATCH" not in call for call in calls)
+
+    def test_compute_rejects_backing_resource_in_another_environment(self, tmp_path: Path) -> None:
+        result, calls = self._run_configure(tmp_path, wrong_environment=True)
+        assert result.returncode != 0
+        assert "::error title=Compute backing Container App mismatch::" in result.stdout
+        assert all("set" not in call and "PATCH" not in call for call in calls)
+
+    @pytest.mark.parametrize(
+        ("overrides", "diagnostic"),
+        [
+            ({"id": ""}, "Compute Function App ID invalid"),
+            ({"id": site_id.replace(subscription, "")}, "Compute Function App ID invalid"),
+            ({"id": site_id.replace("rg-compute", "rg-other")}, "Compute Function App ID mismatch"),
+            ({"kind": "functionapp,linux"}, "Unsupported compute topology"),
+            ({"properties": {}}, "Unsupported compute topology"),
+        ],
+    )
+    def test_compute_rejects_invalid_site_before_backing_lookup(
+        self, tmp_path: Path, overrides: dict[str, object], diagnostic: str
+    ) -> None:
+        result, calls = self._run_configure(tmp_path, site_overrides=overrides)
+        assert result.returncode != 0
+        assert f"::error title={diagnostic}::" in result.stdout
+        assert all("set" not in call and "PATCH" not in call and "containerapp" not in call for call in calls)
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"id": container_id.replace(subscription, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")},
+            {"id": container_id.replace("rg-compute", "rg-other")},
+            {"id": container_id + "-other"},
+            {"id": None},
+            {"type": "Microsoft.Web/sites"},
+        ],
+    )
+    def test_compute_rejects_unrelated_backing_resource(self, tmp_path: Path, overrides: dict[str, object]) -> None:
+        result, calls = self._run_configure(tmp_path, container_overrides=overrides)
+        assert result.returncode != 0
+        assert "::error title=Compute backing Container App mismatch::" in result.stdout
+        assert all("set" not in call and "PATCH" not in call for call in calls)
+
+
 class TestEmitDeployMarkerAction:
     """Ensure the shared deploy-marker composite action stays best-effort (#1012)."""
 
