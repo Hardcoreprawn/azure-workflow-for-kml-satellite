@@ -105,6 +105,14 @@ jobs:
       # with local `make lint` / `make check`). See issue #962.
       - run: make lint
 
+      - name: Set up credential-free bootstrap validation
+        uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: "1.13.2"
+          tofu_wrapper: false
+      - name: Validate isolated bootstrap contracts
+        run: make test-bootstrap
+
   test:
     name: Test
     needs: resolve-image

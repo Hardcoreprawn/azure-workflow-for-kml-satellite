@@ -3,10 +3,11 @@
 	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check verify-local verify-local-api lint fmt check smoke clean prune-branches \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
-.PHONY: test-pipeline-local-clean
+.PHONY: test-pipeline-local-clean test-bootstrap
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
+TOFU ?= tofu
 
 # Resolved once per `make` invocation; empty outside a Docker-outside-of-
 # Docker devcontainer, in which case docker-compose.yml/.override.yml fall
@@ -77,6 +78,13 @@ ux-smoke: ## UX smoke test across host site, EUDR/conservation/account apps, and
 test-fast: override export TESTS := $(value TESTS)
 test-fast: ## Run targeted tests for the edit loop (requires TESTS="path-or-node")
 	uv run python scripts/run_targeted_tests.py
+
+test-bootstrap: ## Validate bootstrap schema and mocked contracts; no Azure credentials or remote backend
+	$(TOFU) -chdir=infra/tofu/bootstrap fmt -check -recursive
+	$(TOFU) -chdir=infra/tofu/bootstrap init -backend=false -input=false -lockfile=readonly
+	$(TOFU) -chdir=infra/tofu/bootstrap validate -no-color
+	$(TOFU) -chdir=infra/tofu/bootstrap test -no-color
+	@test ! -f infra/tofu/bootstrap/errored_test.tfstate || { echo "ERROR: bootstrap tests left errored_test.tfstate; inspect it before cleanup." >&2; exit 1; }
 
 test: ## Run unit tests (canonical — CI runs this exact command)
 	uv run pytest tests/ -v -m "not integration" --tb=short --cov=. --cov-report=xml

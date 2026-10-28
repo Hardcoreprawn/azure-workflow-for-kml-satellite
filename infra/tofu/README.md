@@ -14,6 +14,11 @@ OIDC trust are owner-managed prerequisites, outside this OpenTofu root. The
 application is currently local-only; this checklist does not claim that these
 resources exist or authorize their creation.
 
+The independent [bootstrap root](bootstrap/README.md) implements the first
+state/identity boundary under #1625. It is validated offline, defaults to no
+GitHub federation, and is **not** connected to the workflow described below.
+It neither bootstraps itself automatically nor migrates the existing root.
+
 Before an owner-approved bootstrap, record:
 
 1. **Target and ownership:** the tenant, subscription, environment and owner of
@@ -36,8 +41,8 @@ Before an owner-approved bootstrap, record:
    login alone is not a branch restriction or approval gate.
 5. **Handoff:** record non-secret resource identifiers and permission decisions,
    and configure the environment inputs below. Do not commit tokens, account
-   keys or state snapshots. Bootstrap implementation and any future ownership
-   split require separate review under #1620.
+   keys or state snapshots. Activation of the new bootstrap boundary and the
+   remaining ownership split require separate review under #1620.
 
 Use the official [Azure OIDC setup guidance](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect)
 and [OpenTofu Azure backend reference](https://opentofu.org/docs/language/settings/backends/azurerm/)
