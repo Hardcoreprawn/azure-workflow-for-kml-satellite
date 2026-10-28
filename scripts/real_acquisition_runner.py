@@ -12,7 +12,12 @@ run), and issue #1379 requires a human-reviewed sign-off, not a CI gate.
 
 Prerequisite
 ------------
-Azurite must already be running (``make dev-up``). This script manages its
+Azurite and a disposable Cosmos emulator must already be running, with
+``orgs``, ``users`` and ``runs`` containers from ``scripts/cosmos_init``.
+Set ``COSMOS_ENDPOINT`` to HTTP localhost/loopback or the Docker alias
+``cosmos``, ``COSMOS_KEY`` to the emulator key and ``COSMOS_DATABASE_NAME``
+to its database. Never point this synthetic runner at live data.
+This script manages its
 own ``func start`` lifecycle, same as ``corpus_runner.py`` — you do **not**
 need a separate running func host, and it must NOT be run against a
 docker-compose ``func`` container already listening on the same port.
@@ -44,9 +49,12 @@ import json
 import logging
 import os
 import sys
+import uuid
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import orjson
@@ -99,6 +107,64 @@ def _build_run_summary(status_payload: dict[str, Any]) -> dict[str, Any]:
         "downloadsCompleted": output.get("downloadsCompleted", 0),
         "rawImageryPathCount": len(raw_paths),
     }
+
+
+def _prepare_local_ownership() -> str:
+    """Check local storage before acquisition and provision the runner's membership."""
+    from azure.core.exceptions import AzureError
+
+    from treesight import config
+    from treesight.pipeline.run_access import assert_run_write_access
+    from treesight.security.orgs import create_org, get_user_org_strict
+    from treesight.storage.cosmos import get_container
+
+    endpoint = urlsplit(config.COSMOS_ENDPOINT)
+    if (
+        endpoint.scheme != "http"
+        or endpoint.hostname not in {"localhost", "127.0.0.1", "::1", "cosmos"}
+        or not config.COSMOS_KEY
+    ):
+        raise RuntimeError(
+            "Configure a local Cosmos emulator using COSMOS_ENDPOINT (HTTP loopback or cosmos), "
+            "COSMOS_KEY and COSMOS_DATABASE_NAME; live Cosmos is not supported by this runner."
+        )
+    try:
+        for name in ("orgs", "users", "runs"):
+            get_container(name).read()
+        org = get_user_org_strict(_RUNNER_USER_ID)
+        if org is None:
+            org = create_org(_RUNNER_USER_ID, name="Local real-acquisition proof")
+    except AzureError as exc:
+        raise RuntimeError("Local Cosmos unavailable: initialise orgs, users and runs before acquisition.") from exc
+    org_id = org.get("org_id")
+    if not isinstance(org_id, str) or not org_id.strip():
+        raise RuntimeError("Local runner organisation has no valid org_id.")
+    assert_run_write_access({"org_id": org_id}, _RUNNER_USER_ID, active_org=org)
+    return org_id
+
+
+def _persist_pending_run(blob_name: str, content_length: int, org_id: str) -> str:
+    """Create genuine pending ownership before publishing this run's Event Grid event."""
+    from treesight.models.records import RunRecord
+    from treesight.storage.cosmos import get_container
+
+    if not org_id.strip():
+        raise ValueError("Local runner organisation is required")
+    instance_id = str(uuid.uuid4())
+    record = RunRecord(
+        submission_id=instance_id,
+        instance_id=instance_id,
+        user_id=_RUNNER_USER_ID,
+        org_id=org_id,
+        submitted_at=datetime.now(UTC).isoformat(),
+        kml_blob_name=blob_name,
+        kml_size_bytes=content_length,
+        submission_prefix="",
+        status="Pending",
+        eudr_mode=True,
+    )
+    get_container("runs").create_item(body={"id": instance_id, **record.model_dump(exclude_none=True)})
+    return instance_id
 
 
 def _test_principal_header(user_id: str) -> str:
@@ -249,7 +315,7 @@ def _fetch_export(instance_id: str, fmt: str, dest_dir: Path) -> ExportResult:
     return ExportResult(fmt, "passed", http_status, len(content), str(dest))
 
 
-def run_fixture(fixture: Path, *, formats: tuple[str, ...]) -> bool:
+def run_fixture(fixture: Path, *, formats: tuple[str, ...], org_id: str) -> bool:
     """Upload *fixture* through the real pipeline and fetch review exports.
 
     Returns ``True`` if the run completed with real output, ``False`` on
@@ -260,13 +326,16 @@ def run_fixture(fixture: Path, *, formats: tuple[str, ...]) -> bool:
     print(f"Fixture: {fixture.name}")
 
     blob_name, blob_url, content_length = upload_kml(fixture, DEFAULT_CONTAINER)
+    instance_id = _persist_pending_run(blob_name, content_length, org_id)
     # eudr_mode=True: these are EUDR commodity scenarios (#1379) — without it,
     # blob_trigger never sets eudr_mode on the orchestrator input, so the
     # WorldCover/WDPA enrichment phase (the actual EUDR evidence) is skipped
     # entirely and every parcel comes back "insufficient_evidence".
-    _upload_ticket(blob_name, DEFAULT_CONTAINER, tier=_RUNNER_TIER, user_id=_RUNNER_USER_ID, eudr_mode=True)
+    _upload_ticket(
+        blob_name, DEFAULT_CONTAINER, tier=_RUNNER_TIER, user_id=_RUNNER_USER_ID, eudr_mode=True, org_id=org_id
+    )
 
-    instance_id = fire_event_grid(blob_url, blob_name, content_length, DEFAULT_CONTAINER)
+    fire_event_grid(blob_url, blob_name, content_length, DEFAULT_CONTAINER, event_id=instance_id)
     print(f"  instance_id: {instance_id}")
     dest_dir = OUTPUT_DIR / fixture.stem / instance_id
 
@@ -328,6 +397,7 @@ def main() -> None:
         print(f"No KML fixtures found in {SCENARIOS_DIR}.", file=sys.stderr)
         sys.exit(1)
 
+    org_id = _prepare_local_ownership()
     proc = start_func_host(log_path=FUNC_HOST_LOG_PATH, test_mode=False)
     passed = failed = 0
     try:
@@ -336,7 +406,7 @@ def main() -> None:
 
         print(f"[2/2] Running {len(fixtures)} real-world fixture(s) through the pipeline...")
         for fixture in fixtures:
-            ok = run_fixture(fixture, formats=tuple(args.formats))
+            ok = run_fixture(fixture, formats=tuple(args.formats), org_id=org_id)
             if ok:
                 passed += 1
             else:
