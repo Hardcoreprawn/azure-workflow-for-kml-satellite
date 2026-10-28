@@ -103,8 +103,8 @@ culpability is asserted.
 Complete export runs require the local ownership setup introduced by **#1617**
 (fixing #1616): disposable Azurite, initialized Cosmos `orgs`/`users`/`runs`,
 the local emulator endpoint/key/database configuration, Core Tools, and the
-`dev` dependencies. At pack preparation, #1617 is unmerged: use that reviewed
-runner candidate or its merged successor, not an auth bypass. Do not start
+`dev` dependencies. The prerequisite merged in #1617 on 2026-10-28: use the
+current runner with this local setup, not an auth bypass. Do not start
 this runner on a port already occupied by the shared Functions host.
 
 From the repository root, explicitly choose one or a pair:

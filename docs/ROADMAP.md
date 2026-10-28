@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. The project board holds the live queue.
 
-Last updated: 2026-10-27
+Last updated: 2026-10-28
 
 ---
 
@@ -108,12 +108,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #1614 | Reconciled the merge/review ledger and verified Project synchronization (closes #1613). Documentation only; release acceptance remains separate. |
+| #1617 | Added local ownership prerequisites for real acquisition/export proof (closes #1616). Two real fixtures and all six exports passed; production auth and ownership gates unchanged. |
+| #1612 | Preserved unavailable and sampled EUDR evidence in UI/PDF output (closes #1588). Local browser/PDF checks and hosted integration/Pipeline e2e passed; scientific acceptance remains separate. |
 | #1607 | Restored advisory Infracost estimates without Azure login or remote state (closes #1606). Hosted breakdown, artifact and comment publication verified; partial configuration estimate, not a billing forecast. |
 | #1610 | Updated fpdf2 to 2.8.8 for the reported resource-access and SVG-expansion advisories. Required CI passed; no open Dependabot alerts at the post-merge check. |
 | #1609 | Documented Function App update ownership, identity-response history and restart risks (closes #1608). Documentation only; no ownership migration or freeze change. |
-| #1604 | Pinned Infracost setup v5.0.1. The setup path was subsequently exercised by #1607; generic action-only CI was not treated as cost-estimation proof. |
-| #1575 | Best-available multispectral NDVI source selection with unavailable-source fallback and parcel masking (closes #612). Integrated canonical geometry, security updates and strict proof validation; native and real-data scientific acceptance remain separate. |
-| #1603 | Grouped CodeQL v4.39.0 pins (closes #1605). Local checks and hosted CodeQL 2.27.3 analysis plus SARIF publication passed; no deployment implied. |
 | —  | **MILESTONE (2026-07-12): Domain-model overhaul begun — Organisation as the single ownership root** (epic #1057; model documented in `docs/DATA_MODEL.md` — conceptual/logical/physical + D1–D5 divergences). **D3 landed**: per-user quota retired, org pool is the sole accounting unit. D1 (auth active-org resolution) in progress; D2 (org-partitioning) sequenced after D1. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 
@@ -121,13 +121,17 @@ portfolio-level risk visibility.
 certify a live release. #1013 retains the release acceptance ledger, including
 real-data proof (#1379), scientific/native validation (#1223, #1521), and
 deployed golden-journey evidence (#708). Truthful evidence presentation (#1588)
-and explicit compute-resource deployment handling (#884) remain unmerged.
+is merged in #1612; explicit compute-resource deployment handling (#884)
+remains unmerged.
 Infracost #1604 and repair #1607 are merged; #1607's hosted setup,
 breakdown, artifact retention and PR-comment publication were verified.
 The geometry/sensor review ledger #1583 is closed after verified merge gates
 and owner-authorized Project synchronization (480 items, zero order mismatches).
-Real-provider proof remains blocked by #1615; successful STAC search probes
-are not an end-to-end pipeline or export pass. Five open
+The #1617 candidate completed both real cattle/coffee fixtures and all six
+format-valid exports after local ownership setup. This clears the observed
+mechanical acquisition/export failure, not human/scientific acceptance
+of #1379; incident #1615 remains a separate follow-up. The six new manual AOIs
+in #1618 have not yet had full pipeline or human imagery validation. Five open
 code-scanning findings are tracked separately in #1213, #1214 and #1611;
 a green scanner run is not dismissal of those findings.
 
