@@ -7,10 +7,11 @@ provider "azurerm" {
 }
 
 locals {
-  key_enabled  = contains(["key", "state"], var.bootstrap_phase)
-  state_layers = var.bootstrap_phase == "state" ? toset(["foundation", "workload"]) : toset([])
-  identities   = toset(["foundation", "workload", "release"])
-  name_suffix  = "${var.project_code}-${var.environment}"
+  state_key_lifetime_days = 180
+  key_enabled             = contains(["key", "state"], var.bootstrap_phase)
+  state_layers            = var.bootstrap_phase == "state" ? toset(["foundation", "workload"]) : toset([])
+  identities              = toset(["foundation", "workload", "release"])
+  name_suffix             = "${var.project_code}-${var.environment}"
   tags = {
     project     = "kml-satellite"
     environment = var.environment
@@ -126,11 +127,11 @@ resource "azurerm_key_vault_key" "state" {
   key_type        = "RSA"
   key_size        = 2048
   key_opts        = ["unwrapKey", "wrapKey"]
-  expiration_date = var.state_key_expiration_date
+  expiration_date = timeadd(plantimestamp(), "${local.state_key_lifetime_days * 24}h")
   tags            = local.tags
 
   rotation_policy {
-    expire_after         = "P180D"
+    expire_after         = "P${local.state_key_lifetime_days}D"
     notify_before_expiry = "P30D"
     automatic {
       time_after_creation = "P90D"
@@ -146,7 +147,7 @@ resource "azurerm_key_vault_key" "state" {
         can(timecmp(self.expiration_date, plantimestamp()))
         ? timecmp(self.expiration_date, plantimestamp()) > 0 : false
       )
-      error_message = "The effective state key must have a future expiry; verify creation input or current rotation health."
+      error_message = "The effective state key must have a future expiry; verify the creation plan or current rotation health."
     }
   }
 

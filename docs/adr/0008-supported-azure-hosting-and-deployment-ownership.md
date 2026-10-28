@@ -16,8 +16,9 @@ merged the proposal for #1622 under #1620:
   encryption identity. Keep key custody with the explicitly approved bootstrap
   operator, never with foundation/workload/release identities.
 - Include dedicated bootstrap blob/key audit diagnostics. Keep the stricter
-  state firewall and use only the two explicitly approved, scoped scanner
-  exceptions (AZU-0010/AZU-0057), expiring 2026-11-27 or reviewed before cloud use.
+  state firewall and use only explicitly approved, scoped scanner exceptions
+  (AZU-0010/AZU-0057 plus AZU-0014 for computed initial key expiry), expiring
+  2026-11-27 or reviewed before cloud use.
   This approves code scope, not workspace spend or claims of delivered logs.
 
 Neither this acceptance nor a PR merge authorizes cloud spend, changes the live

@@ -35,8 +35,9 @@ State storage disables shared-key authentication and public blobs, requires TLS
 1.2/HTTPS, and enables infrastructure encryption, CMK encryption, versioning and
 30-day blob/container soft deletion. The dedicated vault uses RBAC, purge
 protection and 90-day soft deletion. The RSA key allows wrap/unwrap only, rotates
-after 90 days and gives new versions a 180-day expiry; the initial future expiry
-must be supplied by the owner, allowing enough lifetime for the rotation policy.
+after 90 days and gives initial and rotated versions 180-day lifetimes, leaving
+90 days for adoption after rotation. Initial expiry is computed from plan time;
+there is no operator date input that can expire before the first rotation.
 Storage uses the versionless key URI for rotation.
 After creation, rotation owns expiry: OpenTofu ignores expiry drift and checks
 the refreshed effective key's expiry, not a historic input date.
@@ -92,13 +93,16 @@ legacy CLI. AzureRM/random versions and checksums are pinned independently here.
 The required CI Lint job runs this same test target without OIDC permission.
 The Trivy IaC job also runs `make scan-bootstrap`, using the pinned scanner,
 synthetic `tests/scan.tfvars` and the full `state` phase. Medium/high/critical
-findings fail it except for the two owner-approved, path-scoped entries in
+findings fail it except for the three owner-approved, path-scoped entries in
 `.trivyignore.yaml`, expiring **2026-11-27**:
 
 - AZU-0010: retain the stricter `bypass=None` storage firewall; no trusted-service
   state access is required.
 - AZU-0057: its implementation checks legacy queue logging. State uses blobs, with
   modern read/write/delete diagnostics and separate key audit logs.
+- AZU-0014: the scanner cannot evaluate `plantimestamp()` in the computed initial
+  expiry. Native tests assert the exact 180-day lifetime and 90-day rotation;
+  the effective-key postcondition still rejects an expired key.
 
 Review these exceptions before cloud authorization or expiry, whichever is first.
 The repository-wide legacy exceptions do not apply to this blocking target.
@@ -147,9 +151,11 @@ runner egress ranges before verifying data-plane access from that actual network
 
 After an owner-authorized phase apply, verify the custodian's effective key access
 and network path with bounded checks. Then explicitly choose `bootstrap_phase="key"`
-and a future `state_key_expiration_date`. This creates key material and grants
+after approving the 90-day rotation/180-day lifetime policy. This creates key material and grants
 the **storage-encryption identity only** wrap/unwrap access at key scope. No state
 account or federation exists yet.
+Use a fresh plan for each authorized phase; never apply an old saved plan whose
+calculated key expiry no longer leaves the approved rotation/adoption window.
 
 Before explicitly choosing `bootstrap_phase="state"`, verify the encryption
 identity/role and approved data access path. Storage provisioning must validate

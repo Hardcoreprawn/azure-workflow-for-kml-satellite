@@ -340,9 +340,10 @@ Crypto Officer; only the encryption identity gets key-scoped encryption use.
 Deployment identities receive neither. Infrastructure/CMK encryption and
 deny-default endpoint firewalls are checked by `make scan-bootstrap` in CI,
 with the full state phase selected. The owner approved a dedicated bootstrap
-audit workspace for blob read/write/delete and Key Vault audit events. The two
+audit workspace for blob read/write/delete and Key Vault audit events. The three
 path-scoped scanner exceptions preserve the stricter storage firewall and
-substitute blob diagnostics for the scanner's queue-only check; they expire
+substitute blob diagnostics for the scanner's queue-only check, and cover its
+inability to evaluate the computed 180-day initial key expiry; they expire
 2026-11-27 and need review before any cloud authorization. Actual log delivery,
 cost/retention, key rotation/recovery and effective isolation remain trial gates.
 

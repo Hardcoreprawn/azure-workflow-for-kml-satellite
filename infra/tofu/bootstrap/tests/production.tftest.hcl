@@ -91,7 +91,6 @@ variables {
   enable_github_oidc           = true
   bootstrap_phase              = "state"
   bootstrap_operator_object_id = "99999999-9999-4999-8999-999999999999"
-  state_key_expiration_date    = "2030-01-01T00:00:00Z"
   bootstrap_allowed_ip_ranges  = ["203.0.113.10"]
 }
 

@@ -91,19 +91,26 @@ variables {
   project_code                 = "kmlsat"
   bootstrap_phase              = "state"
   bootstrap_operator_object_id = "99999999-9999-4999-8999-999999999999"
-  state_key_expiration_date    = "2030-01-01T00:00:00Z"
   bootstrap_allowed_ip_ranges  = ["203.0.113.10"]
 }
 
 run "rotation_owns_expiry_lifecycle" {
   command = plan
   assert {
+    condition = (
+      timecmp(azurerm_key_vault_key.state[0].expiration_date, timeadd(plantimestamp(), "4320h")) == 0 &&
+      azurerm_key_vault_key.state[0].rotation_policy[0].automatic[0].time_after_creation == "P90D" &&
+      azurerm_key_vault_key.state[0].rotation_policy[0].expire_after == "P180D"
+    )
+    error_message = "Initial and rotated keys need 180-day lifetimes, leaving 90 days after the first rotation for adoption."
+  }
+  assert {
     condition     = can(regex("ignore_changes\\s*=\\s*\\[expiration_date\\]", file("${path.module}/main.tf")))
     error_message = "Rotation must own subsequent expiry instead of each plan overwriting it."
   }
   assert {
-    condition     = !strcontains(file("${path.module}/variables.tf"), "plantimestamp()")
-    error_message = "The original expiry input must not age out; validate the effective resource instead."
+    condition     = !strcontains(file("${path.module}/variables.tf"), "state_key_expiration_date")
+    error_message = "No historical or too-short operator expiry input may override the creation lifetime."
   }
 }
 
@@ -276,7 +283,6 @@ run "identity_phase_does_not_create_key_or_state" {
 
   variables {
     bootstrap_phase             = "identity"
-    state_key_expiration_date   = null
     bootstrap_allowed_ip_ranges = []
   }
 

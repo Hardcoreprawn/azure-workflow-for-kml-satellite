@@ -53,7 +53,6 @@ run "reject_unknown_phase" {
   command = plan
   variables {
     bootstrap_phase             = "unknown"
-    state_key_expiration_date   = "2030-01-01T00:00:00Z"
     bootstrap_allowed_ip_ranges = ["203.0.113.10"]
   }
   expect_failures = [var.bootstrap_phase]
@@ -79,25 +78,6 @@ run "reject_deployment_identity_as_custodian" {
     }
   }
   expect_failures = [azurerm_role_assignment.key_custodian]
-}
-
-run "reject_missing_key_expiry" {
-  command = plan
-  variables {
-    bootstrap_phase             = "key"
-    bootstrap_allowed_ip_ranges = ["203.0.113.10"]
-  }
-  expect_failures = [var.state_key_expiration_date]
-}
-
-run "expired_input_reaches_effective_key_check_not_variable_age_gate" {
-  command = plan
-  variables {
-    bootstrap_phase             = "key"
-    state_key_expiration_date   = "2000-01-01T00:00:00Z"
-    bootstrap_allowed_ip_ranges = ["203.0.113.10"]
-  }
-  expect_failures = [azurerm_key_vault_key.state]
 }
 
 run "reject_unbounded_network" {
@@ -151,8 +131,7 @@ run "reject_malformed_network" {
 run "reject_key_without_network_gate" {
   command = plan
   variables {
-    bootstrap_phase           = "key"
-    state_key_expiration_date = "2030-01-01T00:00:00Z"
+    bootstrap_phase = "key"
   }
   expect_failures = [var.bootstrap_allowed_ip_ranges]
 }
