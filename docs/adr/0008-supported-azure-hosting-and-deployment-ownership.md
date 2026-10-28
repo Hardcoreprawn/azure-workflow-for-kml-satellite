@@ -273,6 +273,28 @@ decisions are accepted. #1619's bootstrap documentation fix is independent.
    measurement and #708 for the authenticated journey. No cloud permission is
    implied by completing steps 1-3 or passing local tests.
 
+### Experiment-unblocking milestone
+
+Issue #1528 must not depend on completion of umbrella #1620: the umbrella consumes
+its results. Replace that blanket issue-body blocker with #1622 as the immediate
+proposal prerequisite, retaining #1528's other dependencies and its `blocked`
+and `no-autopilot` labels. Closing the proposal issue alone cannot unblock it.
+
+Before assigning the experiment, the owner must accept a supported **experimental
+hosting/ownership contract**, including state/identity boundaries and budgeted
+replica/resource limits. This authorizes a design for a bounded trial, not final
+warm-capacity/SLO decisions, which can depend on #1528's measurements. The
+orchestrator must then put the concrete implementation-child prerequisites from
+steps 1-3 into #1528's issue body as `Blocked by #N`, and order them ahead of it
+on the Project. Do this when those children are created, not after starting work.
+
+Only after those prerequisites pass and the owner separately approves the named
+DEV environment, spend ceiling, expiry/teardown and experiment plan may the
+orchestrator remove `blocked`. Keep `no-autopilot` for the human-controlled cloud
+trial. #1620 stays open while the experiment runs and closes only after accepting
+its evidence. Proposal merge, implementation completion and cloud authorization
+are three different milestones; none silently implies the next.
+
 Proposed executable acceptance for those implementation issues:
 
 - An empty authorized environment converges, and a second identical apply is a
