@@ -12,6 +12,13 @@ merged the proposal for #1622 under #1620:
   SKU, availability policy and cloud-trial authorization remain separate.
 - Begin the offline bootstrap/state-and-identity boundary as #1625. This accepts
   the layered ownership direction, not blanket privileges or cloud provisioning.
+- For bootstrap state, use a dedicated Key Vault/key and a separate storage
+  encryption identity. Keep key custody with the explicitly approved bootstrap
+  operator, never with foundation/workload/release identities.
+- Include dedicated bootstrap blob/key audit diagnostics. Keep the stricter
+  state firewall and use only the two explicitly approved, scoped scanner
+  exceptions (AZU-0010/AZU-0057), expiring 2026-11-27 or reviewed before cloud use.
+  This approves code scope, not workspace spend or claims of delivered logs.
 
 Neither this acceptance nor a PR merge authorizes cloud spend, changes the live
 hosting/state/permissions, or lifts `DEPLOY_PAUSED` or the production freeze.
@@ -304,6 +311,9 @@ foundation/workload state containers, separate deployment identities, default-cl
 OIDC and a versioned non-secret handoff. It grants no application/role-administration
 permissions and does not rewire the legacy deployment. Foundation services,
 DTS/task-hub/runtime identities and workload roots remain follow-on slices.
+Bootstrap advances through explicit identity, key and state phases so permission
+readiness can be checked before dependent resources. Vault-scoped custodian and
+key-scoped encryption grants are bootstrap-only, not downstream deployment rights.
 
 1. **Bootstrap/foundation boundary:** implement selected states, scoped identities
    and published contracts. Test manifest rejection and denied upstream access;

@@ -1,0 +1,20 @@
+misconfigurations:
+  - id: AVD-AZU-0010
+    paths:
+      - main.tf
+    expired_at: 2026-11-27
+    statement: >-
+      Owner approved 2026-10-28 in #1625. Keep the state account's stricter
+      bypass=None firewall: no trusted-service access to state blobs is needed.
+      Key Vault's separate trusted-service bypass permits Storage CMK use.
+      Review before cloud authorization or expiry, whichever is first.
+  - id: AVD-AZU-0057
+    paths:
+      - main.tf
+    expired_at: 2026-11-27
+    statement: >-
+      Owner approved 2026-10-28 in #1625. This rule inspects legacy queue logging.
+      State uses blobs; diagnostic settings cover StorageRead, StorageWrite and
+      StorageDelete plus Key Vault AuditEvent in a dedicated bootstrap workspace.
+      Actual log delivery remains an authorized-cloud acceptance gate.
+      Review before cloud authorization or expiry, whichever is first.

@@ -3,7 +3,7 @@
 	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check verify-local verify-local-api lint fmt check smoke clean prune-branches \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
-.PHONY: test-pipeline-local-clean test-bootstrap
+.PHONY: test-pipeline-local-clean test-bootstrap scan-bootstrap
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
@@ -257,6 +257,10 @@ endef
 
 scan-iac: ## Trivy IaC/config scan (infra/tofu) — advisory
 	@$(_trivy); "$$T" config infra/tofu $(_TRIVY_IGN) --severity CRITICAL,HIGH,MEDIUM --exit-code 0 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
+
+scan-bootstrap: TRIVY_IGNOREFILE = infra/tofu/bootstrap/.trivyignore.yaml
+scan-bootstrap: ## Block bootstrap misconfigurations with only scoped, owner-approved exceptions
+	@$(_trivy); "$$T" config infra/tofu/bootstrap --tf-vars infra/tofu/bootstrap/tests/scan.tfvars --ignorefile "$(TRIVY_IGNOREFILE)" --severity CRITICAL,HIGH,MEDIUM --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
 
 scan-fs: ## Trivy filesystem scan (deps + Dockerfiles, vulns only) — blocks on fixable CRITICAL/HIGH
 	@$(_trivy); "$$T" fs . $(_TRIVY_IGN) --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)

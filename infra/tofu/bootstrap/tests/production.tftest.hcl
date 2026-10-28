@@ -1,4 +1,32 @@
 mock_provider "azurerm" {
+  mock_resource "azurerm_log_analytics_workspace" {
+    defaults = {
+      id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-prd-bootstrap/providers/Microsoft.OperationalInsights/workspaces/law-kmlsat-prd-bootstrap"
+    }
+  }
+  mock_data "azurerm_client_config" {
+    defaults = {
+      object_id = "99999999-9999-4999-8999-999999999999"
+    }
+  }
+  mock_resource "azurerm_key_vault" {
+    defaults = {
+      id        = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-prd-bootstrap/providers/Microsoft.KeyVault/vaults/bootstrap-prd"
+      vault_uri = "https://bootstrap-prd.vault.azure.net/"
+    }
+  }
+  mock_resource "azurerm_key_vault_key" {
+    defaults = {
+      versionless_id          = "https://bootstrap-prd.vault.azure.net/keys/bootstrap-state"
+      resource_versionless_id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-prd-bootstrap/providers/Microsoft.KeyVault/vaults/bootstrap-prd/keys/bootstrap-state"
+    }
+  }
+  mock_resource "azurerm_user_assigned_identity" {
+    defaults = {
+      id           = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-prd-bootstrap/providers/Microsoft.ManagedIdentity/userAssignedIdentities/state-encryption"
+      principal_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    }
+  }
   mock_resource "azurerm_storage_account" {
     defaults = {
       id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-prd-bootstrap/providers/Microsoft.Storage/storageAccounts/stkmlsatprdbootstrap"
@@ -55,16 +83,29 @@ override_resource {
 }
 
 variables {
-  environment        = "prd"
-  location           = "westeurope"
-  subscription_id    = "11111111-1111-4111-8111-111111111111"
-  tenant_id          = "22222222-2222-4222-8222-222222222222"
-  project_code       = "kmlsat"
-  enable_github_oidc = true
+  environment                  = "prd"
+  location                     = "westeurope"
+  subscription_id              = "11111111-1111-4111-8111-111111111111"
+  tenant_id                    = "22222222-2222-4222-8222-222222222222"
+  project_code                 = "kmlsat"
+  enable_github_oidc           = true
+  bootstrap_phase              = "state"
+  bootstrap_operator_object_id = "99999999-9999-4999-8999-999999999999"
+  state_key_expiration_date    = "2030-01-01T00:00:00Z"
+  bootstrap_allowed_ip_ranges  = ["203.0.113.10"]
 }
 
 run "production_has_its_own_namespace_and_trust" {
   command = plan
+
+  assert {
+    condition = (
+      azurerm_log_analytics_workspace.audit.name == "law-kmlsat-prd-bootstrap" &&
+      azurerm_monitor_diagnostic_setting.vault.log_analytics_workspace_id == azurerm_log_analytics_workspace.audit.id &&
+      azurerm_monitor_diagnostic_setting.state[0].log_analytics_workspace_id == azurerm_log_analytics_workspace.audit.id
+    )
+    error_message = "Production bootstrap must not send state/key audit logs into a DEV workspace."
+  }
 
   assert {
     condition = (

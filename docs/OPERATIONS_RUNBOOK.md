@@ -332,6 +332,20 @@ permissions and workflow cutover require separate review. Keep the pause/freeze
 intact and use the bootstrap README's disposable deny/recovery gates before
 claiming isolation.
 
+The owner also selected a dedicated bootstrap Key Vault/key and separate storage
+encryption identity. Advance the explicit `identity` -> `key` -> `state` phases
+only after permission/network verification; there is no propagation sleep or
+automatic advancement. The approved bootstrap operator receives vault-scoped
+Crypto Officer; only the encryption identity gets key-scoped encryption use.
+Deployment identities receive neither. Infrastructure/CMK encryption and
+deny-default endpoint firewalls are checked by `make scan-bootstrap` in CI,
+with the full state phase selected. The owner approved a dedicated bootstrap
+audit workspace for blob read/write/delete and Key Vault audit events. The two
+path-scoped scanner exceptions preserve the stricter storage firewall and
+substitute blob diagnostics for the scanner's queue-only check; they expire
+2026-11-27 and need review before any cloud authorization. Actual log delivery,
+cost/retention, key rotation/recovery and effective isolation remain trial gates.
+
 ### Why Function App Updates Use the Deployment Workflow
 
 This is an intentional workaround, not permission to make untracked manual

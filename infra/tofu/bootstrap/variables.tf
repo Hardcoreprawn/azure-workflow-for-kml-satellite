@@ -53,4 +53,66 @@ variable "enable_github_oidc" {
   description = "Owner activation only after verifying layer-specific GitHub environment protections."
   type        = bool
   default     = false
+
+  validation {
+    condition     = !var.enable_github_oidc || var.bootstrap_phase == "state"
+    error_message = "GitHub trust can only be activated after the keyed state phase."
+  }
+}
+
+variable "bootstrap_phase" {
+  description = "Advance identity -> key -> state only after owner-verified permissions; no fixed propagation sleeps."
+  type        = string
+  default     = "identity"
+
+  validation {
+    condition     = contains(["identity", "key", "state"], var.bootstrap_phase)
+    error_message = "bootstrap_phase must be identity, key or state."
+  }
+}
+
+variable "bootstrap_operator_object_id" {
+  description = "Explicitly approved bootstrap key custodian; must match the authenticated operator, never a deployment identity."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$", var.bootstrap_operator_object_id))
+    error_message = "bootstrap_operator_object_id must be a UUID."
+  }
+}
+
+variable "state_key_expiration_date" {
+  description = "Owner-approved initial CMK expiry (RFC3339); required before creating key material."
+  type        = string
+  default     = null
+
+  validation {
+    condition = var.bootstrap_phase == "identity" ? true : (
+      can(timecmp(var.state_key_expiration_date, plantimestamp()))
+      ? timecmp(var.state_key_expiration_date, plantimestamp()) > 0 : false
+    )
+    error_message = "Key/state phases require a valid future state_key_expiration_date."
+  }
+}
+
+variable "bootstrap_allowed_ip_ranges" {
+  description = "Owner-approved public IPv4 egress addresses/CIDRs for operator and state runners; default denies data-plane access."
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for address in var.bootstrap_allowed_ip_ranges :
+      can(regex("^[0-9.]+(/[0-9]+)?$", address)) &&
+      (can(cidrhost(address, 0)) || can(cidrhost("${address}/32", 0))) &&
+      !can(regex("/(0+|31|32)$", address)) &&
+      !can(regex("^(10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.)", address))
+    ])
+    error_message = "Use public IPv4 addresses or /1-/30 CIDRs, never RFC1918, IPv6 or /0; specify single IPs without /32."
+  }
+
+  validation {
+    condition     = var.bootstrap_phase == "identity" || length(var.bootstrap_allowed_ip_ranges) > 0
+    error_message = "Key/state phases require explicitly approved operator/runner egress ranges."
+  }
 }

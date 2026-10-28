@@ -1,4 +1,32 @@
 mock_provider "azurerm" {
+  mock_resource "azurerm_log_analytics_workspace" {
+    defaults = {
+      id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-bootstrap/providers/Microsoft.OperationalInsights/workspaces/law-kmlsat-dev-bootstrap"
+    }
+  }
+  mock_data "azurerm_client_config" {
+    defaults = {
+      object_id = "99999999-9999-4999-8999-999999999999"
+    }
+  }
+  mock_resource "azurerm_key_vault" {
+    defaults = {
+      id        = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-bootstrap/providers/Microsoft.KeyVault/vaults/bootstrap-dev"
+      vault_uri = "https://bootstrap-dev.vault.azure.net/"
+    }
+  }
+  mock_resource "azurerm_key_vault_key" {
+    defaults = {
+      versionless_id          = "https://bootstrap-dev.vault.azure.net/keys/bootstrap-state"
+      resource_versionless_id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-bootstrap/providers/Microsoft.KeyVault/vaults/bootstrap-dev/keys/bootstrap-state"
+    }
+  }
+  mock_resource "azurerm_user_assigned_identity" {
+    defaults = {
+      id           = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-bootstrap/providers/Microsoft.ManagedIdentity/userAssignedIdentities/state-encryption"
+      principal_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    }
+  }
   mock_resource "azurerm_storage_account" {
     defaults = {
       id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-bootstrap/providers/Microsoft.Storage/storageAccounts/stkmlsatdevbootstrap"
@@ -56,15 +84,34 @@ override_resource {
 }
 
 variables {
-  environment     = "dev"
-  location        = "westeurope"
-  subscription_id = "11111111-1111-4111-8111-111111111111"
-  tenant_id       = "22222222-2222-4222-8222-222222222222"
-  project_code    = "kmlsat"
+  environment                  = "dev"
+  location                     = "westeurope"
+  subscription_id              = "11111111-1111-4111-8111-111111111111"
+  tenant_id                    = "22222222-2222-4222-8222-222222222222"
+  project_code                 = "kmlsat"
+  bootstrap_phase              = "state"
+  bootstrap_operator_object_id = "99999999-9999-4999-8999-999999999999"
+  state_key_expiration_date    = "2030-01-01T00:00:00Z"
+  bootstrap_allowed_ip_ranges  = ["203.0.113.10"]
 }
 
 run "trust_is_closed_by_default" {
   command = plan
+
+  assert {
+    condition = (
+      azurerm_log_analytics_workspace.audit.local_authentication_disabled &&
+      !azurerm_log_analytics_workspace.audit.allow_resource_only_permissions &&
+      azurerm_log_analytics_workspace.audit.retention_in_days == 30 &&
+      azurerm_monitor_diagnostic_setting.vault.target_resource_id == azurerm_key_vault.state.id &&
+      azurerm_monitor_diagnostic_setting.vault.log_analytics_workspace_id == azurerm_log_analytics_workspace.audit.id &&
+      toset([for log in azurerm_monitor_diagnostic_setting.vault.enabled_log : log.category]) == toset(["AuditEvent"]) &&
+      azurerm_monitor_diagnostic_setting.state[0].target_resource_id == "${azurerm_storage_account.state[0].id}/blobServices/default" &&
+      azurerm_monitor_diagnostic_setting.state[0].log_analytics_workspace_id == azurerm_log_analytics_workspace.audit.id &&
+      toset([for log in azurerm_monitor_diagnostic_setting.state[0].enabled_log : log.category]) == toset(["StorageRead", "StorageWrite", "StorageDelete"])
+    )
+    error_message = "Audit all state blob operations and key access in a separate Entra-only bootstrap workspace."
+  }
 
   assert {
     condition     = length(azurerm_federated_identity_credential.github) == 0
@@ -92,10 +139,10 @@ run "trust_is_closed_by_default" {
 
   assert {
     condition = (
-      !azurerm_storage_account.state.shared_access_key_enabled &&
-      !azurerm_storage_account.state.allow_nested_items_to_be_public &&
-      azurerm_storage_account.state.default_to_oauth_authentication &&
-      azurerm_storage_account.state.min_tls_version == "TLS1_2" &&
+      !azurerm_storage_account.state[0].shared_access_key_enabled &&
+      !azurerm_storage_account.state[0].allow_nested_items_to_be_public &&
+      azurerm_storage_account.state[0].default_to_oauth_authentication &&
+      azurerm_storage_account.state[0].min_tls_version == "TLS1_2" &&
       alltrue([for container in azurerm_storage_container.state : container.container_access_type == "private"])
     )
     error_message = "State must require Entra authentication and TLS, with no public blobs or shared-key bypass."
@@ -103,9 +150,22 @@ run "trust_is_closed_by_default" {
 
   assert {
     condition = (
-      azurerm_storage_account.state.blob_properties[0].versioning_enabled &&
-      azurerm_storage_account.state.blob_properties[0].delete_retention_policy[0].days == 30 &&
-      azurerm_storage_account.state.blob_properties[0].container_delete_retention_policy[0].days == 30
+      azurerm_storage_account.state[0].infrastructure_encryption_enabled &&
+      azurerm_storage_account.state[0].customer_managed_key[0].key_vault_key_id == azurerm_key_vault_key.state[0].versionless_id &&
+      azurerm_storage_account.state[0].customer_managed_key[0].user_assigned_identity_id == azurerm_user_assigned_identity.storage_encryption.id &&
+      azurerm_key_vault.state.purge_protection_enabled &&
+      azurerm_key_vault.state.enable_rbac_authorization &&
+      azurerm_key_vault.state.soft_delete_retention_days == 90 &&
+      azurerm_key_vault_key.state[0].rotation_policy[0].automatic[0].time_after_creation == "P90D"
+    )
+    error_message = "Bootstrap state must use both infrastructure encryption and a customer-managed key."
+  }
+
+  assert {
+    condition = (
+      azurerm_storage_account.state[0].blob_properties[0].versioning_enabled &&
+      azurerm_storage_account.state[0].blob_properties[0].delete_retention_policy[0].days == 30 &&
+      azurerm_storage_account.state[0].blob_properties[0].container_delete_retention_policy[0].days == 30
     )
     error_message = "State versions and deleted blobs/containers need a recovery window."
   }
@@ -116,11 +176,38 @@ run "trust_is_closed_by_default" {
       output.bootstrap_contract.environment == "dev" &&
       output.bootstrap_contract.oidc_enabled == false &&
       toset(keys(output.bootstrap_contract)) == toset([
-        "schema_version", "environment", "tenant_id", "subscription_id", "oidc_enabled", "identities", "backends"
+        "schema_version", "phase", "environment", "tenant_id", "subscription_id", "oidc_enabled", "identities", "backends", "encryption"
       ]) &&
       toset(keys(output.bootstrap_contract.backends)) == toset(["foundation", "workload"])
     )
     error_message = "Publish only the versioned allowlisted bootstrap contract, not raw state."
+  }
+
+  assert {
+    condition = (
+      output.bootstrap_contract.phase == "state" &&
+      toset(keys(output.bootstrap_contract.encryption)) == toset(["vault_uri", "storage_identity_id", "key_uri"]) &&
+      azurerm_role_assignment.key_custodian.scope == azurerm_key_vault.state.id &&
+      azurerm_role_assignment.key_custodian.role_definition_name == "Key Vault Crypto Officer" &&
+      azurerm_role_assignment.storage_encryption[0].scope == azurerm_key_vault_key.state[0].resource_versionless_id &&
+      azurerm_role_assignment.storage_encryption[0].role_definition_name == "Key Vault Crypto Service Encryption User" &&
+      azurerm_role_assignment.storage_encryption[0].principal_id == azurerm_user_assigned_identity.storage_encryption.principal_id &&
+      !contains([for identity in azurerm_user_assigned_identity.deployment : identity.principal_id], azurerm_role_assignment.key_custodian.principal_id) &&
+      !contains([for identity in azurerm_user_assigned_identity.deployment : identity.principal_id], azurerm_role_assignment.storage_encryption[0].principal_id)
+    )
+    error_message = "Key custody and key-scoped encryption access must stay separate from every deployment identity."
+  }
+
+  assert {
+    condition = (
+      azurerm_key_vault.state.network_acls[0].default_action == "Deny" &&
+      azurerm_key_vault.state.network_acls[0].bypass == "AzureServices" &&
+      toset(azurerm_key_vault.state.network_acls[0].ip_rules) == toset(var.bootstrap_allowed_ip_ranges) &&
+      azurerm_storage_account.state[0].network_rules[0].default_action == "Deny" &&
+      toset(azurerm_storage_account.state[0].network_rules[0].bypass) == toset(["None"]) &&
+      toset(azurerm_storage_account.state[0].network_rules[0].ip_rules) == toset(var.bootstrap_allowed_ip_ranges)
+    )
+    error_message = "Data endpoints must reject unapproved network sources as well as unauthorized identities."
   }
 
   assert {
@@ -169,5 +256,51 @@ run "explicit_oidc_activation_keeps_layers_separate" {
       ])
     )
     error_message = "Trust must bind this repository, exact environment/layer, identity and Azure audience."
+  }
+}
+
+run "identity_phase_does_not_create_key_or_state" {
+  command = plan
+
+  variables {
+    bootstrap_phase             = "identity"
+    state_key_expiration_date   = null
+    bootstrap_allowed_ip_ranges = []
+  }
+
+  assert {
+    condition = (
+      length(azurerm_key_vault_key.state) == 0 &&
+      length(azurerm_role_assignment.storage_encryption) == 0 &&
+      length(azurerm_storage_account.state) == 0 &&
+      length(azurerm_storage_container.state) == 0 &&
+      length(azurerm_role_assignment.state) == 0 &&
+      length(azurerm_federated_identity_credential.github) == 0 &&
+      output.bootstrap_contract.phase == "identity" &&
+      output.bootstrap_contract.encryption.key_uri == null &&
+      length(output.bootstrap_contract.backends) == 0
+    )
+    error_message = "The initial phase must allow key-custodian propagation verification before dependent resources exist."
+  }
+}
+
+run "key_phase_does_not_create_state_or_trust" {
+  command = plan
+
+  variables {
+    bootstrap_phase = "key"
+  }
+
+  assert {
+    condition = (
+      length(azurerm_key_vault_key.state) == 1 &&
+      length(azurerm_role_assignment.storage_encryption) == 1 &&
+      length(azurerm_storage_account.state) == 0 &&
+      length(azurerm_role_assignment.state) == 0 &&
+      length(azurerm_federated_identity_credential.github) == 0 &&
+      output.bootstrap_contract.phase == "key" &&
+      length(output.bootstrap_contract.backends) == 0
+    )
+    error_message = "The key phase must permit verification of the encryption grant before storage is created."
   }
 }

@@ -224,6 +224,20 @@ jobs:
           scan: iac
           output: trivy-iac.sarif
 
+      - name: Enforce bootstrap state-phase security
+        uses: ./.github/actions/trivy-scan
+        with:
+          scan: bootstrap
+          ignorefile: infra/tofu/bootstrap/.trivyignore.yaml
+          output: trivy-bootstrap.sarif
+
+      - name: Upload bootstrap SARIF
+        if: always() && hashFiles('trivy-bootstrap.sarif') != ''
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: trivy-bootstrap.sarif
+          category: trivy-bootstrap
+
       - name: Upload Trivy IaC SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
