@@ -43,6 +43,11 @@ queue safety, idle cost and representative workloads, not diagram assumptions.
 The bounded measurement brief is #1528; it does not authorize cloud spend or
 select a hosting implementation.
 
+[ADR 0008](adr/0008-supported-azure-hosting-and-deployment-ownership.md) proposes
+supported hosting, state/identity boundaries and one-writer deployment interfaces
+for #1620. It remains **Proposed**: no hosting choice, warm-worker budget, cloud
+trial or change to the deployment freeze is approved by that document.
+
 ## Current Runtime
 
 ```mermaid

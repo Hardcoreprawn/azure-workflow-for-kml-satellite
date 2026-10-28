@@ -1,0 +1,301 @@
+# ADR 0008: Supported Azure Hosting and Deployment Ownership
+
+## Status
+
+**Proposed**, 2026-10-28. Decision proposal for #1622, under #1620.
+
+Reviewing or merging this document does **not** accept its recommendations,
+authorize cloud spend, change hosting/state/permissions, or lift `DEPLOY_PAUSED`
+or the production freeze. The owner confirms there is no current Azure deployment.
+All observations below are repository or vendor-documentation evidence, not live
+Azure inventory. #1621 closed #884 with a bounded fail-fast guard, not a successful
+deployment proof.
+
+## Context and evidence
+
+The primary persona is the operator supporting ESG/EUDR organisations: release
+reliable assessment and evidence processing without competing configuration
+writers, accidental privilege escalation, or work that requires a browser request
+to wake it. Conservation and agricultural workflows share that requirement.
+
+The [approved target](../ARCHITECTURE_OVERVIEW.md#approved-target) retains the
+Azure-integrated engine, lightweight admission and independent heavy workers.
+It prefers sleeping expensive workers, but approves neither a hosting product,
+latency SLO nor warm-instance budget.
+
+### Repository facts
+
+- [Host declarations](../../infra/tofu/main.tf) create two
+  `Microsoft.Web/sites@2024-04-01` resources, with
+  `kind=functionapp,linux,container,azurecontainerapps`, then ignore subsequent
+  `identity` and entire `body` changes.
+- [Deployment](../../.github/workflows/deploy.yml) updates images/settings/CORS,
+  assumes a same-name, same-resource-group `Microsoft.App/containerApps` backing
+  resource, and patches its scaling. #1621 rejects an absent/mismatched resource;
+  it does not establish that this update target is supported.
+- The Durable backend is `AzureStorage`. The existing scale rule watches
+  `durable-workitems`. Compute owns **both orchestration listeners and activities**;
+  the host named `orchestrator` is admission and a Durable client. See
+  [pipeline registration](../../blueprints/pipeline/__init__.py) and
+  [shared registration](../../function_registration.py); monitoring's scheduler
+  also runs on compute.
+- One environment root currently mixes data services, hosts, role assignments,
+  optional tenant identity ownership and subscription policy. Infrastructure and
+  website jobs use the same configured Azure identity.
+- [Origins and redirects](../../infra/tofu/locals.tf) depend on the SWA hostname.
+  Dev/prd reference a shared SPA registration but calculate environment-specific
+  redirect sets. Independent writers could replace one another's registrations.
+- Production enables Tofu's Event Grid subscription while deployment also
+  reconciles it. Runtime configuration outside the CLI subset can drift under the
+  broad body ignore. Existing workflow rollback restores images, not a complete
+  infrastructure/configuration revision.
+
+### Vendor support statements
+
+Sources were retrieved on 2026-10-28. These statements constrain the proposal;
+they do not certify availability in our eventual region, image or account.
+
+| Source | Relevant support boundary |
+| --- | --- |
+| [Microsoft.Web Functions integration](https://learn.microsoft.com/en-us/azure/azure-functions/functions-container-apps-hosting#managed-resource-groups) | Backing resources live in protected managed resource groups. Use documented Function App controls, not guessed peer ARM IDs or edits to protected implementation resources. |
+| [Native Container Apps Functions](https://learn.microsoft.com/en-us/azure/container-apps/functions-overview#event-driven-scaling) | `Microsoft.App` with `kind=functionapp` is a distinct model. Documented automatic Durable scaling supports Microsoft SQL Server and Durable Task Scheduler, not AzureStorage. Unsupported trigger autoscaling requires nonzero replica capacity. |
+| [Functions scaling override](https://learn.microsoft.com/en-us/azure/container-apps/functions-scale-rule-override) | Native custom rules require `properties.template.scale.allowScalingRuleOverride` and API `2026-03-02-preview` or newer. This is not permission to patch the integrated model's protected backing resource. |
+| [Durable Azure Storage provider](https://learn.microsoft.com/en-us/azure/durable-task/durable-functions/durable-functions-azure-storage-provider) | Activity work-item queues and orchestration control queues have different roles. Timers and orchestration lifecycle/responses involve control queues; watching activity work alone cannot prove recovery. |
+| [OpenTofu remote state](https://opentofu.org/docs/language/state/remote-state-data/) | Access to outputs through remote state entails access to the whole snapshot. Publish a separately access-controlled interface instead. |
+| [OpenTofu dependencies](https://opentofu.org/docs/language/meta-arguments/depends_on/) | Expression references express ordinary dependencies; explicit dependencies cover hidden ordering. Neither demonstrates effective permissions or runtime readiness. |
+| [AzureRM backend](https://opentofu.org/docs/language/settings/backends/azurerm/) | State uses Blob locking. Direct Entra data-plane authentication requires the corresponding backend configuration; OIDC alone does not select it or prove adequate data access. |
+| [GitHub/Azure OIDC](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect) | Federated trust and scoped Azure authorization are separate setup requirements. Environment claims alone do not provide GitHub branch restrictions or approval protection. |
+| [Storage CORS](https://learn.microsoft.com/en-us/rest/api/storageservices/cross-origin-resource-sharing--cors--support-for-the-azure-storage-services) and [redirect URIs](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url) | Browser origins and registered return destinations are explicit configuration. CORS is not authorization. |
+
+## Options and conditional recommendation
+
+| Option | Advantage | Unresolved cost/support consequence |
+| --- | --- | --- |
+| Retain Microsoft.Web integration; use documented controls only | Least runtime change; retain AzureStorage | Replace the unsupported backing-resource write assumption. Prove background wake-up or explicitly approve warm capacity. |
+| Native Microsoft.App Functions; retain AzureStorage | First-class resource ownership; no immediate persistence migration | A new hosting/API/identity contract, not an ARM-ID substitution. No automatic Durable scale-from-zero claim; approve and validate a warm-worker configuration. |
+| Native Functions with SQL/DTS Durable backend | Candidate for documented automatic Durable scaling | Separate persistence, identity, recovery, compatibility and cost decision. No silent backend migration. |
+| Other container-capable Functions hosting, such as Premium/Dedicated | Alternative supported warm execution | Different cost and hosting constraints. Flex is not a drop-in custom-container replacement. Keep as fallback, not a parallel implementation. |
+
+**Recommend evaluating native first-class Functions for explicit ownership,
+initially retaining AzureStorage without promising worker scale-to-zero.**
+Compare its supported warm-worker cost with retaining Microsoft.Web before the
+owner selects either. If sleeping expensive workers is mandatory immediately,
+decide the supported wake-up/backend design first. Remaining local is preferable
+to concealing a recurring-capacity cost or inventing an unsupported scaler.
+
+The `durable-workitems` rule alone is not that design. Validate initial
+orchestration, activity responses, durable timers and external events independently.
+Monitoring's ordinary timer trigger needs its own hosting-specific assessment.
+HTTP readiness probes and browser polling must not mask missing background
+wake-up. CPU scaling is not a substitute for waking a zero-replica listener.
+
+## Proposed ownership and layers
+
+Split by trust and lifecycle, not one state per component. Modules organize code;
+state separation limits blast radius only when credentials and permissions also
+separate. No consumer reads an upstream state snapshot.
+
+| Layer / sole authority | Owns | Receives and publishes |
+| --- | --- | --- |
+| Subscription bootstrap/governance | Backend accounts, state ACLs/recovery, OIDC trust, subscription policy; privileged recovery | Owner-approved subscription/environment identities and narrowly delegated scopes; no application secret outputs |
+| Environment foundation | App RG, persistent services, log sinks/action group/budget, SWA control plane, keys, runtime identities and their approved grants | Bootstrap inputs; publishes allowlisted resource IDs/endpoints, identity IDs and exact browser origins |
+| Shared tenant identity | CIAM registration/SP/owners/federation and the complete approved redirect set | Explicit origins from every supported environment; publishes public auth configuration |
+| Environment workload platform | Host environment and supported host resources, ingress, identity attachment, probes, resource/scale policy, Event Grid topic and host/topic-dependent alerts/tests | Foundation and identity contracts; publishes supported host IDs/kind, API hostname and configuration policy |
+| Restricted host reconciler | One authoritative host configuration writer after initial creation | Validates platform policy plus release intent; applies only the selected hosting model's supported API |
+| Application release/publisher | Immutable image intent, application-config revision, frontend content | Published contracts, no upstream state; emits deployment evidence and invokes approved reconciliation |
+| Integration reconciler | Entire Event Grid subscription and restricted endpoint-key acquisition | Topic/host identities plus readiness evidence; activation only after verified readiness |
+| Runtime / secret custodian | Runtime owns blobs, records and Durable history/queues; custodian owns secret values/rotation | Scoped data access / versioned secret references, never infrastructure administration |
+
+Separate foundation and workload states/principals per environment; shared
+subscription and CIAM resources have one owner each, not dev/prd copies.
+The bootstrap backend is not application storage. State keys alone are not an
+ACL: scope each principal to its own state and required resources, prove upstream
+state reads are denied, and keep state recovery out of routine deployment.
+
+Prefer stable, foundation-created user-assigned runtime identities if the chosen
+hosting model supports every required binding. Grants can then exist before host
+creation. This is a **proposed identity change**, not current behavior. If
+system-assigned identities must remain, a separately authorized post-creation
+binding phase must own their grants; do not create a cyclic foundation/host apply
+or give the release job role-assignment rights.
+
+### Acyclic dependency and readiness sequence
+
+1. Owner establishes protected environments, scoped federation and state recovery.
+2. Foundation creates persistent services, runtime identities and SWA control
+   plane. SWA hostname plus approved custom domains produce exact browser origins.
+   DNS/domain validation belongs to its named owner, not content publishing.
+3. Foundation reconciles Blob CORS; shared CIAM reconciles the **complete union**
+   of approved redirect URIs without deleting another environment's entries.
+   Preview and localhost inclusion require an explicit environment policy.
+4. Workload platform consumes those contracts and creates/configures hosts.
+   API CORS and application origin policy consume the same approved origin set.
+   Website content consumes the resulting API hostname and public auth settings.
+   Thus SWA resource creation does not depend on API content publication.
+5. Prove effective runtime/registry permissions with bounded retries and explicit
+   timeouts, image pull, trigger indexing and readiness. A fixed sleep or ARM
+   provisioning success is insufficient.
+6. The integration reconciler acquires only the required key, redacts it, and
+   activates the subscription. There must not also be a Tofu subscription writer.
+7. Run authenticated smoke and record correlated release/run evidence. Failure
+   blocks promotion; rollback/config recovery remains separately governed by #1327.
+
+### Versioned interfaces and permission limits
+
+Publish immutable, allowlisted, access-controlled manifests with `schema_version`,
+environment, tenant/subscription, producer revision and configuration-policy
+revision. Foundation supplies exact resource/identity IDs and storage/service
+endpoints; identity supplies public client/audience/authority and approved
+redirects; workload supplies hosting kind, exact host IDs, API hostname, resource
+limits and allowed config keys. Release adds image digests and an application
+config revision; activation records the matching readiness evidence.
+
+Consumers reject unsupported versions, missing fields, environment/subscription
+mismatches, unapproved origins, unknown config keys and mutable image references.
+Do not discover substitutes by name, replay an entire ARM GET body, expose raw
+Tofu outputs wholesale or publish connection strings, account/host keys, registry
+passwords, tokens or secret values. Secret URIs/versions are references; resolution
+uses the runtime or dedicated custodian identity and must be redacted from logs.
+
+Azure RBAC is not generally a per-property write boundary. A principal with broad
+host write permission cannot be described as image-only merely because a script
+uses it that way. The proposal therefore mediates release intent through an
+approved policy-enforcing reconciler; its own code, trust and execution approvals
+are privileged. The publisher cannot change that policy or obtain its credential.
+The implementation must prove this boundary rather than just split workflow jobs.
+
+Routine releases cannot modify foundations, subscription Defender settings,
+CIAM trust/consent/owners, RBAC grants, CMKs, upstream state or state recovery.
+Infrastructure identities must not gain unrestricted subscription ownership as
+a convenience. Exact custom roles/scopes and effective deny tests are an owner
+review gate, not granted by this document.
+
+### Host configuration: one writer and explicit deletion
+
+Platform policy owns identity, ingress, probes, resources, scale policy, registry
+access and immutable host topology. Application release owns image/config intent,
+not an independent ARM writer. Host creation and later reconciliation must use
+the same complete desired configuration schema; initial creation hands authority
+to the reconciler once, without Tofu subsequently replaying stale fields.
+
+The following inventories the current setting names; it does not preserve
+unnecessary settings or approve their current privileges:
+
+| Desired configuration group | Current names | Source of truth |
+| --- | --- | --- |
+| Host/runtime | `FUNCTIONS_WORKER_RUNTIME`, `FUNCTIONS_EXTENSION_VERSION`, `WEBSITES_ENABLE_APP_SERVICE_STORAGE`, `AzureFunctionsJobHost__extensions__durableTask__storageProvider__type`, `PIPELINE_ROLE` | Platform policy; explicit role and backend, no accidental listener change |
+| Storage, telemetry and vault | `AzureWebJobsStorage__accountName`, `APPLICATIONINSIGHTS_CONNECTION_STRING`, `KEY_VAULT_URI`, `KEYVAULT_URL`, `DEFAULT_INPUT_CONTAINER`, `DEFAULT_OUTPUT_CONTAINER` | Foundation references plus platform binding policy |
+| Public auth and origins | `CORS_ALLOWED_ORIGINS`, `PRIMARY_SITE_URL`, `REQUIRE_AUTH`, `CIAM_AUTHORITY`, `CIAM_TENANT_ID`, `CIAM_API_AUDIENCE` | Shared identity/origin policy; no release-time auth weakening |
+| Operator/billing policy | `OPS_DASHBOARD_KEY`, `BILLING_ALLOWED_USERS`, `TIER_EMULATION_ALLOWED_USERS` | Approved restricted config; secret custodian for key value |
+| Application services | `IMAGERY_PROVIDER`, `COSMOS_ENDPOINT`, `COSMOS_DATABASE_NAME` | Versioned app intent plus foundation endpoints |
+| Optional AI | `AZURE_AI_ENDPOINT`, `AZURE_AI_API_KEY`, `AZURE_AI_DEPLOYMENT` | Enabled-feature contract; secret reference for key |
+| Optional billing | `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID_PRO_GBP`, `STRIPE_PRICE_ID_PRO_USD`, `STRIPE_PRICE_ID_PRO_EUR` | Custodian references and approved pricing configuration |
+| Optional communications | `COMMUNICATION_SERVICES_CONNECTION_STRING`, `EMAIL_SENDER_ADDRESS`, `NOTIFICATION_EMAIL` | Enabled-feature contract; secret reference for connection string |
+
+Also cover image/registry credentials, native or integrated host CORS, identity
+attachment, resource sizes, replicas/rules, revision/traffic control, activation
+keys, generated `/api-config.json` and CIAM page configuration. Do not infer
+equivalence between Microsoft.Web site configuration and native Container Apps
+templates. Select and pin the supported API only with the hosting decision.
+
+Absent optional keys must be removed deliberately when a feature is disabled;
+required keys cannot disappear. Unknown keys fail validation rather than being
+silently preserved. The reconciler owns the complete app-settings collection,
+removes previously managed obsolete entries and checks the resulting desired
+state. No broad `ignore_changes = [identity, body]` without a named replacement
+authority and tested create/update/delete handoff. Capture image **and config**
+revision for recovery; image rollback alone cannot claim configuration rollback.
+
+## Current resource-address ownership inventory
+
+This accounts for declarations in the current root, including conditional
+resources, actions and helpers; instance suffixes (`[0]`, `for_each`) are omitted.
+It is a proposed destination map, **not** state-move/import authorization.
+Foundation/runtime distinction applies to data inside every listed service.
+
+| Proposed authority | Current declared addresses |
+| --- | --- |
+| Foundation: RG/naming/storage | `azurerm_resource_group.main`, `random_string.storage_suffix`, `azurerm_storage_account.main`, `azurerm_storage_container.kml_input`, `azurerm_storage_container.kml_output`, `azurerm_storage_container.deployments`, `azurerm_storage_container.pipeline_payloads`, `azurerm_storage_management_policy.main`, `azurerm_monitor_diagnostic_setting.storage_blob` |
+| Foundation: operations sinks/budget | `azurerm_log_analytics_workspace.main`, `azurerm_application_insights.main`, `azurerm_monitor_action_group.ops`, `azurerm_consumption_budget_resource_group.main` |
+| Workload platform: dependent operations bindings | `azurerm_monitor_metric_alert.failed_requests`, `azurerm_monitor_metric_alert.high_latency`, `azurerm_monitor_metric_alert.eventgrid_dropped_events`, `azurerm_application_insights_standard_web_test.site_ping` |
+| Foundation: CMK/vault | `azurerm_key_vault.main`, `azurerm_user_assigned_identity.storage_cmk`, `azurerm_role_assignment.deployer_key_vault_crypto_officer`, `time_sleep.deployer_key_vault_crypto_officer_propagation`, `azurerm_key_vault_key.storage_cmk`, `azurerm_role_assignment.storage_cmk_kv_crypto_user` |
+| Foundation: optional communications/AI | `azurerm_communication_service.main`, `azurerm_email_communication_service.main`, `azurerm_email_communication_service_domain.azure_managed`, `azapi_update_resource.acs_link_email`, `azurerm_cognitive_account.openai`, `azurerm_cognitive_deployment.gpt4o_mini` |
+| Foundation: Cosmos | `azurerm_cosmosdb_account.main`, `azurerm_cosmosdb_sql_database.main`, `azurerm_cosmosdb_sql_container.runs`, `azurerm_cosmosdb_sql_container.subscriptions`, `azurerm_cosmosdb_sql_container.users`, `azurerm_cosmosdb_sql_container.monitors`, `azurerm_cosmosdb_sql_container.catalogue`, `azurerm_cosmosdb_sql_container.orgs`, `azurerm_cosmosdb_sql_container.feature_flags`, `azurerm_cosmosdb_sql_container.feature_flag_overrides` |
+| Foundation: browser control plane | `azurerm_static_web_app.main`, `azurerm_static_web_app_custom_domain.main` |
+| Foundation: reviewed grants, not release permissions | `azurerm_role_assignment.storage_blob_data_owner`, `azurerm_role_assignment.storage_queue_data_contributor`, `azurerm_role_assignment.storage_table_data_contributor`, `azurerm_role_assignment.storage_account_contributor`, `azurerm_role_assignment.key_vault_secrets_user`, `azurerm_role_assignment.orch_storage_blob_data_owner`, `azurerm_role_assignment.orch_storage_queue_data_contributor`, `azurerm_role_assignment.orch_storage_table_data_contributor`, `azurerm_role_assignment.orch_storage_account_contributor`, `azurerm_role_assignment.orch_key_vault_secrets_user`, `azurerm_role_assignment.key_vault_secrets_officer`, `azurerm_cosmosdb_sql_role_assignment.function_app`, `azurerm_cosmosdb_sql_role_assignment.function_app_orch` |
+| Workload platform / host handoff above | `azurerm_container_app_environment.main`, `azapi_resource.function_app`, `azapi_resource.function_app_orch`, `azapi_resource.event_grid_system_topic` |
+| Integration reconciler; remove competing declaration on implementation | `azapi_resource_action.function_host_keys`, `azapi_resource.event_grid_subscription` |
+| Shared tenant identity | `data.azuread_application.ciam`, `azuread_application_registration.ciam`, `azuread_service_principal.ciam`, `azuread_application_owner.ciam_deploy_sp`, `azuread_application_redirect_uris.ciam_spa`, `azuread_application_federated_identity_credential.ciam_deploy_sp`, `terraform_data.validate_ciam_vars` |
+| Subscription governance: Defender enabled and disabled tiers | `azurerm_security_center_subscription_pricing.app_services`, `azurerm_security_center_subscription_pricing.storage_accounts`, `azurerm_security_center_subscription_pricing.key_vaults`, `azurerm_security_center_subscription_pricing.discovery`, `azurerm_security_center_subscription_pricing.foundational_cspm`, `azurerm_security_center_subscription_pricing.virtual_machines`, `azurerm_security_center_subscription_pricing.sql_servers`, `azurerm_security_center_subscription_pricing.sql_server_virtual_machines`, `azurerm_security_center_subscription_pricing.kubernetes_service`, `azurerm_security_center_subscription_pricing.container_registry`, `azurerm_security_center_subscription_pricing.arm`, `azurerm_security_center_subscription_pricing.dns`, `azurerm_security_center_subscription_pricing.open_source_relational_databases`, `azurerm_security_center_subscription_pricing.containers`, `azurerm_security_center_subscription_pricing.cosmos_dbs`, `azurerm_security_center_subscription_pricing.api` |
+| Each isolated provider context | `data.azurerm_client_config.current`; provider versions, variables, backend configuration and locals move with their consumer, never export credentials |
+
+The three existing import blocks (SWA, CIAM registration and CIAM redirects)
+belong to their destination owners and require explicit adoption/recovery
+approval. Fixed RBAC propagation sleep is a current helper, not the proposed
+readiness proof. Host/topic-dependent alerts and web tests belong to workload
+state alongside those targets, consuming foundation log/action-group IDs. They
+must not create a reverse prerequisite for foundation creation or grant workloads
+foundation write access.
+
+## Owner decision ledger
+
+Every row is **unresolved**. Record the owner's selection and evidence in a
+subsequent accepted decision before implementing the affected boundary.
+
+| Decision | Required evidence / explicit choice |
+| --- | --- |
+| Hosting/API/region | Microsoft.Web retention vs native model; supported image, bindings, identity, update APIs and regional availability |
+| Backend and idle policy | AzureStorage with approved warm capacity vs separately reviewed SQL/DTS; no hidden storage migration |
+| Cost and latency | Approved monthly/experiment budget, replica/resource limits, idle policy and per-path latency thresholds |
+| State/identity boundaries | Foundation/workload/shared owners, user-assigned vs post-create system-assigned grants, exact backend auth and scoped roles |
+| Host write enforcement | Protected reconciler, policy ownership and denied bypass paths, not imaginary field-level RBAC |
+| Origins/shared resources | One complete CIAM writer, subscription Defender owner and SWA/DNS/CORS policy |
+| Activation and recovery | Single Event Grid owner, configuration recovery, rollback authority and release evidence retention |
+| Disposable cloud trial | Named DEV subscription/RG, owner approval, budget, expiry/teardown and stopping conditions; production remains frozen |
+
+## Ordered follow-ons and acceptance
+
+Do not create autonomous implementation assignments until the relevant owner
+decisions are accepted. #1619's bootstrap documentation fix is independent.
+
+1. **Bootstrap/foundation boundary:** implement selected states, scoped identities
+   and published contracts. Test manifest rejection and denied upstream access;
+   isolated backend-disabled validation first. No real state move or apply here.
+2. **Supported host/config contract:** implement one chosen model and complete
+   create/update/delete schema. Replace the backing-resource assumption with
+   executable contract regressions. Coordinate #1526's actual API/worker isolation
+   rather than duplicating that runtime scope.
+3. **Release/integration consumers:** separate artifact publication from privileged
+   reconciliation and activation. Consume digests/config identity from #1503;
+   coordinate complete recovery with #1327. Test removal of disabled settings and
+   absence of competing Event Grid/CIAM writers.
+4. **Separately approved disposable DEV proof:** use #1528 for wake-up/cost
+   measurement and #708 for the authenticated journey. No cloud permission is
+   implied by completing steps 1-3 or passing local tests.
+
+Proposed executable acceptance for those implementation issues:
+
+- An empty authorized environment converges, and a second identical apply is a
+  no-op. Deliberate disposable drift is detected and repaired by its sole owner.
+- Image-only releases do not change foundation plans/configuration. The actual
+  publisher identity is denied upstream state reads, role/trust changes, CMK and
+  foundation writes; negative tests target disposable objects, never real data.
+- Missing/incompatible manifests, unpropagated grants, image-pull failures,
+  missing triggers and unhealthy hosts block activation with explicit evidence.
+  Freeze checks reject unauthorized runs before writes.
+- Run at least **10 proposed trials per wake-up path**: initial orchestration,
+  queued activity, activity response, durable timer and external event. Require
+  zero stranded/lost runs and capture every latency, replica count and billed
+  cost. Thresholds and sample size require owner acceptance. If a path is not
+  used, demonstrate that from runtime registration; do not silently skip it.
+- Measure the ordinary monitoring scheduler separately. During background-wake
+  trials, exclude HTTP traffic/probes capable of warming the worker; use
+  out-of-band platform telemetry. If warm capacity is selected, test at that
+  approved floor and do not label it a successful scale-from-zero trial.
+- Verify compute ingress isolation, authenticated KML/KMZ upload through complete
+  artifacts/exports, retries and an approved image/config recovery drill. No
+  zero-check or anonymous-200-only acceptance.
+
+Local documentation checks and required CI validate this proposal's consistency,
+not these future Azure properties. #1620 remains open until accepted decisions,
+bounded implementation and explicitly approved runtime evidence satisfy it.
