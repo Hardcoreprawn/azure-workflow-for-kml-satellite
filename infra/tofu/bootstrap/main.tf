@@ -139,6 +139,15 @@ resource "azurerm_key_vault_key" "state" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [expiration_date]
+
+    postcondition {
+      condition = (
+        can(timecmp(self.expiration_date, plantimestamp()))
+        ? timecmp(self.expiration_date, plantimestamp()) > 0 : false
+      )
+      error_message = "The effective state key must have a future expiry; verify creation input or current rotation health."
+    }
   }
 
   depends_on = [azurerm_role_assignment.key_custodian]

@@ -90,14 +90,14 @@ run "reject_missing_key_expiry" {
   expect_failures = [var.state_key_expiration_date]
 }
 
-run "reject_expired_key" {
+run "expired_input_reaches_effective_key_check_not_variable_age_gate" {
   command = plan
   variables {
     bootstrap_phase             = "key"
     state_key_expiration_date   = "2000-01-01T00:00:00Z"
     bootstrap_allowed_ip_ranges = ["203.0.113.10"]
   }
-  expect_failures = [var.state_key_expiration_date]
+  expect_failures = [azurerm_key_vault_key.state]
 }
 
 run "reject_unbounded_network" {

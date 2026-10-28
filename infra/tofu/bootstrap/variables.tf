@@ -82,16 +82,13 @@ variable "bootstrap_operator_object_id" {
 }
 
 variable "state_key_expiration_date" {
-  description = "Owner-approved initial CMK expiry (RFC3339); required before creating key material."
+  description = "Owner-approved initial CMK expiry (RFC3339); rotation owns expiry after creation."
   type        = string
   default     = null
 
   validation {
-    condition = var.bootstrap_phase == "identity" ? true : (
-      can(timecmp(var.state_key_expiration_date, plantimestamp()))
-      ? timecmp(var.state_key_expiration_date, plantimestamp()) > 0 : false
-    )
-    error_message = "Key/state phases require a valid future state_key_expiration_date."
+    condition     = var.bootstrap_phase == "identity" || can(timecmp(var.state_key_expiration_date, var.state_key_expiration_date))
+    error_message = "Key/state phases require a valid RFC3339 initial state_key_expiration_date."
   }
 }
 

@@ -95,6 +95,18 @@ variables {
   bootstrap_allowed_ip_ranges  = ["203.0.113.10"]
 }
 
+run "rotation_owns_expiry_lifecycle" {
+  command = plan
+  assert {
+    condition     = can(regex("ignore_changes\\s*=\\s*\\[expiration_date\\]", file("${path.module}/main.tf")))
+    error_message = "Rotation must own subsequent expiry instead of each plan overwriting it."
+  }
+  assert {
+    condition     = !strcontains(file("${path.module}/variables.tf"), "plantimestamp()")
+    error_message = "The original expiry input must not age out; validate the effective resource instead."
+  }
+}
+
 run "trust_is_closed_by_default" {
   command = plan
 

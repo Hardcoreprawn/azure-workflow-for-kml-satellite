@@ -36,7 +36,12 @@ State storage disables shared-key authentication and public blobs, requires TLS
 30-day blob/container soft deletion. The dedicated vault uses RBAC, purge
 protection and 90-day soft deletion. The RSA key allows wrap/unwrap only, rotates
 after 90 days and gives new versions a 180-day expiry; the initial future expiry
-must be supplied by the owner. Storage uses the versionless key URI for rotation.
+must be supplied by the owner, allowing enough lifetime for the rotation policy.
+Storage uses the versionless key URI for rotation.
+After creation, rotation owns expiry: OpenTofu ignores expiry drift and checks
+the refreshed effective key's expiry, not a historic input date.
+A healthy rotated key therefore permits maintenance and trust revocation;
+an actually expired current key remains a blocking error.
 `prevent_destroy` protects the RG, audit workspace, vault/key, storage account, containers and identities
 while their declarations remain present. It is not a backup or protection
 against deleting configuration, manual Azure actions or privileged state repair.
