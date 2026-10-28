@@ -97,6 +97,7 @@ variables {
 
 run "rotation_owns_expiry_lifecycle" {
   command = plan
+
   assert {
     condition     = can(regex("ignore_changes\\s*=\\s*\\[expiration_date\\]", file("${path.module}/main.tf")))
     error_message = "Rotation must own subsequent expiry instead of each plan overwriting it."
@@ -104,6 +105,22 @@ run "rotation_owns_expiry_lifecycle" {
   assert {
     condition     = !strcontains(file("${path.module}/variables.tf"), "plantimestamp()")
     error_message = "The original expiry input must not age out; validate the effective resource instead."
+  }
+}
+
+run "short_future_initial_expiry_rotates_before_expiry" {
+  command = plan
+
+  variables {
+    state_key_expiration_date = timeadd(plantimestamp(), "1440h")
+  }
+
+  assert {
+    condition = (
+      timecmp(azurerm_key_vault_key.state[0].expiration_date, plantimestamp()) > 0 &&
+      azurerm_key_vault_key.state[0].rotation_policy[0].automatic[0].time_before_expiry == "P90D"
+    )
+    error_message = "A short-future initial expiry must use expiry-relative rotation with enough overlap for adoption."
   }
 }
 
@@ -168,7 +185,7 @@ run "trust_is_closed_by_default" {
       azurerm_key_vault.state.purge_protection_enabled &&
       azurerm_key_vault.state.enable_rbac_authorization &&
       azurerm_key_vault.state.soft_delete_retention_days == 90 &&
-      azurerm_key_vault_key.state[0].rotation_policy[0].automatic[0].time_after_creation == "P90D"
+      azurerm_key_vault_key.state[0].rotation_policy[0].automatic[0].time_before_expiry == "P90D"
     )
     error_message = "Bootstrap state must use both infrastructure encryption and a customer-managed key."
   }

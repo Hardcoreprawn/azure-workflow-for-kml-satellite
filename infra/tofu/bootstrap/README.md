@@ -35,8 +35,9 @@ State storage disables shared-key authentication and public blobs, requires TLS
 1.2/HTTPS, and enables infrastructure encryption, CMK encryption, versioning and
 30-day blob/container soft deletion. The dedicated vault uses RBAC, purge
 protection and 90-day soft deletion. The RSA key allows wrap/unwrap only, rotates
-after 90 days and gives new versions a 180-day expiry; the initial future expiry
-must be supplied by the owner, allowing enough lifetime for the rotation policy.
+90 days before expiry and gives new versions a 180-day expiry; the initial future
+expiry must be supplied by the owner. This expiry-relative schedule also covers a
+shorter initial expiry without waiting past its expiration to rotate.
 Storage uses the versionless key URI for rotation.
 After creation, rotation owns expiry: OpenTofu ignores expiry drift and checks
 the refreshed effective key's expiry, not a historic input date.

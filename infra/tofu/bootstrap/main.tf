@@ -133,7 +133,7 @@ resource "azurerm_key_vault_key" "state" {
     expire_after         = "P180D"
     notify_before_expiry = "P30D"
     automatic {
-      time_after_creation = "P90D"
+      time_before_expiry = "P90D"
     }
   }
 
