@@ -129,9 +129,11 @@ state, identity and deployment interfaces before shared-cloud re-entry.
 The #1623/#1624 documentation slices are merged. Native Functions + DTS and
 sleeping heavy workers are now the accepted direction, with DTS Consumption for
 DEV only. #1625 is complete via #1626's offline bootstrap implementation.
-Issue #1627 is the next proposed persistent Blob foundation/handoff slice, blocked on
-application-scope and key-custody decisions; it does not complete the whole
-foundation. Remaining foundation services, application/DTS migration, production
+The owner approved #1627's bounded Blob/CMK/audit scope and protection defaults.
+Issue #1628 now precedes it: governance owns the application namespace and grants;
+foundation owns application key/data lifecycle. Issue #1627 remains blocked on
+that implementation prerequisite, not on undecided custody. These slices do not
+complete the whole foundation. Remaining services, application/DTS migration, production
 SKU, cloud budget and authenticated wake-up proof remain unshipped.
 The #1528 trial retains its explicit authorization and implementation blockers.
 Infracost #1604 and repair #1607 are merged; #1607's hosted setup,

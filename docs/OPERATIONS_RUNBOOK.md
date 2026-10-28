@@ -347,6 +347,27 @@ inability to evaluate the computed 180-day initial key expiry; they expire
 2026-11-27 and need review before any cloud authorization. Actual log delivery,
 cost/retention, key rotation/recovery and effective isolation remain trial gates.
 
+### Application namespace and custody decisions (not implemented)
+
+The owner approved #1628 before #1627. Governance owns the application RG and
+its scoped foundation authority; foundation consumes the namespace, without
+subscription-wide, namespace-lifecycle or role-administration permissions.
+Governance grants foundation Crypto Officer on the dedicated application vault
+and grants the storage-encryption identity key-scoped encryption use. Foundation
+owns application key lifecycle, not the grants. No bootstrap state-key access
+or workload/release key-administration rights follow from these decisions.
+
+The application Blob/CMK/audit defaults are approved for implementation: deny-default
+endpoints, Entra-only storage, infrastructure encryption, 30-day Blob/container
+recovery and audit retention, 90-day vault recovery/purge protection, and 180-day
+key lifetimes with 90-day rotation. These are not legal-retention or budget approval.
+See [ADR 0008](adr/0008-supported-azure-hosting-and-deployment-ownership.md) for the
+staged namespace, vault/identity, custody, key, encryption-binding and storage
+handoffs. Never treat grant declarations or mock plans as effective readiness.
+Cloud use also requires negative proof for vault authorization-mode/access-policy
+mutation paths: vault-write permission is not field-level access isolation.
+Keep the deployment pause, production freeze and separate cloud-trial gates.
+
 ### Why Function App Updates Use the Deployment Workflow
 
 This is an intentional workaround, not permission to make untracked manual
