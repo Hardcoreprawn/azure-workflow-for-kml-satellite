@@ -1,3 +1,15 @@
+variable "enable_application_governance" {
+  description = "Reserved, default-closed #1628 gate. Activation requires an owner-reviewed enforceable vault-write boundary; no application authority is implemented."
+  type        = bool
+  default     = false
+  nullable    = false
+
+  validation {
+    condition     = !var.enable_application_governance
+    error_message = "Application governance is blocked: approve and implement an enforceable vault-write/access-policy boundary before enabling #1628. See the bootstrap README."
+  }
+}
+
 variable "environment" {
   description = "One environment per independently custodied bootstrap state."
   type        = string

@@ -10,6 +10,92 @@ production SKU, region, operational limits and cloud spend remain separate
 decisions. This root creates **no scheduler, application hosts or runtime data
 services**. See [ADR 0008](../../../docs/adr/0008-supported-azure-hosting-and-deployment-ownership.md).
 
+## Application governance: blocked before authority is declared (#1628)
+
+The approved ownership direction makes governance the sole owner of the fresh
+application RG and application key grants. Foundation would own its dedicated
+vault, encryption identity, application key and persistent services. **That
+direction is not yet an implemented or enforceable permission boundary.**
+`enable_application_governance` defaults to `false` and rejects `true` in both
+DEV and PRD. It is a hard stop, not an operator acknowledgement switch.
+This root declares no application namespace, custom role or application grant.
+Existing bootstrap resources and state-container grants are unchanged.
+
+### Selected provider/API evidence (verified 2026-10-28)
+
+The selected provider is the committed AzureRM **4.22.0**, not a hypothetical
+newer API with different defaults:
+
+| Evidence | Consequence for the proposed foundation role |
+| --- | --- |
+| [AzureRM vault resource, v4.22.0](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.22.0/internal/services/keyvault/key_vault_resource.go), import at line 21; create at lines 325–379; update at lines 482–522 and 638 | Uses Key Vault management API **2023-02-01**. Vault PUT serializes both `AccessPolicies` and `EnableRbacAuthorization`; PATCH can update both. Foundation vault lifecycle needs `Microsoft.KeyVault/vaults/write`, which is not field-restricted. |
+| [AzureRM access-policy resource, v4.22.0](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.22.0/internal/services/keyvault/key_vault_access_policy_resource.go), lines 163–164, 237–238 and 364–365 | Separately uses `UpdateAccessPolicy` with `add`, `replace` and `remove`. Omitting `Microsoft.KeyVault/vaults/accessPolicies/write` addresses this subresource path, **not inline vault PUT/PATCH policies**. |
+| [Microsoft API 2023-02-01 schema](https://github.com/Azure/azure-rest-api-specs/blob/9473ef10695a6393bdd1011ce61769a79775b1ee/specification/keyvault/resource-manager/Microsoft.KeyVault/KeyVault/stable/2023-02-01/keyvault.json), `VaultProperties.enableRbacAuthorization` and `VaultPatchProperties.enableRbacAuthorization` | New vaults default to **false** if omitted; true ignores access policies for data authorization. PATCH omission preserves the existing model. Management actions always use RBAC. Ignoring policies does not prove that policy mutation is prohibited. |
+| [Microsoft RBAC guide, “Enable Azure RBAC permissions on Key Vault”](https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-guide#enable-azure-rbac-permissions-on-key-vault) | Changing an existing permission model requires unrestricted `Microsoft.Authorization/roleAssignments/write`, in addition to vault write. Foundation must not receive that action. This documented switch restriction does **not** establish that foundation cannot create a fresh access-policy vault in its writable RG. |
+| [Microsoft RBAC vs access policies warning](https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-access-policy) | A role containing `Microsoft.KeyVault/vaults/write` can self-grant data access through access policies on an access-policy vault. The provider's `enable_rbac_authorization = true` declaration is not an authorization restriction on the principal. |
+
+This is a blocked authorization proof, not a claim that the existing-model switch
+can bypass Microsoft's documented authorization check. Excluding
+`roleAssignments/write`, `accessPolicies/write` and using no wildcard actions
+does not prove governance-exclusive grants across the whole vault lifecycle.
+`NotActions` also cannot deny inherited permissions. Native mocks and static
+scanners cannot settle server-side authorization behavior.
+
+### Required owner decision before completing #1628
+
+Select and separately review an enforceable control, for example:
+
+1. A governance-owned Azure Policy deny boundary covering fresh vault creation,
+   updates and relevant policy-write paths, with no foundation exemption/policy
+   administration and with effective negative-test evidence; **or**
+2. A revised ownership boundary in which governance or an approved mediated writer
+   owns vault control-plane writes and foundation receives only its explicitly
+   approved key data-plane authority.
+
+These are options, **not approved designs or permission to create policy**.
+Merely making an RBAC vault immutable in Tofu, adding CI validation, changing API
+defaults, or adding an acknowledgement flag is insufficient. Neither a complete
+control-plane allowlist nor a grant is published before that decision. The first
+required action (`Microsoft.KeyVault/vaults/write`) already fails the current
+boundary proof; additional resource actions must be derived after ownership is
+settled. Do not grant generic Contributor, grant administration, upstream access
+or a permission fallback to unblock it.
+
+### #1627 consumer stop and remaining interfaces
+
+`bootstrap_contract` remains **schema v1 with its original meaning** (state and
+deployment identity references only). There is **no v2 application artifact,
+parser/schema API or application readiness output to consume**. Do not synthesize
+namespace/key IDs or treat this gate as completion of #1628. No full phase
+scanner fixtures or contract mutation tests are claimed by this blocked slice.
+
+After the owner decision, #1628 must deliver strict immutable, allowlisted
+artifacts in this order, without requiring future resources:
+
+1. Governance namespace and scoped foundation authority.
+2. Foundation vault/encryption-identity/audit references, without a key/storage.
+3. Governance vault-scoped foundation Crypto Officer declaration.
+4. Foundation application-key references, after a separately verified custody gate.
+5. Governance versionless-key-scoped Crypto Service Encryption User declaration,
+   followed by a separately verified encryption gate before foundation storage.
+
+Each schema must bind the expected earlier digest, environment, tenant,
+subscription, producer/policy revisions, namespace, foundation principal and
+backend. Reject unknown versions/fields, wrong principal/layer/ancestry,
+versioned key ARM scopes and skipped phases. Hashes and declared grants cannot
+claim effective permissions. Crypto Officer is privileged key administration,
+not service-exclusive cryptographic access.
+
+Before any separately authorized trial, the reviewed design must specify bounded
+permission/network probes with deadlines and explicit denial/timeout stops.
+The negative matrix must cover fresh access-policy vault creation, inline PUT
+and PATCH policy changes, RBAC-mode switching, subresource add/replace/remove,
+role-assignment administration, RG mutation/deletion and upstream reads, including
+inherited grants. Verify expected principal and scope without credential fallback;
+prove permitted key creation and service key use only at the corresponding stage.
+No Azure command, policy deployment, role change, sleep-based readiness claim or
+cloud authorization is included here.
+
 ## What this root owns
 
 Use one independently custodied bootstrap state for each of `dev` and `prd`.

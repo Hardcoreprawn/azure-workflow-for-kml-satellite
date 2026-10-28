@@ -332,6 +332,16 @@ permissions and workflow cutover require separate review. Keep the pause/freeze
 intact and use the bootstrap README's disposable deny/recovery gates before
 claiming isolation.
 
+Application namespace/key-grant implementation #1628 is **blocked**, not an
+available bootstrap phase. `enable_application_governance` defaults false and
+rejects true in DEV and PRD. The selected provider permits inline vault
+access-policy writes; excluding the access-policy subresource action does not
+prove governance-exclusive grant control. An owner must select and review an
+enforceable control or revised vault ownership before implementation continues.
+See the [provider/API evidence and #1627 consumer stop](../infra/tofu/bootstrap/README.md#application-governance-blocked-before-authority-is-declared-1628).
+No application contract/parser is available yet; bootstrap v1 remains unchanged.
+Do not grant extra permissions or run Azure probes to bypass this decision gate.
+
 The owner also selected a dedicated bootstrap Key Vault/key and separate storage
 encryption identity. Advance the explicit `identity` -> `key` -> `state` phases
 only after permission/network verification; there is no propagation sleep or
