@@ -138,6 +138,18 @@ jobs:
         # --inexact preserves packages not in uv.lock (e.g. the treesight_rs
         # wheel installed separately in Dockerfile.dev via `uv pip install`).
         run: uv sync --all-extras --inexact
+      # Recipe changes reach the published image only after merge; uv sync
+      # cannot supply the system tool required by the executable workflow tests.
+      - name: Ensure workflow test prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "Published dev image lacks jq; installing the required workflow-test tool."
+            apt-get update
+            apt-get install -y --no-install-recommends jq
+          fi
+          jq --version
       # Canonical test command lives in the Makefile (matches local `make test`).
       - run: make test
       # Changed-lines coverage is shared with local `make check`.

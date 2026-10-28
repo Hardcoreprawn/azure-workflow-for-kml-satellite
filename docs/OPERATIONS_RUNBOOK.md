@@ -687,7 +687,11 @@ On `Compute backing Container App unavailable`, `mismatch`, or
 This resolution check applies to any environment reaching the compute step;
 the existing production freeze and pause guards remain authoritative. Local
 regression tests use only mocked Azure CLI responses, not proof of live
-resource availability. KEDA wake-up/cost policy remains #1528, and immutable
+resource availability. The required Test job installs `jq` if its published
+dev image lacks it, since image-recipe updates publish after merge and Python
+dependency synchronization cannot install system packages. Installation or
+verification failure blocks the gate; missing `jq` never skips these tests.
+KEDA wake-up/cost policy remains #1528, and immutable
 promotion/rollback remains #1503/#1327. Issue #884 does not authorize a deploy.
 
 ### Function App write blocked by stuck ARM operation

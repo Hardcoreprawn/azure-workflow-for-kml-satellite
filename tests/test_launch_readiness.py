@@ -980,6 +980,62 @@ class TestDeployWorkflowSettings:
         assert "outcome: failure" in body, "deploy-marker-infra-failure job must record outcome: failure"
 
 
+@pytest.mark.parametrize(
+    ("available", "failure"),
+    [(True, ""), (False, ""), (False, "update"), (False, "install")],
+)
+def test_ci_provisions_jq_before_workflow_tests(tmp_path: Path, available: bool, failure: str) -> None:
+    workflow = yaml.safe_load(CI_YML.read_text())
+    steps = workflow["jobs"]["test"]["steps"]
+    prerequisite_index = next(
+        index for index, step in enumerate(steps) if step.get("name") == "Ensure workflow test prerequisites"
+    )
+    test_index = next(index for index, step in enumerate(steps) if step.get("run") == "make test")
+    assert prerequisite_index < test_index
+    assert "if" not in steps[prerequisite_index]
+    bash = shutil.which("bash")
+    assert bash is not None
+    calls = tmp_path / "apt-calls"
+    versions = tmp_path / "jq-calls"
+    mock = r"""
+provide_jq() {
+  jq() { printf '%s\n' "$*" >> "$MOCK_JQ_LOG"; }
+}
+apt-get() {
+  printf '%s\n' "$*" >> "$MOCK_APT_LOG"
+  if [[ "$1" == "$MOCK_FAILURE" ]]; then return 7; fi
+  if [[ "$1" == install ]]; then provide_jq; fi
+}
+if [[ "$MOCK_AVAILABLE" == 1 ]]; then provide_jq; fi
+"""
+    result = subprocess.run(
+        [bash, "--noprofile", "--norc", "-euo", "pipefail", "-c", mock + steps[prerequisite_index]["run"]],
+        env={
+            "PATH": str(tmp_path),
+            "MOCK_AVAILABLE": str(int(available)),
+            "MOCK_FAILURE": failure,
+            "MOCK_APT_LOG": str(calls),
+            "MOCK_JQ_LOG": str(versions),
+        },
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == (7 if failure else 0), result.stdout + result.stderr
+    if available:
+        assert not calls.exists()
+    else:
+        expected = ["update"]
+        if failure != "update":
+            expected.append("install -y --no-install-recommends jq")
+        assert calls.read_text().splitlines() == expected
+    if failure:
+        assert not versions.exists()
+    else:
+        assert versions.read_text().splitlines() == ["--version"]
+
+
 def test_compute_missing_jq_cannot_pass_gate(tmp_path: Path) -> None:
     binary_dir = tmp_path / "bin"
     binary_dir.mkdir()
