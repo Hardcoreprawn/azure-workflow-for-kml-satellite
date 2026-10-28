@@ -9,35 +9,47 @@ This directory is the new Azure infrastructure source of truth for `dev` and `pr
 
 ## Bootstrap (manual, one-time)
 
-Create backend state resources before running OpenTofu in CI/CD:
+There is **no checked-in bootstrap script**. Backend state storage and GitHub
+OIDC trust are owner-managed prerequisites, outside this OpenTofu root. The
+application is currently local-only; this checklist does not claim that these
+resources exist or authorize their creation.
 
-1. Resource group for state (example): `rg-kmlsat-tofu-state`
-2. Storage account for state (example): `stkmlsattofustate`
-3. Blob container (example): `tfstate`
-4. OIDC-enabled service principal/federated credential for GitHub Actions
+Before an owner-approved bootstrap, record:
 
-You can automate this bootstrap with:
+1. **Target and ownership:** the tenant, subscription, environment and owner of
+   the state resources and deployment identity. Keep state storage distinct from
+   application data and assign one owner to shared resources.
+2. **State contract:** resource group, storage account, private blob container
+   and state key for each environment, plus approved access, locking, recovery
+   and retention arrangements. Separate keys alone do not restrict identity
+   access to other environments' state.
+3. **Authentication and permissions:** the backend authentication method and
+   explicit scopes/actions for state access, infrastructure apply and role
+   administration. Validate these independently; successful Azure login is not
+   proof of backend or resource permissions. Do not grant blanket ownership
+   merely to make an apply pass. The current workflow does not explicitly set
+   the backend's `use_azuread_auth` option; do not assume that a Blob data role
+   alone satisfies its selected authentication path.
+4. **GitHub trust:** the intended environment-bound federated credential
+   (`repo:<owner>/<repo>:environment:<environment>`), matching GitHub environment,
+   approved deployment refs and approval policy. An environment name or OIDC
+   login alone is not a branch restriction or approval gate.
+5. **Handoff:** record non-secret resource identifiers and permission decisions,
+   and configure the environment inputs below. Do not commit tokens, account
+   keys or state snapshots. Bootstrap implementation and any future ownership
+   split require separate review under #1620.
 
-- `scripts/bootstrap_tofu_backend_and_oidc.ps1`
+Use the official [Azure OIDC setup guidance](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect)
+and [OpenTofu Azure backend reference](https://opentofu.org/docs/language/settings/backends/azurerm/)
+to implement the approved choices; they are not evidence that this repository's
+bootstrap has been performed.
 
-Example:
-
-```powershell
-./scripts/bootstrap_tofu_backend_and_oidc.ps1 \
-  -SubscriptionId <SUBSCRIPTION_ID> \
-  -TenantId <TENANT_ID> \
-  -GitHubOwner <OWNER> \
-  -GitHubRepo <REPO>
-```
-
-The script creates:
-
-- state resource group
-- state storage account + container
-- Entra app registration + service principal
-- federated credentials for `dev` and `prd` GitHub environments
-
-Use that same GitHub Actions app registration client ID as `deploy_principal_client_id` whenever OpenTofu needs to manage CMK-backed storage resources.
+For each environment, the current deploy workflow passes its `AZURE_CLIENT_ID`
+as `TF_VAR_deploy_principal_client_id`. CMK administration checks that the
+authenticated OpenTofu principal matches that value. This describes the current
+contract, not approval to share a broadly privileged identity between layers.
+Keep the [deployment freeze](../../docs/OPERATIONS_RUNBOOK.md#reset-mode-pipeline-reset-in-progress)
+intact until the owner separately authorizes cloud re-entry.
 
 ## Required GitHub Environment Secrets
 
@@ -48,8 +60,12 @@ Configure for each environment (`dev`, `prd`):
 - `AZURE_SUBSCRIPTION_ID`
 - `TF_STATE_RESOURCE_GROUP`
 - `TF_STATE_STORAGE_ACCOUNT`
-- `TF_STATE_CONTAINER`
-- `TF_STATE_KEY`
+- For `dev`: `TF_STATE_CONTAINER_DEV`, `TF_STATE_KEY_DEV`
+- For `prd`: `TF_STATE_CONTAINER_PRD`, `TF_STATE_KEY_PRD`
+
+The workflow resolves those suffixed secrets into the `TF_STATE_CONTAINER` and
+`TF_STATE_KEY` environment variables used by `tofu init`. The unsuffixed names
+are not the secrets read by the current deployment workflow.
 
 ## Required GitHub Environment Secrets (CIAM/Bearer Token Auth)
 
