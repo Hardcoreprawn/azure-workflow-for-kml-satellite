@@ -43,10 +43,13 @@ queue safety, idle cost and representative workloads, not diagram assumptions.
 The bounded measurement brief is #1528; it does not authorize cloud spend or
 select a hosting implementation.
 
-[ADR 0008](adr/0008-supported-azure-hosting-and-deployment-ownership.md) proposes
-supported hosting, state/identity boundaries and one-writer deployment interfaces
-for #1620. It remains **Proposed**: no hosting choice, warm-worker budget, cloud
-trial or change to the deployment freeze is approved by that document.
+[ADR 0008](adr/0008-supported-azure-hosting-and-deployment-ownership.md) records
+the 2026-10-28 owner selection of native Container Apps Functions with Durable
+Task Scheduler and sleeping heavy workers. DTS Consumption is approved as the
+DEV design only, not for production or as cloud-spend authorization. The offline
+bootstrap/state-and-identity slice is #1625; current runtime still uses
+AzureStorage. API/bundle/region verification, production SKU, budget and deployed
+wake-up evidence remain gates. No deployment freeze is lifted.
 
 ## Current Runtime
 

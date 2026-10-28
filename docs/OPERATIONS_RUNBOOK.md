@@ -310,6 +310,43 @@ The 2026-09-16 audit found a stale, non-writable image-owned Python environment
 provides a separate validation path; use the same environment override for tests.
 It does not repair the devcontainer or preserve an image-only Rust extension.
 
+### Isolated bootstrap boundary (not activated)
+
+The [bootstrap root](../infra/tofu/bootstrap/README.md) under #1625 is separate
+from the application root and has no deployment-workflow consumer. Validate it
+without Azure using `make test-bootstrap` with OpenTofu 1.13.2. The required
+Lint job runs its plan-only mocked tests; this proves configuration contracts,
+not effective RBAC, network reachability or cloud readiness.
+
+The owner selected native Functions with DTS, sleeping heavy workers, and DTS
+Consumption for DEV only. No production SKU, cloud budget or trial is authorized.
+The existing application still uses AzureStorage; do not combine this bootstrap
+with an ad hoc backend/hosting migration.
+
+Before cloud bootstrap, approve encrypted custody of its own local state,
+subscription/region, recovery and network policy, operator scopes and the
+layer-specific GitHub environment protections. Federation defaults off.
+Foundation/workload identities receive only their own container-scoped state
+access; release has no state or resource-administration grant. Later deployment
+permissions and workflow cutover require separate review. Keep the pause/freeze
+intact and use the bootstrap README's disposable deny/recovery gates before
+claiming isolation.
+
+The owner also selected a dedicated bootstrap Key Vault/key and separate storage
+encryption identity. Advance the explicit `identity` -> `key` -> `state` phases
+only after permission/network verification; there is no propagation sleep or
+automatic advancement. The approved bootstrap operator receives vault-scoped
+Crypto Officer; only the encryption identity gets key-scoped encryption use.
+Deployment identities receive neither. Infrastructure/CMK encryption and
+deny-default endpoint firewalls are checked by `make scan-bootstrap` in CI,
+with the full state phase selected. The owner approved a dedicated bootstrap
+audit workspace for blob read/write/delete and Key Vault audit events. The three
+path-scoped scanner exceptions preserve the stricter storage firewall and
+substitute blob diagnostics for the scanner's queue-only check, and cover its
+inability to evaluate the computed 180-day initial key expiry; they expire
+2026-11-27 and need review before any cloud authorization. Actual log delivery,
+cost/retention, key rotation/recovery and effective isolation remain trial gates.
+
 ### Why Function App Updates Use the Deployment Workflow
 
 This is an intentional workaround, not permission to make untracked manual

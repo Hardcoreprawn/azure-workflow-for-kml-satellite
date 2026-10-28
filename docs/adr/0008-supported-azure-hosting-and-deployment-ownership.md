@@ -2,11 +2,28 @@
 
 ## Status
 
-**Proposed**, 2026-10-28. Decision proposal for #1622, under #1620.
+**Accepted in part**, 2026-10-28, following explicit owner decisions after #1624
+merged the proposal for #1622 under #1620:
 
-Reviewing or merging this document does **not** accept its recommendations,
-authorize cloud spend, change hosting/state/permissions, or lift `DEPLOY_PAUSED`
-or the production freeze. The owner confirms there is no current Azure deployment.
+- Expensive workers must sleep; the proposed warm-worker/AzureStorage direction
+  is rejected.
+- Use native Container Apps Functions with Durable Task Scheduler (DTS).
+- Use DTS **Consumption for the eventual DEV trial only**. Production scheduler
+  SKU, availability policy and cloud-trial authorization remain separate.
+- Begin the offline bootstrap/state-and-identity boundary as #1625. This accepts
+  the layered ownership direction, not blanket privileges or cloud provisioning.
+- For bootstrap state, use a dedicated Key Vault/key and a separate storage
+  encryption identity. Keep key custody with the explicitly approved bootstrap
+  operator, never with foundation/workload/release identities.
+- Include dedicated bootstrap blob/key audit diagnostics. Keep the stricter
+  state firewall and use only explicitly approved, scoped scanner exceptions
+  (AZU-0010/AZU-0057 plus AZU-0014 for computed initial key expiry), expiring
+  2026-11-27 or reviewed before cloud use.
+  This approves code scope, not workspace spend or claims of delivered logs.
+
+Neither this acceptance nor a PR merge authorizes cloud spend, changes the live
+hosting/state/permissions, or lifts `DEPLOY_PAUSED` or the production freeze.
+The owner confirms there is no current Azure deployment.
 All observations below are repository or vendor-documentation evidence, not live
 Azure inventory. #1621 closed #884 with a bounded fail-fast guard, not a successful
 deployment proof.
@@ -67,7 +84,7 @@ they do not certify availability in our eventual region, image or account.
 | [GitHub/Azure OIDC](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect) | Federated trust and scoped Azure authorization are separate setup requirements. Environment claims alone do not provide GitHub branch restrictions or approval protection. |
 | [Storage CORS](https://learn.microsoft.com/en-us/rest/api/storageservices/cross-origin-resource-sharing--cors--support-for-the-azure-storage-services) and [redirect URIs](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url) | Browser origins and registered return destinations are explicit configuration. CORS is not authorization. |
 
-## Options and conditional recommendation
+## Options and accepted direction
 
 | Option | Advantage | Unresolved cost/support consequence |
 | --- | --- | --- |
@@ -76,12 +93,44 @@ they do not certify availability in our eventual region, image or account.
 | Native Functions with SQL/DTS Durable backend | Candidate for documented automatic Durable scaling | Separate persistence, identity, recovery, compatibility and cost decision. No silent backend migration. |
 | Other container-capable Functions hosting, such as Premium/Dedicated | Alternative supported warm execution | Different cost and hosting constraints. Flex is not a drop-in custom-container replacement. Keep as fallback, not a parallel implementation. |
 
-**Recommend evaluating native first-class Functions for explicit ownership,
-initially retaining AzureStorage without promising worker scale-to-zero.**
-Compare its supported warm-worker cost with retaining Microsoft.Web before the
-owner selects either. If sleeping expensive workers is mandatory immediately,
-decide the supported wake-up/backend design first. Remaining local is preferable
-to concealing a recurring-capacity cost or inventing an unsupported scaler.
+The owner selected **native Functions with DTS**, requiring sleeping workers.
+Retaining AzureStorage with warm heavy workers is not the accepted alternative.
+The current application still uses AzureStorage; migrating the host/backend is
+a subsequent tested slice, not a side effect of this decision or the bootstrap PR.
+
+Current Microsoft [native hosting documentation](https://learn.microsoft.com/en-us/azure/container-apps/functions-overview#event-driven-scaling)
+lists automatic Durable scaling for SQL and DTS. The
+[DTS Python quickstart](https://learn.microsoft.com/en-us/azure/durable-task/scheduler/quickstart-durable-task-scheduler)
+requires extension bundle 4.32.0 or later and the `azureManaged` provider.
+The [DTS identity guidance](https://learn.microsoft.com/en-us/azure/durable-task/scheduler/durable-task-scheduler-identity)
+supports user-assigned identities and task-hub-scoped roles. These are future
+binding requirements, not configuration changes made here.
+
+Before migration, test the actual pipeline against DTS payload/completion limits,
+instance-ID constraints and retention behavior; do not assume AzureStorage history
+or large in-memory activity results transfer unchanged. Use the existing payload
+offloading surfaces where appropriate and validate them with the DTS emulator
+before any authorized cloud proof.
+
+[DTS Consumption](https://learn.microsoft.com/en-us/azure/durable-task/scheduler/durable-task-scheduler-billing)
+bills dispatched actions without a base fee, but is limited to 500 actions/second,
+30-day history retention and no Dedicated high-availability option. This is a DEV
+choice, not approval of production availability or compliance retention. Evidence
+artifacts remain separate from orchestration history. Compute, Blob/Cosmos,
+logging, network and other residual meters still cost money; sleeping workers
+do not imply a zero-cost stack.
+
+SQL remains an unselected alternative: it adds database operation/capacity, and
+its [Container Apps guide](https://learn.microsoft.com/en-us/azure/durable-task/durable-functions/durable-functions-mssql-container-apps-hosting)
+currently documents connection-string authentication rather than managed identity
+for the SQL connection. DTS better fits the selected managed, usage-based direction.
+
+Vendor documentation is not fully consistent: the broad
+[provider comparison](https://learn.microsoft.com/en-us/azure/durable-task/common/durable-task-storage-providers)
+still labels DTS extension-bundle/KEDA support "Coming soon", unlike the specific
+quickstart/native hosting pages above. Pin and test actual host/bundle/platform
+versions in the migration and authorized DEV proof; do not turn this documentary
+support statement into a claim of proven scale-from-zero.
 
 The `durable-workitems` rule alone is not that design. Validate initial
 orchestration, activity responses, durable timers and external events independently.
@@ -239,15 +288,15 @@ foundation write access.
 
 ## Owner decision ledger
 
-Every row is **unresolved**. Record the owner's selection and evidence in a
-subsequent accepted decision before implementing the affected boundary.
+The direction below is accepted only where stated. Record the remaining owner
+decisions and evidence before implementing or activating the affected boundary.
 
 | Decision | Required evidence / explicit choice |
 | --- | --- |
-| Hosting/API/region | Microsoft.Web retention vs native model; supported image, bindings, identity, update APIs and regional availability |
-| Backend and idle policy | AzureStorage with approved warm capacity vs separately reviewed SQL/DTS; no hidden storage migration |
-| Cost and latency | Approved monthly/experiment budget, replica/resource limits, idle policy and per-path latency thresholds |
-| State/identity boundaries | Foundation/workload/shared owners, user-assigned vs post-create system-assigned grants, exact backend auth and scoped roles |
+| Hosting/API/region | Native Container Apps Functions accepted; exact API/image/bindings and regional availability still require verification |
+| Backend and idle policy | DTS and sleeping workers accepted; Consumption for DEV only; production SKU/HA and backend migration remain gated |
+| Cost and latency | No cloud budget or latency thresholds approved; size/scale limits and residual costs must be bounded before trial |
+| State/identity boundaries | Layered direction and offline bootstrap slice accepted; #1625 implements isolated state and deployment identities, not application resource grants or runtime identity cutover |
 | Host write enforcement | Protected reconciler, policy ownership and denied bypass paths, not imaginary field-level RBAC |
 | Origins/shared resources | One complete CIAM writer, subscription Defender owner and SWA/DNS/CORS policy |
 | Activation and recovery | Single Event Grid owner, configuration recovery, rollback authority and release evidence retention |
@@ -257,6 +306,15 @@ subsequent accepted decision before implementing the affected boundary.
 
 Do not create autonomous implementation assignments until the relevant owner
 decisions are accepted. #1619's bootstrap documentation fix is independent.
+
+The first bounded implementation is #1625: an independent bootstrap root with
+foundation/workload state containers, separate deployment identities, default-closed
+OIDC and a versioned non-secret handoff. It grants no application/role-administration
+permissions and does not rewire the legacy deployment. Foundation services,
+DTS/task-hub/runtime identities and workload roots remain follow-on slices.
+Bootstrap advances through explicit identity, key and state phases so permission
+readiness can be checked before dependent resources. Vault-scoped custodian and
+key-scoped encryption grants are bootstrap-only, not downstream deployment rights.
 
 1. **Bootstrap/foundation boundary:** implement selected states, scoped identities
    and published contracts. Test manifest rejection and denied upstream access;
@@ -312,8 +370,8 @@ Proposed executable acceptance for those implementation issues:
   used, demonstrate that from runtime registration; do not silently skip it.
 - Measure the ordinary monitoring scheduler separately. During background-wake
   trials, exclude HTTP traffic/probes capable of warming the worker; use
-  out-of-band platform telemetry. If warm capacity is selected, test at that
-  approved floor and do not label it a successful scale-from-zero trial.
+  out-of-band platform telemetry. A nonzero heavy-worker floor is not the accepted
+  design and cannot be substituted to make the cold-recovery gate pass.
 - Verify compute ingress isolation, authenticated KML/KMZ upload through complete
   artifacts/exports, retries and an approved image/config recovery drill. No
   zero-check or anonymous-200-only acceptance.
