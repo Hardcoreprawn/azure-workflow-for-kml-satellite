@@ -1,0 +1,181 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>coffee_historical_loss</name>
+    <description>Manual reference AOI, not a surveyed farm boundary. Mapped first forest conversion before 2021. It must not be dated after the cutoff solely because current imagery is nonforest; subsequent regrowth/reclearing is not ruled out by a first-loss-year layer. PLUTo sample 190000000 (coffee); https://doi.org/10.5281/zenodo.17831353, CC-BY-4.0. Geometry derived from European Commission JRC TMF v1_1982_2025. See manifest.json and README.md for source dates, attribution and limitations.</description>
+    <Placemark>
+      <name>coffee_historical_loss</name>
+      <description>Mapped first forest conversion before 2021. It must not be dated after the cutoff solely because current imagery is nonforest; subsequent regrowth/reclearing is not ruled out by a first-loss-year layer.</description>
+      <MultiGeometry>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.224842475269,6.196219503743,0 38.224842475269,6.195950009158,0 38.225111969854,6.195950009158,0 38.225111969854,6.196219503743,0 38.224842475269,6.196219503743,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.222686518587,6.195680514572,0 38.222686518587,6.195411019987,0 38.222956013172,6.195411019987,0 38.222956013172,6.195680514572,0 38.222686518587,6.195680514572,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.224033991513,6.195680514572,0 38.224033991513,6.195411019987,0 38.224303486098,6.195411019987,0 38.224303486098,6.195680514572,0 38.224033991513,6.195680514572,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.223495002342,6.195411019987,0 38.223495002342,6.195141525402,0 38.223764496928,6.195141525402,0 38.223764496928,6.195411019987,0 38.223495002342,6.195411019987,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.222686518587,6.194602536231,0 38.222686518587,6.194333041646,0 38.224033991513,6.194333041646,0 38.224033991513,6.194602536231,0 38.222686518587,6.194602536231,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.229423883218,6.194602536231,0 38.229423883218,6.194333041646,0 38.229693377803,6.194333041646,0 38.229693377803,6.194602536231,0 38.229423883218,6.194602536231,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.224033991513,6.194333041646,0 38.224033991513,6.194063547061,0 38.224303486098,6.194063547061,0 38.224303486098,6.194333041646,0 38.224033991513,6.194333041646,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.229154388632,6.194333041646,0 38.229154388632,6.194063547061,0 38.229423883218,6.194063547061,0 38.229423883218,6.194333041646,0 38.229154388632,6.194333041646,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.227267926536,6.194063547061,0 38.227267926536,6.193794052476,0 38.227537421121,6.193794052476,0 38.227537421121,6.194063547061,0 38.227267926536,6.194063547061,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.228076410291,6.194063547061,0 38.228076410291,6.193794052476,0 38.228345904877,6.193794052476,0 38.228345904877,6.194063547061,0 38.228076410291,6.194063547061,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.227806915706,6.193255063305,0 38.227806915706,6.192985568720,0 38.228076410291,6.192985568720,0 38.228076410291,6.193255063305,0 38.227806915706,6.193255063305,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.222956013172,6.192716074135,0 38.222956013172,6.192446579550,0 38.223495002342,6.192446579550,0 38.223495002342,6.192716074135,0 38.222956013172,6.192716074135,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.222686518587,6.192446579550,0 38.222686518587,6.191907590379,0 38.222956013172,6.191907590379,0 38.222956013172,6.191368601209,0 38.223495002342,6.191368601209,0 38.223495002342,6.191638095794,0 38.223225507757,6.191638095794,0 38.223225507757,6.191907590379,0 38.223495002342,6.191907590379,0 38.223495002342,6.192177084964,0 38.222956013172,6.192177084964,0 38.222956013172,6.192446579550,0 38.222686518587,6.192446579550,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.231040850729,6.191638095794,0 38.231040850729,6.191368601209,0 38.231310345314,6.191368601209,0 38.231310345314,6.191638095794,0 38.231040850729,6.191638095794,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.223764496928,6.191099106623,0 38.223764496928,6.190829612038,0 38.224033991513,6.190829612038,0 38.224033991513,6.191099106623,0 38.223764496928,6.191099106623,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.224842475269,6.191099106623,0 38.224842475269,6.190829612038,0 38.224572980683,6.190829612038,0 38.224572980683,6.190560117453,0 38.224842475269,6.190560117453,0 38.224842475269,6.190021128282,0 38.225111969854,6.190021128282,0 38.225111969854,6.190290622868,0 38.225381464439,6.190290622868,0 38.225381464439,6.190560117453,0 38.225111969854,6.190560117453,0 38.225111969854,6.191099106623,0 38.224842475269,6.191099106623,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.225920453610,6.190290622868,0 38.225920453610,6.190021128282,0 38.226189948195,6.190021128282,0 38.226189948195,6.190290622868,0 38.225920453610,6.190290622868,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.222686518587,6.190829612038,0 38.222686518587,6.190021128282,0 38.223225507757,6.190021128282,0 38.223225507757,6.189482139112,0 38.223495002342,6.189482139112,0 38.223495002342,6.189751633697,0 38.223764496928,6.189751633697,0 38.223764496928,6.190290622868,0 38.223225507757,6.190290622868,0 38.223225507757,6.190829612038,0 38.222686518587,6.190829612038,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.224842475269,6.189482139112,0 38.224842475269,6.189212644527,0 38.225111969854,6.189212644527,0 38.225111969854,6.189482139112,0 38.224842475269,6.189482139112,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.223764496928,6.189751633697,0 38.223764496928,6.189482139112,0 38.224033991513,6.189482139112,0 38.224033991513,6.188943149941,0 38.224303486098,6.188943149941,0 38.224303486098,6.189482139112,0 38.224572980683,6.189482139112,0 38.224572980683,6.189751633697,0 38.223764496928,6.189751633697,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.229962872388,6.189212644527,0 38.229962872388,6.188673655356,0 38.230232366973,6.188673655356,0 38.230232366973,6.189212644527,0 38.229962872388,6.189212644527,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.222956013172,6.188943149941,0 38.222956013172,6.188673655356,0 38.222686518587,6.188673655356,0 38.222686518587,6.188404160771,0 38.223225507757,6.188404160771,0 38.223225507757,6.188943149941,0 38.222956013172,6.188943149941,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.226728937365,6.188404160771,0 38.226728937365,6.188134666186,0 38.226998431951,6.188134666186,0 38.226998431951,6.188404160771,0 38.226728937365,6.188404160771,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>38.230501861559,6.187865171601,0 38.230501861559,6.187595677015,0 38.230771356144,6.187595677015,0 38.230771356144,6.187865171601,0 38.230501861559,6.187865171601,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+      </MultiGeometry>
+    </Placemark>
+  </Document>
+</kml>

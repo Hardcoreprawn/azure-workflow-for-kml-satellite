@@ -258,6 +258,12 @@ not a reason to enable an auth bypass. Offline tests use producer-generated
 artifacts and mocked HTTP; a real-provider run with inspected artifacts and
 human review is still required before signing off #1379.
 
+For opt-in, source-backed coffee/pasture loss and nonforest reference AOIs, see
+the [manual scenario pack](../tests/fixtures/eudr_scenarios/manual/README.md).
+It is excluded from default fixture discovery and CI. Its date windows are
+reference guidance, not runner options; the documented local ownership
+prerequisite (#1617) and human interpretation remain separate gates.
+
 ### Reset Mode (pipeline reset in progress)
 
 The checked-in deploy workflow has a release-safety `preflight` gate. This

@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>cattle_pasture_historical_loss</name>
+    <description>Manual reference AOI, not a surveyed farm boundary. Mapped first forest conversion before 2021. It must not be dated after the cutoff solely because current imagery is nonforest; subsequent regrowth/reclearing is not ruled out by a first-loss-year layer. PLUTo sample 230024407 (pasture); https://doi.org/10.5281/zenodo.17831353, CC-BY-4.0. Geometry derived from European Commission JRC TMF v1_1982_2025. See manifest.json and README.md for source dates, attribution and limitations.</description>
+    <Placemark>
+      <name>cattle_pasture_historical_loss</name>
+      <description>Mapped first forest conversion before 2021. It must not be dated after the cutoff solely because current imagery is nonforest; subsequent regrowth/reclearing is not ruled out by a first-loss-year layer.</description>
+      <MultiGeometry>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>-55.694559468598,-27.144842097882,0 -55.694559468598,-27.145111592467,0 -55.694289974013,-27.145111592467,0 -55.694289974013,-27.144842097882,0 -55.694559468598,-27.144842097882,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>-55.693750984842,-27.144842097882,0 -55.693750984842,-27.145111592467,0 -55.693481490257,-27.145111592467,0 -55.693481490257,-27.144842097882,0 -55.693750984842,-27.144842097882,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>-55.690247555234,-27.145381087052,0 -55.690247555234,-27.145650581637,0 -55.689978060649,-27.145650581637,0 -55.689978060649,-27.145381087052,0 -55.690247555234,-27.145381087052,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>-55.694289974013,-27.145381087052,0 -55.694289974013,-27.145920076223,0 -55.694020479427,-27.145920076223,0 -55.694020479427,-27.145650581637,0 -55.693750984842,-27.145650581637,0 -55.693750984842,-27.145381087052,0 -55.694289974013,-27.145381087052,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>-55.692673006501,-27.145920076223,0 -55.692673006501,-27.146189570808,0 -55.692403511916,-27.146189570808,0 -55.692403511916,-27.145920076223,0 -55.692673006501,-27.145920076223,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>-55.695906941524,-27.148615022075,0 -55.695906941524,-27.148884516660,0 -55.696176436109,-27.148884516660,0 -55.696176436109,-27.149693000416,0 -55.695367952354,-27.149693000416,0 -55.695367952354,-27.149962495001,0 -55.694559468598,-27.149962495001,0 -55.694559468598,-27.149693000416,0 -55.694289974013,-27.149693000416,0 -55.694289974013,-27.149423505831,0 -55.694559468598,-27.149423505831,0 -55.694559468598,-27.149154011245,0 -55.694828963183,-27.149154011245,0 -55.694828963183,-27.148884516660,0 -55.695098457768,-27.148884516660,0 -55.695098457768,-27.148615022075,0 -55.695906941524,-27.148615022075,0</coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+          <innerBoundaryIs>
+            <LinearRing>
+              <coordinates>-55.695906941524,-27.148884516660,0 -55.695637446939,-27.148884516660,0 -55.695637446939,-27.149154011245,0 -55.695906941524,-27.149154011245,0 -55.695906941524,-27.148884516660,0</coordinates>
+            </LinearRing>
+          </innerBoundaryIs>
+        </Polygon>
+      </MultiGeometry>
+    </Placemark>
+  </Document>
+</kml>

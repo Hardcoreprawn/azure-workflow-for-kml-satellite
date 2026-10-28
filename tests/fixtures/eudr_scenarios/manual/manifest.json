@@ -1,0 +1,768 @@
+{
+  "schema_version": 1,
+  "issue": 1618,
+  "retrieved_utc": "2026-10-28",
+  "purpose": "Opt-in real-data landscape scenarios; not automatic regression or compliance assertions.",
+  "coordinate_order": "longitude,latitude",
+  "crs": "EPSG:4326",
+  "reference_end_year": 2025,
+  "automatic_execution": false,
+  "independent_ground_truth": false,
+  "sources": {
+    "pluto": {
+      "doi": "10.5281/zenodo.17831353",
+      "url": "https://zenodo.org/records/17831353",
+      "license": "CC-BY-4.0",
+      "attribution": "PLUTo dataset contributors, Post-deforestation Land Use in the Tropics (2025).",
+      "labels_member": "PLUTo/labels.csv",
+      "labels_sha256": "7b53bb689cc317f792c957f5e411d86bbf859850b5f4cfbce0c2489d81e22214",
+      "advertised_label_period": [
+        2000,
+        2020
+      ],
+      "limitation": "Label applies to the sample landscape, not every pixel or a verified property; masks contain some 2021 values despite the advertised period. PLUTo uses JRC TMF."
+    },
+    "tmf": {
+      "url": "https://forobs.jrc.ec.europa.eu/TMF/data",
+      "citation": "European Commission Joint Research Centre; Vancutsem et al., Science Advances (2021), doi:10.1126/sciadv.abe1603.",
+      "version": "v1_1982_2025",
+      "reuse_notice": "https://commission.europa.eu/legal-notice_en",
+      "modifications": "Small aligned windows extracted without resampling; selection masks polygonized to KML.",
+      "loss_year_semantics": "First mapped deforestation year, possibly followed by regrowth; 0 is no mapped first year, NOT proof of unchanged cover.",
+      "transition_legend": {
+        "10": "Undisturbed tropical moist forest",
+        "11": "Bamboo-dominated forest",
+        "12": "Undisturbed mangrove",
+        "21": "Degraded forest with short-duration disturbance (started before 2015)",
+        "22": "Degraded forest with short-duration disturbance (started in 2016-2024)",
+        "23": "Degraded forest with long-duration disturbance (started before 2015)",
+        "24": "Degraded forest with long-duration disturbance (started in 2016-2024)",
+        "25": "Degraded forest with 2/3 short degradation periods (last degradation started before 2015)",
+        "26": "Degraded forest with 2/3 short degradation periods (last degradation started in 2016-2024)",
+        "31": "Old forest regrowth (disturbed before 2006)",
+        "32": "Young forest regrowth (disturbed in 2006-2015)",
+        "33": "Very young forest regrowth (disturbed in 2016-2022)",
+        "41": "Deforestation started before 2015",
+        "42": "Deforestation started in 2016-2022",
+        "51": "Deforestation started in 2023",
+        "52": "Deforestation started in 2024",
+        "53": "Deforestation started in 2025",
+        "54": "Degradation started in 2025",
+        "61": "Degraded mangrove (started before 2016)",
+        "62": "Mangrove recently degraded (2016 -2024)",
+        "63": "Mangrove regrowing (at least 10 years - 2016-2025)",
+        "64": "Mangrove regrowing (at least 3 years - 2023-2025)",
+        "65": "Mangrove deforested (started before 2015)",
+        "66": "Mangrove deforested (started in 2016-2022)",
+        "67": "Mangrove recently disturbed (started in 2023-2025)",
+        "71": "Permanent water",
+        "72": "Seasonal water",
+        "73": "Deforestation to permanent water",
+        "74": "Deforestation to seasonal water",
+        "81": "Old plantation",
+        "82": "Plantation regrowing (disturbed before 2016)",
+        "83": "Plantation regrowing (disturbed in 2016-2022)",
+        "84": "Conversion to tree plantation (deforestation started before 2015)",
+        "85": "Conversion to tree plantation (deforestation started in 2016-2022)",
+        "86": "Recent conversion to plantation (started in 2023-2025)",
+        "91": "Other land cover without afforestation",
+        "92": "Young afforestation (between 3 and 9 years of regrowth)",
+        "93": "Old afforestation (between 10 and 20 years of regrowth)",
+        "94": "Water converted recently into forest regrowth (at least 3 years)"
+      },
+      "tiles": [
+        {
+          "id": "loss-ethiopia",
+          "dataset": "DeforestationYear",
+          "tile": "N10_E30",
+          "download_url": "https://ies-ows.jrc.ec.europa.eu/iforce/tmf_v1/download.py?type=tile&dataset=DeforestationYear&lat=N10&lon=E30",
+          "sha256": "f34953b5b409b731bd01269bb22bccb9921b3567a808a96f42859baed5535dd2",
+          "bytes": 57383630
+        },
+        {
+          "id": "transition-ethiopia",
+          "dataset": "TransitionMap_Subtypes",
+          "tile": "N10_E30",
+          "download_url": "https://ies-ows.jrc.ec.europa.eu/iforce/tmf_v1/download.py?type=tile&dataset=TransitionMap_Subtypes&lat=N10&lon=E30",
+          "sha256": "f1f0ed801da89dc22c1a2f490d7d90ee47e814652a572749a2f7eb0820c13562",
+          "bytes": 47403916
+        },
+        {
+          "id": "loss-paraguay",
+          "dataset": "DeforestationYear",
+          "tile": "S20_W60",
+          "download_url": "https://ies-ows.jrc.ec.europa.eu/iforce/tmf_v1/download.py?type=tile&dataset=DeforestationYear&lat=S20&lon=W60",
+          "sha256": "4f63e77928935a8939dc81912e022937dd817beef106504502ec245ff3c0e0f5",
+          "bytes": 90813447
+        },
+        {
+          "id": "transition-paraguay",
+          "dataset": "TransitionMap_Subtypes",
+          "tile": "S20_W60",
+          "download_url": "https://ies-ows.jrc.ec.europa.eu/iforce/tmf_v1/download.py?type=tile&dataset=TransitionMap_Subtypes&lat=S20&lon=W60",
+          "sha256": "002be767e31ed0f63ee0ab52019ca9e437c448c840d6d1bfbcc10bfcebbcd90f",
+          "bytes": 105686884
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "coffee_recent_loss",
+      "kind": "recent_loss",
+      "kml": "coffee_recent_loss.kml",
+      "kml_sha256": "143352b5e97fc070c903184e5d5781a844eca76863b72245a18d9137f856c821",
+      "country": "Ethiopia",
+      "source_label": "coffee",
+      "commodity_association": "Sample landscape label only; selected polygon commodity use not independently verified. Pasture does not itself prove cattle.",
+      "sample_id": "190000234",
+      "sample_center_wkt": "POINT (35.29977875668126 6.88988679180553)",
+      "sample_split": "test",
+      "source_mask_member": "PLUTo/deforestation_masks/190000234.tif",
+      "source_mask_sha256": "ff093fc97cd4676c195b494a3aa1a03c03d1e5cc4c13eb27c38073c07d7888a2",
+      "source_mask_year_counts": {
+        "0": 199,
+        "2005": 11,
+        "2009": 2,
+        "2010": 19,
+        "2011": 31,
+        "2012": 205,
+        "2013": 136,
+        "2014": 206,
+        "2015": 136,
+        "2016": 12,
+        "2017": 35,
+        "2018": 19,
+        "2019": 25,
+        "2020": 19,
+        "2021": 34
+      },
+      "source_chip_bbox_lon_lat": [
+        35.2952395867768,
+        6.885537570330374,
+        35.304132908089585,
+        6.894430891643157
+      ],
+      "selection_predicate": "valid AND 2021 <= first_loss_year <= 2023; all 4-connected components",
+      "geometry_method": "Inner whole-pixel window of PLUTo chip extent in current TMF grid; no resampling; rasterio.features.shapes connectivity=4; preserve holes and MultiPolygon; no simplification.",
+      "tmf_tiles": [
+        "loss-ethiopia",
+        "transition-ethiopia"
+      ],
+      "reference_raster": "references/coffee_recent_loss.tif",
+      "reference_sha256": "2ee20106a77930e34fab909fc54b0f99741c968711b4f43448326523b45fcaee",
+      "reference_window": [
+        19650,
+        11664,
+        32,
+        32
+      ],
+      "reference_bands": {
+        "1": "first_loss_year",
+        "2": "transition_class"
+      },
+      "selected_pixel_count": 76,
+      "selected_year_counts": {
+        "2021": 24,
+        "2022": 29,
+        "2023": 23
+      },
+      "selected_transition_counts": {
+        "42": 53,
+        "51": 23
+      },
+      "area_ha": 6.746475,
+      "polygon_count": 17,
+      "bbox_lon_lat": [
+        35.29651431209583,
+        6.885586652776132,
+        35.30271268755625,
+        6.893401995747972
+      ],
+      "centroid_lon_lat": [
+        35.29971987926757,
+        6.887845442918175
+      ],
+      "suggested_before": [
+        "2020-01-01",
+        "2020-12-31"
+      ],
+      "suggested_after": [
+        "2024-01-01",
+        "2024-12-31"
+      ],
+      "date_windows_applied_by_runner": false,
+      "expected_observation": "Mapped first forest conversion after 2020 within selected pixels. Seek pre-event forest and post-event conversion, not an assumed commodity cause or compliance verdict.",
+      "validation_status": "Reference-mask and geometry checked; independent imagery/commodity interpretation pending.",
+      "live_pipeline_status": "not_run",
+      "catalogue_probe_date": "2026-10-28",
+      "catalogue_availability": [
+        {
+          "case": "coffee_recent_loss",
+          "window": "before",
+          "collection": "sentinel-2-l2a",
+          "http_status": 200,
+          "example_scene_id": "S2B_MSIL2A_20201230T080239_R035_T36NYN_20201230T144248",
+          "example_scene_datetime": "2020-12-30T08:02:39.024000Z",
+          "meaning": "Catalogue availability only; not a cloud-free AOI or before/after interpretation."
+        },
+        {
+          "case": "coffee_recent_loss",
+          "window": "after",
+          "collection": "sentinel-2-l2a",
+          "http_status": 200,
+          "example_scene_id": "S2A_MSIL2A_20241231T075331_R135_T36NYN_20241231T110447",
+          "example_scene_datetime": "2024-12-31T07:53:31.024000Z",
+          "meaning": "Catalogue availability only; not a cloud-free AOI or before/after interpretation."
+        }
+      ]
+    },
+    {
+      "id": "cattle_pasture_recent_loss",
+      "kind": "recent_loss",
+      "kml": "cattle_pasture_recent_loss.kml",
+      "kml_sha256": "33282ff5380f1252d90b20e24560e786de65f3b78710867e8f944b8ba7252152",
+      "country": "Paraguay",
+      "source_label": "pasture",
+      "commodity_association": "Sample landscape label only; selected polygon commodity use not independently verified. Pasture does not itself prove cattle.",
+      "sample_id": "230013442",
+      "sample_center_wkt": "POINT (-56.09138528303174 -23.508415193496624)",
+      "sample_split": "train",
+      "source_mask_member": "PLUTo/deforestation_masks/230013442.tif",
+      "source_mask_sha256": "50a9c36238415b7a775cda270b2f8b09fcfb7b92eab0978c47a6fa868e4d56c7",
+      "source_mask_year_counts": {
+        "0": 325,
+        "1998": 8,
+        "1999": 34,
+        "2000": 25,
+        "2001": 8,
+        "2003": 3,
+        "2004": 74,
+        "2005": 54,
+        "2006": 1,
+        "2007": 29,
+        "2010": 3,
+        "2011": 20,
+        "2012": 14,
+        "2013": 407,
+        "2014": 22,
+        "2016": 1,
+        "2017": 21,
+        "2018": 30,
+        "2019": 6,
+        "2020": 2,
+        "2021": 2
+      },
+      "source_chip_bbox_lon_lat": [
+        -56.096299582719126,
+        -23.512764414968046,
+        -56.08659777765064,
+        -23.503871093655263
+      ],
+      "selection_predicate": "valid AND 2021 <= first_loss_year <= 2023; all 4-connected components",
+      "geometry_method": "Inner whole-pixel window of PLUTo chip extent in current TMF grid; no resampling; rasterio.features.shapes connectivity=4; preserve holes and MultiPolygon; no simplification.",
+      "tmf_tiles": [
+        "loss-paraguay",
+        "transition-paraguay"
+      ],
+      "reference_raster": "references/cattle_pasture_recent_loss.tif",
+      "reference_sha256": "86fa04d2e5b665ea319798cbbace588cc4d0e00d3dbf8e895640910ba74a9537",
+      "reference_window": [
+        14486,
+        13003,
+        35,
+        32
+      ],
+      "reference_bands": {
+        "1": "first_loss_year",
+        "2": "transition_class"
+      },
+      "selected_pixel_count": 29,
+      "selected_year_counts": {
+        "2021": 29
+      },
+      "selected_transition_counts": {
+        "42": 29
+      },
+      "area_ha": 2.382448,
+      "polygon_count": 19,
+      "bbox_lon_lat": [
+        -56.09610640059923,
+        -23.511516099731825,
+        -56.09233347640593,
+        -23.503970251345223
+      ],
+      "centroid_lon_lat": [
+        -56.0942710495446,
+        -23.507088024908892
+      ],
+      "suggested_before": [
+        "2020-01-01",
+        "2020-12-31"
+      ],
+      "suggested_after": [
+        "2022-01-01",
+        "2022-12-31"
+      ],
+      "date_windows_applied_by_runner": false,
+      "expected_observation": "Mapped first forest conversion after 2020 within selected pixels. Seek pre-event forest and post-event conversion, not an assumed commodity cause or compliance verdict.",
+      "validation_status": "Reference-mask and geometry checked; independent imagery/commodity interpretation pending.",
+      "live_pipeline_status": "not_run",
+      "catalogue_probe_date": "2026-10-28",
+      "catalogue_availability": [
+        {
+          "case": "cattle_pasture_recent_loss",
+          "window": "before",
+          "collection": "sentinel-2-l2a",
+          "http_status": 200,
+          "example_scene_id": "S2A_MSIL2A_20201224T135111_R024_T21KWQ_20201225T072300",
+          "example_scene_datetime": "2020-12-24T13:51:11.024000Z",
+          "meaning": "Catalogue availability only; not a cloud-free AOI or before/after interpretation."
+        },
+        {
+          "case": "cattle_pasture_recent_loss",
+          "window": "after",
+          "collection": "sentinel-2-l2a",
+          "http_status": 200,
+          "example_scene_id": "S2B_MSIL2A_20221229T134709_R024_T21KWQ_20221230T173923",
+          "example_scene_datetime": "2022-12-29T13:47:09.024000Z",
+          "meaning": "Catalogue availability only; not a cloud-free AOI or before/after interpretation."
+        }
+      ]
+    },
+    {
+      "id": "coffee_nonforest_control",
+      "kind": "nonforest_control",
+      "kml": "coffee_nonforest_control.kml",
+      "kml_sha256": "2f0519b546cd341d897e5c06f9a56fdb27eb16ea22da59ea39689291efbd48d9",
+      "country": "Ethiopia",
+      "source_label": "coffee",
+      "commodity_association": "Sample landscape label only; selected polygon commodity use not independently verified. Pasture does not itself prove cattle.",
+      "sample_id": "190000284",
+      "sample_center_wkt": "POINT (38.314159958775264 5.90431619188241)",
+      "sample_split": "train",
+      "source_mask_member": "PLUTo/deforestation_masks/190000284.tif",
+      "source_mask_sha256": "d32586428379aa8a3a6a2b1fddff78bb75fd563238e3a603cad7591c5eb81b84",
+      "source_mask_year_counts": {
+        "0": 1029,
+        "1985": 1,
+        "1987": 1,
+        "2000": 20,
+        "2002": 1,
+        "2004": 1,
+        "2005": 3,
+        "2006": 5,
+        "2008": 3,
+        "2010": 3,
+        "2011": 2,
+        "2012": 1,
+        "2013": 6,
+        "2015": 12,
+        "2017": 1
+      },
+      "source_chip_bbox_lon_lat": [
+        38.30962953382635,
+        5.8999669704073705,
+        38.318522855139136,
+        5.908860291720154
+      ],
+      "selection_predicate": "valid AND first_loss_year == 0 AND transition_class == 91; largest 4-connected component",
+      "geometry_method": "Inner whole-pixel window of PLUTo chip extent in current TMF grid; no resampling; rasterio.features.shapes connectivity=4; preserve holes and MultiPolygon; no simplification.",
+      "tmf_tiles": [
+        "loss-ethiopia",
+        "transition-ethiopia"
+      ],
+      "reference_raster": "references/coffee_nonforest_control.tif",
+      "reference_sha256": "dae54853db042adb88c896b74e8a077a661f2e470e48a95323e27db9b878c464",
+      "reference_window": [
+        30835,
+        15321,
+        32,
+        32
+      ],
+      "reference_bands": {
+        "1": "first_loss_year",
+        "2": "transition_class"
+      },
+      "selected_pixel_count": 911,
+      "selected_year_counts": {
+        "0": 911
+      },
+      "selected_transition_counts": {
+        "91": 911
+      },
+      "area_ha": 81.02052,
+      "polygon_count": 1,
+      "bbox_lon_lat": [
+        38.309733269617944,
+        5.900044954568605,
+        38.318357096345494,
+        5.908668781296153
+      ],
+      "centroid_lon_lat": [
+        38.31431305054146,
+        5.904367665465156
+      ],
+      "suggested_before": [
+        "2020-01-01",
+        "2020-12-31"
+      ],
+      "suggested_after": [
+        "2025-01-01",
+        "2025-12-31"
+      ],
+      "date_windows_applied_by_runner": false,
+      "expected_observation": "Reference contains other land cover without afforestation and no mapped first deforestation year. Do not infer forest conversion from seasonal crop/pasture NDVI variation; current commodity use and absence of all change are not independently verified.",
+      "validation_status": "Reference-mask and geometry checked; independent imagery/commodity interpretation pending.",
+      "live_pipeline_status": "not_run",
+      "catalogue_probe_date": "2026-10-28",
+      "catalogue_availability": [
+        {
+          "case": "coffee_nonforest_control",
+          "window": "before",
+          "collection": "sentinel-2-l2a",
+          "http_status": 200,
+          "example_scene_id": "S2B_MSIL2A_20201224T074229_R092_T37NDG_20210514T004237",
+          "example_scene_datetime": "2020-12-24T07:42:29.024000Z",
+          "meaning": "Catalogue availability only; not a cloud-free AOI or before/after interpretation."
+        },
+        {
+          "case": "coffee_nonforest_control",
+          "window": "after",
+          "collection": "sentinel-2-l2a",
+          "http_status": 200,
+          "example_scene_id": "S2B_MSIL2A_20251228T074229_R092_T37NDG_20251228T101752",
+          "example_scene_datetime": "2025-12-28T07:42:29.024000Z",
+          "meaning": "Catalogue availability only; not a cloud-free AOI or before/after interpretation."
+        }
+      ]
+    },
+    {
+      "id": "cattle_pasture_nonforest_control",
+      "kind": "nonforest_control",
+      "kml": "cattle_pasture_nonforest_control.kml",
+      "kml_sha256": "0728b16e5b75d4d569dd492c24eea55badad4b97b8ee1a76e0a841fef5e8d035",
+      "country": "Paraguay",
+      "source_label": "pasture",
+      "commodity_association": "Sample landscape label only; selected polygon commodity use not independently verified. Pasture does not itself prove cattle.",
+      "sample_id": "230011505",
+      "sample_center_wkt": "POINT (-59.96887337540526 -23.241615554674844)",
+      "sample_split": "train",
+      "source_mask_member": "PLUTo/deforestation_masks/230011505.tif",
+      "source_mask_sha256": "e8f4cb9167e5526a61d3f689459ae610106bd0994b9ceba27821f1fd5cd6498d",
+      "source_mask_year_counts": {
+        "0": 1064,
+        "2000": 22,
+        "2001": 1,
+        "2002": 2
+      },
+      "source_chip_bbox_lon_lat": [
+        -59.973777363493525,
+        -23.245965565180068,
+        -59.96407555842504,
+        -23.237072243867285
+      ],
+      "selection_predicate": "valid AND first_loss_year == 0 AND transition_class == 91; largest 4-connected component",
+      "geometry_method": "Inner whole-pixel window of PLUTo chip extent in current TMF grid; no resampling; rasterio.features.shapes connectivity=4; preserve holes and MultiPolygon; no simplification.",
+      "tmf_tiles": [
+        "loss-paraguay",
+        "transition-paraguay"
+      ],
+      "reference_raster": "references/cattle_pasture_nonforest_control.tif",
+      "reference_sha256": "29efbcd583e65461a983149f9ecb3211e06d26cdaa79bb66a2626bb584dda2eb",
+      "reference_window": [
+        98,
+        12013,
+        35,
+        32
+      ],
+      "reference_bands": {
+        "1": "first_loss_year",
+        "2": "transition_class"
+      },
+      "selected_pixel_count": 1104,
+      "selected_year_counts": {
+        "0": 1104
+      },
+      "selected_transition_counts": {
+        "91": 1104
+      },
+      "area_ha": 90.875367,
+      "polygon_count": 1,
+      "bbox_lon_lat": [
+        -59.97359449297273,
+        -23.24579443868927,
+        -59.964162182489474,
+        -23.237170611961723
+      ],
+      "centroid_lon_lat": [
+        -59.968851241808125,
+        -23.24146079976564
+      ],
+      "suggested_before": [
+        "2020-01-01",
+        "2020-12-31"
+      ],
+      "suggested_after": [
+        "2025-01-01",
+        "2025-12-31"
+      ],
+      "date_windows_applied_by_runner": false,
+      "expected_observation": "Reference contains other land cover without afforestation and no mapped first deforestation year. Do not infer forest conversion from seasonal crop/pasture NDVI variation; current commodity use and absence of all change are not independently verified.",
+      "validation_status": "Reference-mask and geometry checked; independent imagery/commodity interpretation pending.",
+      "live_pipeline_status": "not_run",
+      "catalogue_probe_date": "2026-10-28",
+      "catalogue_availability": [
+        {
+          "case": "cattle_pasture_nonforest_control",
+          "window": "before",
+          "collection": "sentinel-2-l2a",
+          "http_status": 200,
+          "example_scene_id": "S2A_MSIL2A_20201230T141051_R110_T20KRV_20201231T011048",
+          "example_scene_datetime": "2020-12-30T14:10:51.024000Z",
+          "meaning": "Catalogue availability only; not a cloud-free AOI or before/after interpretation."
+        },
+        {
+          "case": "cattle_pasture_nonforest_control",
+          "window": "after",
+          "collection": "sentinel-2-l2a",
+          "http_status": 200,
+          "example_scene_id": "S2B_MSIL2A_20251219T140709_R110_T20KRV_20251219T174318",
+          "example_scene_datetime": "2025-12-19T14:07:09.024000Z",
+          "meaning": "Catalogue availability only; not a cloud-free AOI or before/after interpretation."
+        }
+      ]
+    },
+    {
+      "id": "coffee_historical_loss",
+      "kind": "historical_loss",
+      "kml": "coffee_historical_loss.kml",
+      "kml_sha256": "9f04d58597473d4c7fb70fedd0000f6501e43671c208c05bdf3650494f383354",
+      "country": "Ethiopia",
+      "source_label": "coffee",
+      "commodity_association": "Sample landscape label only; selected polygon commodity use not independently verified. Pasture does not itself prove cattle.",
+      "sample_id": "190000000",
+      "sample_center_wkt": "POINT (38.22700943219967 6.191705990191045)",
+      "sample_split": "train",
+      "source_mask_member": "PLUTo/deforestation_masks/190000000.tif",
+      "source_mask_sha256": "fab2d1987f913c82ddddd7f9cfde24788fd72f75442a516755edfc976e62fc36",
+      "source_mask_year_counts": {
+        "0": 460,
+        "2000": 41,
+        "2003": 1,
+        "2005": 16,
+        "2006": 28,
+        "2008": 5,
+        "2010": 1,
+        "2011": 59,
+        "2012": 77,
+        "2013": 26,
+        "2014": 9,
+        "2015": 292,
+        "2016": 15,
+        "2017": 14,
+        "2018": 12,
+        "2019": 9,
+        "2021": 24
+      },
+      "source_chip_bbox_lon_lat": [
+        38.22247659922063,
+        6.187357173992408,
+        38.23136992053341,
+        6.196250495305191
+      ],
+      "selection_predicate": "valid AND first_loss_year == 2015; all 4-connected components",
+      "geometry_method": "Inner whole-pixel window of PLUTo chip extent in current TMF grid; no resampling; rasterio.features.shapes connectivity=4; preserve holes and MultiPolygon; no simplification.",
+      "tmf_tiles": [
+        "loss-ethiopia",
+        "transition-ethiopia"
+      ],
+      "reference_raster": "references/coffee_historical_loss.tif",
+      "reference_sha256": "8cb2bd073c781e7d98859f0128d6b73c40b7e219706b7ead59e8b7924514886d",
+      "reference_window": [
+        30512,
+        14254,
+        32,
+        32
+      ],
+      "reference_bands": {
+        "1": "first_loss_year",
+        "2": "transition_class"
+      },
+      "selected_pixel_count": 57,
+      "selected_year_counts": {
+        "2015": 57
+      },
+      "selected_transition_counts": {
+        "33": 8,
+        "41": 48,
+        "42": 1
+      },
+      "area_ha": 5.066725,
+      "polygon_count": 24,
+      "bbox_lon_lat": [
+        38.222686518586755,
+        6.187595677015264,
+        38.231310345314306,
+        6.196219503742812
+      ],
+      "centroid_lon_lat": [
+        38.22466044822425,
+        6.191432428873494
+      ],
+      "suggested_before": [
+        "2014-01-01",
+        "2014-12-31"
+      ],
+      "suggested_after": [
+        "2016-01-01",
+        "2016-12-31"
+      ],
+      "date_windows_applied_by_runner": false,
+      "expected_observation": "Mapped first forest conversion before 2021. It must not be dated after the cutoff solely because current imagery is nonforest; subsequent regrowth/reclearing is not ruled out by a first-loss-year layer.",
+      "validation_status": "Reference-mask and geometry checked; independent imagery/commodity interpretation pending.",
+      "live_pipeline_status": "not_run",
+      "catalogue_probe_date": "2026-10-28",
+      "catalogue_availability": [
+        {
+          "case": "coffee_historical_loss",
+          "window": "before",
+          "collection": "landsat-c2-l2",
+          "http_status": 200,
+          "example_scene_id": "LE07_L2SP_168056_20141228_02_T1",
+          "example_scene_datetime": "2014-12-28T07:39:42.300410Z",
+          "meaning": "Catalogue availability only; not a cloud-free AOI or before/after interpretation."
+        },
+        {
+          "case": "coffee_historical_loss",
+          "window": "after",
+          "collection": "sentinel-2-l2a",
+          "http_status": 200,
+          "example_scene_id": "S2A_MSIL2A_20161230T074322_R092_T37NDG_20210214T014717",
+          "example_scene_datetime": "2016-12-30T07:43:22.026000Z",
+          "meaning": "Catalogue availability only; not a cloud-free AOI or before/after interpretation."
+        }
+      ]
+    },
+    {
+      "id": "cattle_pasture_historical_loss",
+      "kind": "historical_loss",
+      "kml": "cattle_pasture_historical_loss.kml",
+      "kml_sha256": "b134676460d04077e28c8142f16e6914bc947ada40e9d0e2a1102ac666b8f35e",
+      "country": "Paraguay",
+      "source_label": "pasture",
+      "commodity_association": "Sample landscape label only; selected polygon commodity use not independently verified. Pasture does not itself prove cattle.",
+      "sample_id": "230024407",
+      "sample_center_wkt": "POINT (-55.691185823956495 -27.145783603343787)",
+      "sample_split": "train",
+      "source_mask_member": "PLUTo/deforestation_masks/230024407.tif",
+      "source_mask_sha256": "39b37ff2ad0df666ceeda8f311bb6a8209a06217918ee5c0096a4007215253a1",
+      "source_mask_year_counts": {
+        "0": 827,
+        "1984": 1,
+        "1985": 6,
+        "1986": 3,
+        "1987": 1,
+        "1988": 10,
+        "1989": 4,
+        "1990": 1,
+        "1991": 2,
+        "1995": 2,
+        "1996": 2,
+        "1998": 6,
+        "1999": 15,
+        "2000": 50,
+        "2001": 6,
+        "2002": 20,
+        "2003": 45,
+        "2004": 50,
+        "2005": 1,
+        "2006": 4,
+        "2007": 1,
+        "2010": 1,
+        "2012": 6,
+        "2017": 1,
+        "2018": 2,
+        "2020": 2,
+        "2021": 20
+      },
+      "source_chip_bbox_lon_lat": [
+        -55.69625008412,
+        -27.150133222854038,
+        -55.686278784466275,
+        -27.141239901541255
+      ],
+      "selection_predicate": "valid AND first_loss_year == 2004; all 4-connected components",
+      "geometry_method": "Inner whole-pixel window of PLUTo chip extent in current TMF grid; no resampling; rasterio.features.shapes connectivity=4; preserve holes and MultiPolygon; no simplification.",
+      "tmf_tiles": [
+        "loss-paraguay",
+        "transition-paraguay"
+      ],
+      "reference_raster": "references/cattle_pasture_historical_loss.tif",
+      "reference_sha256": "365c740e63fa71ce0e171a1c2b90ca172619243dcdef117e8b640a5e97e222e7",
+      "reference_window": [
+        15970,
+        26500,
+        36,
+        32
+      ],
+      "reference_bands": {
+        "1": "first_loss_year",
+        "2": "transition_class"
+      },
+      "selected_pixel_count": 30,
+      "selected_year_counts": {
+        "2004": 30
+      },
+      "selected_transition_counts": {
+        "33": 1,
+        "41": 29
+      },
+      "area_ha": 2.393117,
+      "polygon_count": 6,
+      "bbox_lon_lat": [
+        -55.69617643610922,
+        -27.149962495001123,
+        -55.6899780606488,
+        -27.144842097881643
+      ],
+      "centroid_lon_lat": [
+        -55.694828963183035,
+        -27.148426375865274
+      ],
+      "suggested_before": [
+        "2003-01-01",
+        "2003-12-31"
+      ],
+      "suggested_after": [
+        "2005-01-01",
+        "2005-12-31"
+      ],
+      "date_windows_applied_by_runner": false,
+      "expected_observation": "Mapped first forest conversion before 2021. It must not be dated after the cutoff solely because current imagery is nonforest; subsequent regrowth/reclearing is not ruled out by a first-loss-year layer.",
+      "validation_status": "Reference-mask and geometry checked; independent imagery/commodity interpretation pending.",
+      "live_pipeline_status": "not_run",
+      "catalogue_probe_date": "2026-10-28",
+      "catalogue_availability": [
+        {
+          "case": "cattle_pasture_historical_loss",
+          "window": "before",
+          "collection": "landsat-c2-l2",
+          "http_status": 200,
+          "example_scene_id": "LE07_L2SP_224079_20031206_02_T1",
+          "example_scene_datetime": "2003-12-06T13:25:09.575425Z",
+          "meaning": "Catalogue availability only; not a cloud-free AOI or before/after interpretation."
+        },
+        {
+          "case": "cattle_pasture_historical_loss",
+          "window": "after",
+          "collection": "landsat-c2-l2",
+          "http_status": 200,
+          "example_scene_id": "LE07_L2SP_224079_20051227_02_T1",
+          "example_scene_datetime": "2005-12-27T13:26:10.062787Z",
+          "meaning": "Catalogue availability only; not a cloud-free AOI or before/after interpretation."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>cattle_pasture_nonforest_control</name>
+    <description>Manual reference AOI, not a surveyed farm boundary. Reference contains other land cover without afforestation and no mapped first deforestation year. Do not infer forest conversion from seasonal crop/pasture NDVI variation; current commodity use and absence of all change are not independently verified. PLUTo sample 230011505 (pasture); https://doi.org/10.5281/zenodo.17831353, CC-BY-4.0. Geometry derived from European Commission JRC TMF v1_1982_2025. See manifest.json and README.md for source dates, attribution and limitations.</description>
+    <Placemark>
+      <name>cattle_pasture_nonforest_control</name>
+      <description>Reference contains other land cover without afforestation and no mapped first deforestation year. Do not infer forest conversion from seasonal crop/pasture NDVI variation; current commodity use and absence of all change are not independently verified.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.973594492973,-23.237170611962,0 -59.973594492973,-23.245794438689,0 -59.964162182489,-23.245794438689,0 -59.964162182489,-23.237170611962,0 -59.971708030876,-23.237170611962,0 -59.971708030876,-23.237440106547,0 -59.971977525461,-23.237440106547,0 -59.971977525461,-23.237170611962,0 -59.973594492973,-23.237170611962,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+        <innerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.964970666245,-23.240943536155,0 -59.964701171660,-23.240943536155,0 -59.964701171660,-23.241213030740,0 -59.964970666245,-23.241213030740,0 -59.964970666245,-23.240943536155,0</coordinates>
+          </LinearRing>
+        </innerBoundaryIs>
+        <innerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.971169041706,-23.241752019911,0 -59.970899547120,-23.241752019911,0 -59.970899547120,-23.242021514496,0 -59.971169041706,-23.242021514496,0 -59.971169041706,-23.241752019911,0</coordinates>
+          </LinearRing>
+        </innerBoundaryIs>
+        <innerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.969552074194,-23.242829998252,0 -59.969282579609,-23.242829998252,0 -59.969282579609,-23.243368987422,0 -59.969552074194,-23.243368987422,0 -59.969552074194,-23.242829998252,0</coordinates>
+          </LinearRing>
+        </innerBoundaryIs>
+        <innerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.971438536291,-23.243099492837,0 -59.970899547120,-23.243099492837,0 -59.970899547120,-23.243368987422,0 -59.971438536291,-23.243368987422,0 -59.971438536291,-23.243099492837,0</coordinates>
+          </LinearRing>
+        </innerBoundaryIs>
+        <innerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.973055503802,-23.243368987422,0 -59.972786009217,-23.243368987422,0 -59.972786009217,-23.243638482007,0 -59.973055503802,-23.243638482007,0 -59.973055503802,-23.243368987422,0</coordinates>
+          </LinearRing>
+        </innerBoundaryIs>
+        <innerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.971708030876,-23.243368987422,0 -59.971438536291,-23.243368987422,0 -59.971438536291,-23.243638482007,0 -59.971708030876,-23.243638482007,0 -59.971708030876,-23.243368987422,0</coordinates>
+          </LinearRing>
+        </innerBoundaryIs>
+        <innerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.971977525461,-23.243638482007,0 -59.971708030876,-23.243638482007,0 -59.971708030876,-23.243907976593,0 -59.971977525461,-23.243907976593,0 -59.971977525461,-23.243638482007,0</coordinates>
+          </LinearRing>
+        </innerBoundaryIs>
+        <innerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.971438536291,-23.243638482007,0 -59.970630052535,-23.243638482007,0 -59.970630052535,-23.244177471178,0 -59.970899547120,-23.244177471178,0 -59.970899547120,-23.243907976593,0 -59.971438536291,-23.243907976593,0 -59.971438536291,-23.243638482007,0</coordinates>
+          </LinearRing>
+        </innerBoundaryIs>
+        <innerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.971708030876,-23.244177471178,0 -59.971169041706,-23.244177471178,0 -59.971169041706,-23.244446965763,0 -59.971708030876,-23.244446965763,0 -59.971708030876,-23.244177471178,0</coordinates>
+          </LinearRing>
+        </innerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>
