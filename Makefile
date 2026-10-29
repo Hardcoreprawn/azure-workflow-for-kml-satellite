@@ -86,6 +86,7 @@ test-bootstrap: ## Validate bootstrap schema and mocked contracts; no Azure cred
 	$(TOFU) -chdir=infra/tofu/bootstrap test -no-color
 	python3 -m unittest discover -s tests -p test_application_contracts.py
 	@test ! -f infra/tofu/bootstrap/errored_test.tfstate || { echo "ERROR: bootstrap tests left errored_test.tfstate; inspect it before cleanup." >&2; exit 1; }
+	python3 -m scripts.test_foundation_grant_retention --tofu "$(TOFU)"
 
 .PHONY: test-foundation test-foundation-mutations scan-foundation
 test-foundation: ## Validate isolated foundation raw contracts and mock plans; never Azure/backend access

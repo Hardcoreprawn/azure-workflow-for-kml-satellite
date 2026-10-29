@@ -146,6 +146,9 @@ resource "azurerm_role_assignment" "application_encryption" {
   principal_id                     = data.external.application_contract[0].result.blob_principal_id
   skip_service_principal_aad_check = true
   depends_on                       = [azurerm_role_assignment.application_custody]
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_role_assignment" "application_cosmos_encryption" {
@@ -155,6 +158,9 @@ resource "azurerm_role_assignment" "application_cosmos_encryption" {
   principal_id                     = data.external.application_contract[0].result.principal_id
   skip_service_principal_aad_check = true
   depends_on                       = [azurerm_role_assignment.application_custody]
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 output "application_contract" {

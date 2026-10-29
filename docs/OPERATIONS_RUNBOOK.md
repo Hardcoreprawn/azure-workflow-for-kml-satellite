@@ -425,6 +425,10 @@ Then foundation's `cosmos-key` creates a dedicated Cosmos key/UAMI while retaini
 Blob; governance issues `cosmos-encryption`, retaining all earlier grants; only
 then may the `cosmos` phase declare the account/database/eight existing containers.
 The application schema evolves directly to v2; bootstrap v1 remains unchanged.
+Both governance encryption grants have `prevent_destroy`; phase rollback must
+fail rather than revoke Blob/Cosmos CMK access. `make test-bootstrap` includes
+mock-only persisted-state rollback proofs. Removing the resource configuration
+or privileged out-of-band deletion still bypasses this planning guard.
 
 Run `make test-foundation` (OpenTofu 1.13.2; backend disabled, read-only lock,
 mocked plan only) and `make test-foundation-mutations`. The mandatory raw-input

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,41 @@ from scripts.application_contract import (
 from scripts.validate_foundation_contract import external_gate, external_output
 
 FIXTURES = Path(__file__).parent / "fixtures/foundation/dev"
+
+
+@pytest.mark.parametrize(
+    "phase,length,filename",
+    [
+        ("storage", 5, "manifest.json"),
+        ("cosmos", 7, "cosmos-manifest.json"),
+    ],
+)
+def test_cli_validates_each_manifest_phase_and_rejects_missing_prefix(phase: str, length: int, filename: str) -> None:
+    arguments = [
+        sys.executable,
+        "-m",
+        "scripts.validate_foundation_contract",
+        "validate",
+        "--context",
+        str(FIXTURES / "context.json"),
+        "--bootstrap",
+        str(FIXTURES / "bootstrap.json"),
+        "--phase",
+        phase,
+        "--storage-name",
+        "kmlsatdevappabc123",
+        "--manifest",
+        str(FIXTURES / filename),
+    ]
+    for stage in STAGES[:length]:
+        arguments.extend(("--artifact", str(FIXTURES / f"{stage}.json")))
+    result = subprocess.run(arguments, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr.decode()
+    assert json.loads(result.stdout)["status"] == "not-activated"
+    missing = subprocess.run(arguments[:-2], capture_output=True, check=False)
+    assert missing.returncode == 2
+    assert b"missing prerequisite artifact or skipped stage" in missing.stderr
+    assert missing.stdout == b""
 
 
 def bundle() -> tuple[ExpectedContext, bytes, tuple[bytes, ...]]:

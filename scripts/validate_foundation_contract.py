@@ -268,8 +268,8 @@ def _validate_cli(args: argparse.Namespace) -> bytes:
     artifacts = tuple(read_artifact(path) for path in args.artifact)
     validate_inputs(bootstrap, artifacts, expected, args.phase, require_write_ready=args.require_write_ready)
     if args.manifest is not None:
-        if args.phase != "storage" or args.storage_name is None:
-            raise ContractError("manifest validation requires storage phase and --storage-name")
+        if args.phase not in ("storage", "cosmos") or args.storage_name is None:
+            raise ContractError("manifest validation requires storage or cosmos phase and --storage-name")
         validate_manifest(read_artifact(args.manifest), args.storage_name, bootstrap, artifacts, expected)
     enabled = validate_bootstrap(bootstrap, expected)
     return encode({"status": "not-activated", "write_ready": enabled, "cloud_authorized": False})

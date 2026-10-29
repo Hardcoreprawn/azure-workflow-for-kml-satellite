@@ -133,6 +133,11 @@ python3 -m scripts.validate_foundation_contract validate \
   --storage-name kmlsatdevappabc123
 ```
 
+For the Cosmos manifest, add `--phase cosmos`, select `cosmos-manifest.json`
+instead of `manifest.json`, and append `--artifact` arguments for `cosmos-key.json`
+then `cosmos-encryption.json` after the five shown above. Both manifest phases
+require their exact ordered prefix; selecting Cosmos never relaxes lineage checks.
+
 ## Security and recovery defaults
 
 - Entra-only Blob access, no shared keys/public containers, HTTPS/TLS 1.2,
@@ -181,6 +186,9 @@ Foundation creates a **dedicated** RSA-2048 Cosmos key and encryption UAMI;
 governance grants only Crypto Service Encryption User on that key. The account's
 attachment **and** `defaultIdentity` select that exact UAMI. Existing Blob grants
 and resources survive every later phase. Foundation has no self-grant authority.
+Governance's Blob/Cosmos encryption grants also have destroy guards: reverting to
+an earlier phase cannot revoke already-persisted CMK access. `make test-bootstrap`
+proves this with persisted mock state, not just forward plans from empty state.
 The application vault's already-approved deny-default plus **AzureServices**
 bypass is unchanged: Cosmos CMK needs public vault reachability or trusted-service
 bypass. Closed Cosmos networking must not be misrepresented as a private-only vault.
