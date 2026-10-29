@@ -16,6 +16,7 @@ EXPECTED = {"AZU-0010", "AZU-0057"}
 
 def scan_case(trivy: str, name: str, policy: Path, findings: set[str], directory: Path) -> None:
     output = directory / f"{name}.json"
+    output.unlink(missing_ok=True)
     result = subprocess.run(
         [
             trivy,
@@ -42,13 +43,18 @@ def scan_case(trivy: str, name: str, policy: Path, findings: set[str], directory
     (directory / f"{name}.log").write_text(result.stderr)
     if result.returncode != (1 if findings else 0):
         raise ContractError(f"{name}: scanner exit {result.returncode}, expected an actual finding-based result")
-    report = json.loads(output.read_bytes())
-    actual = {
-        finding["ID"]
-        for target in report.get("Results", [])
-        for finding in target.get("Misconfigurations", [])
-        if finding.get("Status") == "FAIL"
-    }
+    try:
+        report = json.loads(output.read_bytes())
+        if not isinstance(report, dict) or not isinstance(report.get("Results"), list):
+            raise ValueError("scanner report must contain a Results array")
+        actual = {
+            finding["ID"]
+            for target in report["Results"]
+            for finding in target.get("Misconfigurations", [])
+            if finding.get("Status") == "FAIL"
+        }
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        raise ContractError(f"{name}: scanner did not produce a fresh valid JSON report") from exc
     if actual != findings:
         raise ContractError(f"{name}: expected {sorted(findings)}, found {sorted(actual)}")
     print(f"PROVED {name}: exit={result.returncode}, findings={sorted(actual)}")

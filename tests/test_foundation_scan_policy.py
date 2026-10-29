@@ -153,3 +153,52 @@ def test_all_four_real_scanner_cases_are_required(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(proof, "validate_policy", lambda *args: APPROVED)
     with pytest.raises(ContractError, match="metadata gate accepted"):
         proof.prove_mutations("trivy")
+
+
+def test_scanner_cannot_reuse_matching_old_report_without_new_output(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    from scripts import test_foundation_scan_policy as proof
+
+    directory = Path(".validation/foundation-stale-report-regression")
+    directory.mkdir(parents=True, exist_ok=True)
+    output = directory / "expired.json"
+    output.write_bytes(
+        encode({"Results": [{"Misconfigurations": [{"ID": item, "Status": "FAIL"} for item in proof.EXPECTED]}]})
+    )
+    monkeypatch.setattr(
+        proof.subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess([], 1, "", "no new report")
+    )
+    try:
+        with pytest.raises(ContractError, match="fresh valid"):
+            proof.scan_case("trivy", "expired", Path("unused.yaml"), proof.EXPECTED, directory)
+        assert "PROVED" not in capsys.readouterr().out
+    finally:
+        output.unlink(missing_ok=True)
+        (directory / "expired.log").unlink(missing_ok=True)
+        directory.rmdir()
+
+
+@pytest.mark.parametrize("raw", [b"not-json", b"null", b"{}", b'{"Results":"invalid"}', b'{"Results":[null]}'])
+def test_scanner_rejects_new_invalid_report_without_proof(
+    raw: bytes, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    from scripts import test_foundation_scan_policy as proof
+
+    directory = Path(".validation/foundation-invalid-report-regression")
+    directory.mkdir(parents=True, exist_ok=True)
+    output = directory / "expired.json"
+
+    def run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
+        output.write_bytes(raw)
+        return subprocess.CompletedProcess([], 1, "", "")
+
+    monkeypatch.setattr(proof.subprocess, "run", run)
+    try:
+        with pytest.raises(ContractError, match="fresh valid"):
+            proof.scan_case("trivy", "expired", Path("unused.yaml"), proof.EXPECTED, directory)
+        assert "PROVED" not in capsys.readouterr().out
+    finally:
+        output.unlink(missing_ok=True)
+        (directory / "expired.log").unlink(missing_ok=True)
+        directory.rmdir()

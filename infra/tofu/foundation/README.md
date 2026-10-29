@@ -177,6 +177,8 @@ runs Trivy and mandatory real-scanner proofs: approved policy passes; `/dev/null
 baseline, expired-policy copy and wrong-path copy each produce both findings with
 exit 1. Missing/invalid/expired/broadened metadata fails even without findings.
 Evidence is retained in `.validation/foundation/exception-proofs/`.
+Each proof deletes its previous report before invoking Trivy and rejects missing
+or invalid fresh JSON, so a failed rerun cannot reuse earlier evidence.
 `test-foundation-mutations` rejects ten actual source regressions, including removal
 of the provider data-plane setting and an extra resource hidden in a real local module.
 
