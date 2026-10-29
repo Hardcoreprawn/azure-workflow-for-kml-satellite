@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -71,13 +72,56 @@ def test_mutation_rejects_success_shaped_gates_and_accepts_inventory_failure(mon
     mutations.run_mutation("tofu", "unit-regression", "secure", "insecure")
 
 
-def test_all_ten_mutations_are_executed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_all_eleven_mutations_are_executed(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(mutations, "run_mutation", lambda tofu, name, before, after, **kwargs: calls.append(name))
     monkeypatch.setattr(sys, "argv", ["test_foundation_mutations", "--tofu", "/pinned/tofu"])
     mutations.main()
-    assert len(calls) == 10
+    assert len(calls) == 11
     assert calls[-1] == "child-module-resource"
+    assert "unsupported-storage-egress" in calls
+
+
+@pytest.mark.parametrize("extra_error", [False, True])
+def test_egress_mutation_requires_only_the_missing_variable_failure(
+    monkeypatch: pytest.MonkeyPatch, extra_error: bool
+) -> None:
+    writes = fake_files(monkeypatch)
+    events = [
+        {
+            "type": "diagnostic",
+            "@testrun": "rejects_private_10_cidr",
+            "diagnostic": {
+                "severity": "error",
+                "summary": "Missing expected failure",
+                "detail": (
+                    "The checkable object, var.approved_storage_ip_ranges, was expected to report an error but did not."
+                ),
+            },
+        }
+    ]
+    if extra_error:
+        events.append(
+            {
+                "type": "diagnostic",
+                "diagnostic": {
+                    "severity": "error",
+                    "summary": "External Program Execution Failed",
+                },
+            }
+        )
+    stdout = "\n".join(json.dumps(event) for event in events)
+    monkeypatch.setattr(
+        mutations.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess([], 1, stdout, ""),
+    )
+    if extra_error:
+        with pytest.raises(ContractError, match="unexpected reason"):
+            mutations.run_mutation("tofu", "egress", "secure", "insecure", source_file="variables.tf")
+    else:
+        mutations.run_mutation("tofu", "egress", "secure", "insecure", source_file="variables.tf")
+        assert writes["variables.tf"] == "insecure"
 
 
 def test_local_module_mutation_initializes_offline_before_native_plan(monkeypatch: pytest.MonkeyPatch) -> None:

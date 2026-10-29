@@ -31,10 +31,11 @@ variable "approved_storage_ip_ranges" {
   validation {
     condition = alltrue([
       for value in var.approved_storage_ip_ranges :
-      can(cidrhost(strcontains(value, "/") ? value : "${value}/32", 0)) &&
-      !strcontains(value, ":") &&
-      try(tonumber(split("/", value)[1]) >= 8, true)
+      can(regex("^[0-9.]+(/[0-9]+)?$", value)) &&
+      (can(cidrhost(value, 0)) || can(cidrhost("${value}/32", 0))) &&
+      !can(regex("^(10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.)", value)) &&
+      try(tonumber(split("/", value)[1]) >= 8 && tonumber(split("/", value)[1]) <= 30, true)
     ])
-    error_message = "Approve explicit IPv4 egress (CIDR prefix >= 8); do not allow the whole internet."
+    error_message = "Approve public IPv4 addresses or /8-/30 CIDRs, never RFC1918 or IPv6; specify single IPs without /32."
   }
 }

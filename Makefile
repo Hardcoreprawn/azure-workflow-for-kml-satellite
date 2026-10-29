@@ -97,7 +97,7 @@ test-foundation: ## Validate isolated foundation raw contracts and mock plans; n
 	python3 -m scripts.foundation_native_plans .validation/foundation/events.jsonl .validation/foundation/plans
 	@test ! -f infra/tofu/foundation/errored_test.tfstate || { echo "ERROR: foundation native test left state; investigate." >&2; exit 1; }
 
-test-foundation-mutations: test-foundation ## Prove native gates reject ten real source mutations, offline
+test-foundation-mutations: test-foundation ## Prove native gates reject eleven real source mutations, offline
 	python3 -m scripts.test_foundation_mutations --tofu "$(TOFU)"
 
 test: ## Run unit tests (canonical — CI runs this exact command)

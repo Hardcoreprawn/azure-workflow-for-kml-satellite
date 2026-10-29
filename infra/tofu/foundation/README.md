@@ -126,6 +126,9 @@ python3 -m scripts.validate_foundation_contract validate \
   infrastructure encryption and a versionless CMK with a dedicated UAMI.
 - Public endpoint with deny-default firewall, **no trusted-services bypass**,
   and explicit owner-approved IPv4 egress; no implicit GitHub-hosted-runner access.
+  Only public standalone IPv4 addresses or /8–/30 CIDRs are accepted. RFC1918,
+  IPv6, /31 and /32 rules are rejected before resource planning; single IPs must
+  omit `/32`, matching Azure Storage's IP-rule interface.
   Empty egress blocks the storage phase. No extra networking services are created.
 - Blob versioning and 30-day Blob/container recovery. No CORS or lifecycle deletion.
 - RSA application key: 180-day initial/rotated expiry, 90-day rotation, 30-day
@@ -183,8 +186,12 @@ exit 1. Missing/invalid/expired/broadened metadata fails even without findings.
 Evidence is retained in `.validation/foundation/exception-proofs/`.
 Each proof deletes its previous report before invoking Trivy and rejects missing
 or invalid fresh JSON, so a failed rerun cannot reuse earlier evidence.
-`test-foundation-mutations` rejects ten actual source regressions, including removal
-of the provider data-plane setting and an extra resource hidden in a real local module.
+The 18 native runs include public standalone and /8–/30 acceptance, each RFC1918
+range, unsupported /31–/32 rules, malformed/IPv6 input and the existing phase gates.
+`test-foundation-mutations` rejects eleven actual source regressions, including removal
+of the provider data-plane setting, an extra resource hidden in a real local module,
+and restoration of the old permissive egress predicate. The egress mutation must
+fail specifically for missing variable validation, not an unrelated provider error.
 
 Owner review and complete required hosted CI/security/integration/Pipeline checks
 remain mandatory. Before any future cloud work, separately authorize and prove

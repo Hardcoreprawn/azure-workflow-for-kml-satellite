@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -22,7 +23,9 @@ MUTATIONS = (
 )
 
 
-def run_mutation(tofu: str, name: str, before: str, after: str, *, with_module: bool = False) -> None:
+def run_mutation(
+    tofu: str, name: str, before: str, after: str, *, with_module: bool = False, source_file: str = "main.tf"
+) -> None:
     root = Path(__file__).resolve().parents[1]
     source = root / "infra/tofu/foundation"
     destination = root / ".validation/foundation-mutations" / name
@@ -33,7 +36,7 @@ def run_mutation(tofu: str, name: str, before: str, after: str, *, with_module: 
         _prepare_module(source, destination)
     else:
         (destination / ".terraform").symlink_to(source / ".terraform", target_is_directory=True)
-    main = destination / "main.tf"
+    main = destination / source_file
     original = main.read_text()
     if before not in original:
         raise ContractError(f"{name}: mutation anchor missing")
@@ -60,12 +63,32 @@ def run_mutation(tofu: str, name: str, before: str, after: str, *, with_module: 
             print(f"REJECTED {name}: {exc}")
             return
         raise ContractError(f"{name}: native gates incorrectly accepted the regression")
-    if not any(
-        marker in result.stdout
-        for marker in ("Test assertion failed", "Resource postcondition failed", "Resource precondition failed")
-    ):
+    rejected = (
+        _missing_egress_failure(result.stdout)
+        if source_file == "variables.tf"
+        else any(
+            marker in result.stdout
+            for marker in ("Test assertion failed", "Resource postcondition failed", "Resource precondition failed")
+        )
+    )
+    if not rejected:
         raise ContractError(f"{name}: failed for an unexpected reason; inspect {evidence}")
     print(f"REJECTED {name}: native security assertion/condition")
+
+
+def _missing_egress_failure(stdout: str) -> bool:
+    messages = [json.loads(line) for line in stdout.splitlines()]
+    errors = [
+        message
+        for message in messages
+        if message.get("type") == "diagnostic" and message["diagnostic"]["severity"] == "error"
+    ]
+    return bool(errors) and all(
+        message.get("@testrun") == "rejects_private_10_cidr"
+        and message["diagnostic"]["summary"] == "Missing expected failure"
+        and "var.approved_storage_ip_ranges" in message["diagnostic"]["detail"]
+        for message in errors
+    )
 
 
 def _prepare_module(source: Path, destination: Path) -> None:
@@ -85,6 +108,18 @@ def main() -> None:
         run_mutation(args.tofu, name, before, after)
     run_mutation(
         args.tofu,
+        "unsupported-storage-egress",
+        r"""can(regex("^[0-9.]+(/[0-9]+)?$", value)) &&
+      (can(cidrhost(value, 0)) || can(cidrhost("${value}/32", 0))) &&
+      !can(regex("^(10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.)", value)) &&
+      try(tonumber(split("/", value)[1]) >= 8 && tonumber(split("/", value)[1]) <= 30, true)""",
+        """can(cidrhost(strcontains(value, "/") ? value : "${value}/32", 0)) &&
+      !strcontains(value, ":") &&
+      try(tonumber(split("/", value)[1]) >= 8, true)""",
+        source_file="variables.tf",
+    )
+    run_mutation(
+        args.tofu,
         "extra-resource",
         'data "external" "inputs" {',
         'resource "random_string" "forbidden" { length = 6 }\n\ndata "external" "inputs" {',
@@ -96,7 +131,7 @@ def main() -> None:
         'module "forbidden" { source = "./mutation-child" }\n\ndata "external" "inputs" {',
         with_module=True,
     )
-    print("All 10 executable foundation mutations were rejected.")
+    print("All 11 executable foundation mutations were rejected.")
 
 
 if __name__ == "__main__":

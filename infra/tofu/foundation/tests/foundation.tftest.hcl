@@ -53,6 +53,7 @@ override_resource {
 }
 
 variables {
+  phase                      = "storage"
   context_path               = "../../../tests/fixtures/foundation/dev/context.json"
   bootstrap_path             = "../../../tests/fixtures/foundation/dev/bootstrap.json"
   writes_enabled             = true
@@ -183,6 +184,129 @@ run "rejects_global_egress" {
   variables {
     phase                      = "storage"
     approved_storage_ip_ranges = ["0.0.0.0/0"]
+  }
+  expect_failures = [var.approved_storage_ip_ranges]
+}
+
+run "accepts_public_storage_egress_boundaries" {
+  command = plan
+  variables {
+    phase                      = "storage"
+    approved_storage_ip_ranges = ["203.0.113.10", "11.0.0.0/8", "203.0.113.8/30", "172.15.0.1", "172.32.0.1"]
+  }
+  assert {
+    condition     = azurerm_storage_account.main[0].network_rules[0].ip_rules == toset(var.approved_storage_ip_ranges)
+    error_message = "Public standalone IPv4 and /8-/30 CIDRs must reach the storage firewall unchanged."
+  }
+}
+
+# Validate before storage exists, so provider rejection cannot mask the missing variable guard.
+run "rejects_private_10_cidr" {
+  command = plan
+  variables {
+    phase                      = "prerequisites"
+    artifacts                  = ["../../../tests/fixtures/foundation/dev/namespace.json"]
+    approved_storage_ip_ranges = ["10.0.0.0/24"]
+  }
+  expect_failures = [var.approved_storage_ip_ranges]
+}
+
+run "rejects_private_10_address" {
+  command = plan
+  variables {
+    phase                      = "prerequisites"
+    artifacts                  = ["../../../tests/fixtures/foundation/dev/namespace.json"]
+    approved_storage_ip_ranges = ["10.255.255.255"]
+  }
+  expect_failures = [var.approved_storage_ip_ranges]
+}
+
+run "rejects_private_172_cidr" {
+  command = plan
+  variables {
+    phase                      = "prerequisites"
+    artifacts                  = ["../../../tests/fixtures/foundation/dev/namespace.json"]
+    approved_storage_ip_ranges = ["172.16.0.0/12"]
+  }
+  expect_failures = [var.approved_storage_ip_ranges]
+}
+
+run "rejects_private_172_address" {
+  command = plan
+  variables {
+    phase                      = "prerequisites"
+    artifacts                  = ["../../../tests/fixtures/foundation/dev/namespace.json"]
+    approved_storage_ip_ranges = ["172.31.255.255"]
+  }
+  expect_failures = [var.approved_storage_ip_ranges]
+}
+
+run "rejects_private_192_cidr" {
+  command = plan
+  variables {
+    phase                      = "prerequisites"
+    artifacts                  = ["../../../tests/fixtures/foundation/dev/namespace.json"]
+    approved_storage_ip_ranges = ["192.168.0.0/16"]
+  }
+  expect_failures = [var.approved_storage_ip_ranges]
+}
+
+run "rejects_private_192_address" {
+  command = plan
+  variables {
+    phase                      = "prerequisites"
+    artifacts                  = ["../../../tests/fixtures/foundation/dev/namespace.json"]
+    approved_storage_ip_ranges = ["192.168.1.1"]
+  }
+  expect_failures = [var.approved_storage_ip_ranges]
+}
+
+run "rejects_cidr_31" {
+  command = plan
+  variables {
+    phase                      = "prerequisites"
+    artifacts                  = ["../../../tests/fixtures/foundation/dev/namespace.json"]
+    approved_storage_ip_ranges = ["203.0.113.10/31"]
+  }
+  expect_failures = [var.approved_storage_ip_ranges]
+}
+
+run "rejects_cidr_32" {
+  command = plan
+  variables {
+    phase                      = "prerequisites"
+    artifacts                  = ["../../../tests/fixtures/foundation/dev/namespace.json"]
+    approved_storage_ip_ranges = ["203.0.113.10/32"]
+  }
+  expect_failures = [var.approved_storage_ip_ranges]
+}
+
+run "rejects_cidr_below_minimum" {
+  command = plan
+  variables {
+    phase                      = "prerequisites"
+    artifacts                  = ["../../../tests/fixtures/foundation/dev/namespace.json"]
+    approved_storage_ip_ranges = ["12.0.0.0/7"]
+  }
+  expect_failures = [var.approved_storage_ip_ranges]
+}
+
+run "rejects_malformed_ipv4" {
+  command = plan
+  variables {
+    phase                      = "prerequisites"
+    artifacts                  = ["../../../tests/fixtures/foundation/dev/namespace.json"]
+    approved_storage_ip_ranges = ["203.0.113.256"]
+  }
+  expect_failures = [var.approved_storage_ip_ranges]
+}
+
+run "rejects_ipv6" {
+  command = plan
+  variables {
+    phase                      = "prerequisites"
+    artifacts                  = ["../../../tests/fixtures/foundation/dev/namespace.json"]
+    approved_storage_ip_ranges = ["2001:db8::/32"]
   }
   expect_failures = [var.approved_storage_ip_ranges]
 }
