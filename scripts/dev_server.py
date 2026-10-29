@@ -3,7 +3,7 @@
 Provides same-origin browsing so the website JavaScript can use relative
 ``/api/...`` paths exactly as in production.
 
-Usage: uv run python scripts/dev_server.py [--port 4280] [--func-port 7071]
+Usage: uv run python scripts/dev_server.py [--port 4280] [--func-port 7072]
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from urllib.parse import unquote, urlparse, urlunparse
 class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
     """Serves static files from website/ and proxies /api/* to the func host."""
 
-    func_origin: str = "http://localhost:7071"
+    func_origin: str = "http://localhost:7072"
 
     def end_headers(self) -> None:
         # Disable caching in dev so file edits are picked up immediately
@@ -151,8 +151,8 @@ def main() -> None:
     parser.add_argument(
         "--func-port",
         type=int,
-        default=7071,
-        help="Func host port (default: 7071)",
+        default=7072,
+        help="Admission host port (default: 7072)",
     )
     parser.add_argument(
         "--func-host",

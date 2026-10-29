@@ -144,7 +144,7 @@ case "$action" in
                 "${api_verifier_compose[@]}" rm --force local-ciam || result=1
                 echo "Restoring the standard development auth configuration."
                 if ! "${compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate orch event-grid-relay; then
-                    echo "ERROR: Could not restore the standard func/orch services." >&2
+                    echo "ERROR: Could not restore the standard admission/relay services." >&2
                     result=1
                 fi
             fi
@@ -156,7 +156,6 @@ case "$action" in
         trap 'exit 143' TERM
         "${api_verifier_compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" local-ciam func
         "${api_verifier_compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate orch
-            "${api_verifier_compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate func
         "${compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate event-grid-relay
         if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" ]]; then
             verifier_compute_base="http://func:80"

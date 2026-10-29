@@ -150,6 +150,7 @@ class TestTableRateLimiter:
         monkeypatch.setattr(rate_limit, "wire_rate_limiters", wire_rate_limiters_for_test)
         monkeypatch.setattr(security, "TableReplayStore", MagicMock())
 
+        monkeypatch.setenv("PIPELINE_ROLE", "orchestrator" if module_name == "function_app_orch" else "full")
         module = importlib.import_module(module_name)
         importlib.reload(module)
 

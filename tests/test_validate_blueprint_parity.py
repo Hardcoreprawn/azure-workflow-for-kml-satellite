@@ -1,66 +1,81 @@
-"""Tests for the local blueprint-parity validator's pure decision logic (#1407).
-
-Live HTTP behaviour (hitting real compute/orchestrator containers) is
-exercised by running `scripts/validate_blueprint_parity.py` itself against
-`make dev-all` — not something worth mocking in unit tests, matching the
-convention in tests/test_corpus_runner.py / tests/test_e2e_local.py.
-"""
+"""Fail-closed tests for the full role-owned route matrix."""
 
 from __future__ import annotations
 
 import httpx
-from validate_blueprint_parity import ROUTES, _is_registered
+import pytest
+from validate_blueprint_parity import LOCAL_SMOKE_HOST, ROUTES, RouteCheck, RouteState, check_host, validate_hosts
 
 
-class TestIsRegistered:
-    def test_non_404_is_registered(self):
-        resp = httpx.Response(200, request=httpx.Request("GET", "http://x/api/health"))
-        assert _is_registered(resp) is True
-
-    def test_404_with_body_is_registered(self):
-        """A route can be reached and still 404 for business reasons (#1407) —
-        e.g. export/{instance_id}/{format} when the instance doesn't exist."""
-        resp = httpx.Response(
-            404,
-            json={"error": "Pipeline not found or not complete"},
-            request=httpx.Request("GET", "http://x/api/export/x/eudr-pdf"),
-        )
-        assert _is_registered(resp) is True
-
-    def test_404_with_empty_body_is_not_registered(self):
-        """Azure Functions' own unregistered-route 404 has an empty body."""
-        resp = httpx.Response(404, request=httpx.Request("GET", "http://x/api/nope"))
-        assert _is_registered(resp) is False
-
-    def test_404_with_whitespace_only_body_is_not_registered(self):
-        resp = httpx.Response(404, content=b"   \n", request=httpx.Request("GET", "http://x/api/nope"))
-        assert _is_registered(resp) is False
+@pytest.mark.parametrize("status", [301, 302, 307, 308, 500, 502, 503])
+def test_redirects_and_server_errors_are_errors(status):
+    with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(status))) as client:
+        assert check_host(client, "http://worker", (RouteCheck("GET", "/api/x"),)) == {"GET /api/x": RouteState.ERROR}
 
 
-class TestRoutes:
-    def test_every_route_has_a_blueprint_label(self):
-        assert all(route.blueprint for route in ROUTES)
+@pytest.mark.parametrize("error", [httpx.ConnectError, httpx.ReadTimeout])
+def test_transport_failure_cannot_prove_absence(error):
+    def fail(request):
+        raise error("unreachable", request=request)
 
-    def test_every_route_path_is_absolute_api_path(self):
-        for route in ROUTES:
-            assert route.path.startswith("/api/"), f"{route.path!r} must start with /api/"
+    with httpx.Client(transport=httpx.MockTransport(fail)) as client:
+        assert not validate_hosts(client, "http://worker", "http://admission")
 
-    def test_covers_every_registered_http_blueprint(self):
-        """ROUTES must cover every blueprint function_registration._http_blueprints()
-        actually registers on both roles — not a hand-copied duplicate list, which
-        can silently drift out of sync with the real registration set (missed
-        the whole `pipeline` blueprint, including /api/analysis/submit and
-        /api/orchestrator/{id}, until this test was added). Blueprint objects
-        don't expose their registration name, so this compares counts rather
-        than names: a mismatch means at least one blueprint has zero route
-        coverage here.
-        """
-        from function_registration import _http_blueprints
 
-        covered = {route.blueprint for route in ROUTES}
-        expected_count = len(_http_blueprints())
-        assert len(covered) == expected_count, (
-            f"ROUTES covers {len(covered)} distinct blueprints "
-            f"({sorted(covered)}) but _http_blueprints() registers "
-            f"{expected_count} — every blueprint needs at least one route in ROUTES"
-        )
+@pytest.mark.parametrize("status", [200, 401, 403, 404])
+def test_invalid_unknown_route_control_fails(status):
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(status, content=b"not an empty 404"))
+    ) as client:
+        assert not validate_hosts(client, "http://worker", "http://admission")
+
+
+def test_exact_method_route_coverage_has_no_overwrite():
+    assert len({route.key for route in ROUTES}) == len(ROUTES)
+    assert len(ROUTES) > 100
+    assert RouteCheck("DELETE", "/api/user") in ROUTES
+    assert RouteCheck("OPTIONS", "/api/analysis/submit") in ROUTES
+
+
+def test_valid_matrix_and_positive_probes_pass():
+    worker_routes = {"/api/health", "/api/readiness"}
+
+    def respond(request):
+        path = request.url.path
+        if path.endswith("this-route-does-not-exist"):
+            return httpx.Response(404)
+        if request.url.host == "worker" and path not in worker_routes:
+            return httpx.Response(404)
+        return httpx.Response(200, json={"status": "ok"})
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        assert validate_hosts(client, "http://worker", "http://admission")
+
+
+def test_business_404_body_is_present_not_absent():
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(404, json={"error": "missing"}))
+    ) as client:
+        assert check_host(client, "http://worker", (RouteCheck("GET", "/api/x"),)) == {"GET /api/x": RouteState.PRESENT}
+
+
+def test_guarded_smoke_uses_same_host_header_as_negative_control():
+    def respond(request):
+        assert request.headers["Host"] == LOCAL_SMOKE_HOST
+        return httpx.Response(404)
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        check_host(client, "http://worker", (RouteCheck("GET", "/api/internal-smoke"),))
+        assert not validate_hosts(client, "http://worker", "http://admission")
+
+
+def test_unconfigured_webhook_requires_exact_application_response():
+    routes = (RouteCheck("POST", "/api/billing/webhook"), RouteCheck("GET", "/api/health"))
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(503, content=b"Billing not configured"))
+    ) as client:
+        result = check_host(client, "http://worker", routes)
+    assert result == {
+        "POST /api/billing/webhook": RouteState.PRESENT,
+        "GET /api/health": RouteState.ERROR,
+    }

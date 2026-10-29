@@ -172,13 +172,7 @@ services:
       retries: 18
       start_period: 60s
 
-  # Local parity twin of `func`, built from Dockerfile.orchestrator (#1407/#1408).
-  # Both images now register the identical public HTTP blueprint set — this
-  # service exists so that parity is provable locally (curl the same route
-  # against both hosts) before anything reaches Azure, per the "prove it
-  # locally first" principle: real cost/time is burned pushing infra changes
-  # to Azure only to discover a routing gap that a local container would
-  # have caught in seconds.
+  # Admission owns business HTTP and Event Grid; func owns Durable workers.
   orch:
     build:
       context: .
@@ -196,6 +190,7 @@ services:
       init-storage:
         condition: service_completed_successfully
     environment:
+      AzureFunctionsWebHost__hostid: canopex-local-admission
       AzureWebJobsStorage: >-  # pragma: allowlist secret
         DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
       AzureWebJobsFeatureFlags: EnableWorkerIndexing
@@ -247,18 +242,19 @@ services:
     depends_on:
       azurite:
         condition: service_healthy
-      func:
+      orch:
         condition: service_healthy
     volumes:
       - ${DEV_WORKSPACE:-.}/scripts:/app/scripts:ro
     working_dir: /app/scripts
     environment:
+      ADMISSION_HOST_ID: canopex-local-admission
       AZURITE_BLOB_HOST: azurite
       # Container stdout has no TTY, so Python fully block-buffers by
       # default — logs would only appear once the buffer filled or the
       # process exited, making `docker compose logs` look silent/broken.
       PYTHONUNBUFFERED: "1"
-    command: ["python", "dev_event_grid_relay.py", "--func-base", "http://func:80"]
+    command: ["python", "dev_event_grid_relay.py", "--func-base", "http://orch:80"]
     restart: "no"
 
   web:
@@ -266,7 +262,7 @@ services:
     ports:
       - "4280:4280"
     depends_on:
-      func:
+      orch:
         condition: service_healthy
     volumes:
       # ${DEV_WORKSPACE:-.} is set by `make dev-all`/`dev-rebuild` (see
@@ -277,7 +273,7 @@ services:
       - ${DEV_WORKSPACE:-.}/scripts/dev_server.py:/app/scripts/dev_server.py:ro
     working_dir: /app
     command: >-
-      python scripts/dev_server.py --port 4280 --func-host func --func-port 80
+      python scripts/dev_server.py --port 4280 --func-host orch --func-port 80
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
     healthcheck:

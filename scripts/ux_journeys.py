@@ -31,7 +31,7 @@ import httpx
 from playwright.sync_api import ConsoleMessage, Page, Request, sync_playwright
 
 DEFAULT_WEB_BASE = "http://localhost:4280"
-DEFAULT_FUNC_BASE = "http://localhost:7071"
+DEFAULT_FUNC_BASE = "http://localhost:7072"
 NAV_TIMEOUT_MS = 15_000
 
 

@@ -157,7 +157,7 @@ real-acquisition-check: ## Run real-world EUDR fixtures against the REAL Planeta
 	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/init_storage.py
 	AZURITE_BLOB_HOST=$(AZURITE_BLOB_HOST) uv run python scripts/real_acquisition_runner.py
 
-blueprint-parity-check: ## Verify compute and orchestrator serve the identical HTTP blueprint set (needs make dev-all running) (#1407)
+blueprint-parity-check: ## Verify fail-closed worker/admission route matrix (needs both local hosts)
 	uv run python scripts/validate_blueprint_parity.py
 
 verify-local: ## Full local verification gate: every service/surface/integration in one command (needs make dev-all running) (#1411, surfaces #1414)
@@ -292,8 +292,8 @@ scan-image: ## Trivy image scan (set IMAGE=...; TRIVY_IMAGE_EXIT=0 for advisory;
 
 scan: scan-iac scan-fs ## Run repo Trivy scans (IaC + filesystem)
 
-smoke: ## POST to /api/health/deep and exit non-zero if not healthy
-	@FUNC_URL=$${FUNC_URL:-http://localhost:7071}; \
+smoke: ## GET admission /api/health/deep and exit non-zero if not healthy
+	@FUNC_URL=$${FUNC_URL:-http://localhost:7072}; \
 	echo "Smoke-checking $${FUNC_URL}/api/health/deep …"; \
 	RESPONSE=$$(curl -sf "$${FUNC_URL}/api/health/deep" 2>/dev/null); \
 	if [ -z "$$RESPONSE" ]; then echo "ERROR: /api/health/deep unreachable" >&2; exit 1; fi; \

@@ -306,18 +306,17 @@ def test_api_verifier_restores_normal_auth_configuration_after_journey_failure(
     assert result.returncode == 17, result.stderr
     calls = docker_calls(docker_environment)
     start_calls = [call for call in calls if "up" in call]
-    assert len(start_calls) == 5
+    assert len(start_calls) == 4
     assert "func" in start_calls[0] and "local-ciam" in start_calls[0]
     assert "orch" in start_calls[1] and "--force-recreate" in start_calls[1]
-    assert "func" in start_calls[2] and "--force-recreate" in start_calls[2]
-    assert start_calls[3][-1] == "event-grid-relay"
-    assert "local-ciam" not in start_calls[4]
-    assert "orch" in start_calls[4] and "event-grid-relay" in start_calls[4]
+    assert start_calls[2][-1] == "event-grid-relay"
+    assert "local-ciam" not in start_calls[3]
+    assert "orch" in start_calls[3] and "event-grid-relay" in start_calls[3]
     cleanup_indexes = [
         index for index, call in enumerate(calls) if "local-ciam" in call and ("stop" in call or "rm" in call)
     ]
     assert cleanup_indexes
-    assert max(cleanup_indexes) < calls.index(start_calls[4])
+    assert max(cleanup_indexes) < calls.index(start_calls[3])
 
 
 @pytest.mark.parametrize(
@@ -348,8 +347,8 @@ def test_api_verifier_starts_relay_and_uses_reachable_urls(
     assert len(start_calls) >= 4
     assert "local-ciam" in start_calls[0] and "func" in start_calls[0]
     assert "orch" in start_calls[1] and "--force-recreate" in start_calls[1]
-    assert "func" in start_calls[2] and "--force-recreate" in start_calls[2]
-    assert "event-grid-relay" in start_calls[3] and "--force-recreate" in start_calls[3]
+    assert "event-grid-relay" in start_calls[2] and "--force-recreate" in start_calls[2]
+    assert not any("func" in call and "--force-recreate" in call for call in start_calls)
     uv_environment = json.loads(Path(os.environ["UV_API_ENV_LOG"]).read_text())
     assert tuple(uv_environment.values()) == expected_hosts
 

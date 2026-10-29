@@ -17,6 +17,17 @@ Retrieve the current Function App base URL from the Azure portal or via
 
 Production API base URL: `https://{productionHost}/api`
 
+All business endpoints below belong to **admission** (`function_app_orch.py`,
+`PIPELINE_ROLE=orchestrator`; local port 7072), with unchanged methods, application
+authentication and CORS. Worker (`function_app.py`, `PIPELINE_ROLE=full`; local
+port 7071) exposes only `/api/health` and `/api/readiness`, each GET/OPTIONS.
+Contract metadata, deep health, internal smoke and browser warm-up remain
+admission-only. Event Grid `blob_trigger` also belongs only to admission; its
+system key must come from that host. `/admin` and `/runtime/webhooks/*` are separate
+platform-managed surfaces, not application HTTP routes removed by this change.
+The exact indexed function names/bindings are pinned in
+`tests/fixtures/function_role_surface.json` and checked in fresh processes.
+
 | Method | Path | Auth | Expected (unauthed) | Purpose |
 | --- | --- | --- | --- | --- |
 | GET | /api/health | anonymous | 200 JSON | Liveness probe |

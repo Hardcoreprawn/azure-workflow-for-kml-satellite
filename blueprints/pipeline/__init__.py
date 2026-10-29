@@ -5,11 +5,12 @@ or any submodule.  The Azure Functions v2 runtime inspects binding
 parameter annotations at import time.  PEP 563 (stringified annotations)
 causes the runtime to fail with ``FunctionLoadError``.
 
-The Blueprint instance is created here and imported by each submodule
-so all routes, triggers, and activities register on a single blueprint.
+Admission ``bp`` owns HTTP/Durable clients and Event Grid ingress.
+``worker_bp`` owns orchestration and activity listeners. Registering the
+worker never registers admission bindings.
 
 ``PIPELINE_ROLE`` environment variable controls which submodules are loaded:
-  - ``full`` (default): all submodules — compute image registers activities
+  - ``full`` (default): worker submodules — compute image registers activities
     plus both ``orchestration_trigger`` functions (``treesight_orchestrator``,
     ``aoi_pipeline``)
   - ``orchestrator``: skips ``activities`` *and* both orchestration-trigger
@@ -26,8 +27,11 @@ import os
 import azure.durable_functions as df
 
 bp = df.Blueprint()
+worker_bp = df.Blueprint()
 
 _PIPELINE_ROLE = os.environ.get("PIPELINE_ROLE", "full")
+if _PIPELINE_ROLE not in {"full", "orchestrator"}:
+    raise ValueError(f"Unknown PIPELINE_ROLE: {_PIPELINE_ROLE!r}")
 
 # Import submodules to trigger decorator registration on ``bp``.
 # Order does not matter — each module imports ``bp`` from this package.

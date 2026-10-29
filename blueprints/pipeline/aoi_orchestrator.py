@@ -21,7 +21,7 @@ from treesight.constants import (
     DEFAULT_POLL_INTERVAL_SECONDS,
 )
 
-from . import bp
+from . import worker_bp as bp
 from ._payloads import (
     _acq_payload,
     _build_order_lookups,

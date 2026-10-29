@@ -9,17 +9,70 @@ Verifies that:
   an orchestrationTrigger function
 - Dockerfile.orchestrator exists and excludes heavy compute packages
 - deploy.yml builds both images and passes orchestrator_image to tofu
-- orchestrator and compute register the identical public HTTP blueprint set (#1407) —
-  #779's original strict-subset contract was over-scoped and is superseded here
+- admission retains the full public surface; worker exposes only probes (#1526)
 """
 
 from __future__ import annotations
 
 import ast
+import json
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "role", "pipeline_role"),
+    [("function_app", "compute", "full"), ("function_app_orch", "orchestrator", "orchestrator")],
+)
+def test_exact_fresh_process_binding_contract(entrypoint, role, pipeline_role):
+    expected = json.loads((REPO_ROOT / "tests/fixtures/function_role_surface.json").read_text())
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.index_function_surface", entrypoint],
+        cwd=REPO_ROOT,
+        env={**os.environ, "PIPELINE_ROLE": pipeline_role},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    assert json.loads(result.stdout.splitlines()[-1]) == expected[role]
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "pipeline_role"),
+    [
+        ("function_app", "orchestrator"),
+        ("function_app_orch", "full"),
+        ("function_app", "combined"),
+        ("function_app_orch", "unknown"),
+        ("function_app", ""),
+    ],
+)
+def test_contradictory_or_unknown_pipeline_role_fails_indexing(entrypoint, pipeline_role):
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.index_function_surface", entrypoint],
+        cwd=REPO_ROOT,
+        env={**os.environ, "PIPELINE_ROLE": pipeline_role},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode != 0
+    assert "PIPELINE_ROLE" in result.stderr
+
+
+def test_unknown_entrypoint_role_is_rejected():
+    from function_registration import register_function_blueprints
+
+    with pytest.raises(ValueError, match="role"):
+        register_function_blueprints(None, role="combined")
 
 
 # ── 1. PIPELINE_ROLE=orchestrator skips activities import ────────────────
@@ -232,24 +285,35 @@ def test_function_app_orch_imports_and_indexes_without_monitoring_timer(monkeypa
     assert "monitoring_scheduler" not in names, "function_app_orch must not register the monitoring timer trigger"
 
 
-# ── 7. Big/little HTTP blueprint contract (#1407, supersedes #779) ─────
+# ── 7. Role-owned HTTP contract (#1526) ─────
 
 
-def test_orchestrator_and_compute_share_identical_http_blueprints():
-    """Orchestrator and compute must register the identical public HTTP blueprint set.
+def test_worker_indexes_only_operational_http_routes():
+    """The worker exposes probes, never an admission or business endpoint."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import json; import function_app; "
+            "print(json.dumps(sorted(f.get_trigger().route for f in "
+            "function_app.app.get_functions() if f.get_trigger().type == 'httpTrigger')))",
+        ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "PIPELINE_ROLE": "full"},
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    assert json.loads(result.stdout.splitlines()[-1]) == ["health", "readiness"]
 
-    #779 originally scoped the orchestrator down to health+pipeline only, but the
-    frontend's single API base has targeted the orchestrator hostname exclusively
-    since #724 — meaning every other public blueprint (billing, upload, account,
-    org, export, catalogue, contact, ops, analysis) was unreachable in production.
-    None of them depend on GDAL/rasterio, so both roles now serve the same HTTP
-    surface; only activities (PIPELINE_ROLE) and the monitoring scheduler timer
-    remain compute-only (#1407).
-    """
+
+def test_admission_retains_public_http_blueprints():
+    """Admission retains all public blueprints, without worker listeners."""
     from function_registration import _http_blueprints
 
     http_bps = _http_blueprints()
-    assert len(http_bps) >= 13, f"Expected at least 13 shared HTTP blueprints, got {len(http_bps)}"
+    assert len(http_bps) == 14
 
 
 def test_orchestrator_includes_billing_upload_and_ops():
@@ -263,7 +327,7 @@ def test_orchestrator_includes_billing_upload_and_ops():
 
     for name, bp in [("billing", billing_bp), ("upload", upload_bp), ("ops", ops_bp)]:
         assert id(bp) in http_ids, (
-            f"The '{name}' blueprint must be registered on every role — the orchestrator "
+            f"The '{name}' blueprint must be registered on admission — the orchestrator "
             "is the frontend's only configured API base (#1407)."
         )
 

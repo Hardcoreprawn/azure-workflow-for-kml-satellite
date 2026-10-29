@@ -2,9 +2,9 @@
 # Canopex Orchestrator Image  (#466)
 #
 # Slim variant of the application image: no GDAL, no rasterio,
-# no numpy, no Rust extension.  Handles HTTP endpoints, Durable
-# orchestrators, blob triggers, and submission — but NOT activity
-# functions that perform imagery acquisition / enrichment.
+# no numpy, no Rust extension. Handles admission HTTP endpoints,
+# Durable clients and Event Grid ingress, but no orchestration,
+# activity or monitoring scheduler listeners.
 #
 # The compute image (Dockerfile) continues to register activity
 # functions.  Both images share the same Durable task hub and
@@ -23,7 +23,7 @@ ARG APP_VERSION=0.0.0-dev
 ARG GIT_SHA=unknown
 
 LABEL org.opencontainers.image.source="https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite" \
-      org.opencontainers.image.description="Canopex orchestrator image — HTTP + Durable orchestrators, no GDAL" \
+      org.opencontainers.image.description="Canopex admission image — HTTP, Durable clients and Event Grid ingress" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${GIT_SHA}"
 
@@ -40,11 +40,11 @@ COPY --from=uv /uv /usr/local/bin/uv
 # because blueprints/analysis.py → treesight.ai.client imports it
 # at module load time; excluding it causes a startup ModuleNotFoundError.
 COPY pyproject.toml uv.lock ./
-RUN uv export --no-dev --no-hashes > /tmp/requirements.txt && \
+RUN uv export --no-dev --no-hashes > .build-requirements.txt && \
     grep -vE '^(fiona|rasterio|numpy|shapely|pyproj|pystac-client|planetary-computer)==' \
-        /tmp/requirements.txt > /tmp/orch-requirements.txt && \
-    uv pip install --system -r /tmp/orch-requirements.txt && \
-    rm -f /tmp/requirements.txt /tmp/orch-requirements.txt /usr/local/bin/uv
+        .build-requirements.txt > .build-orch-requirements.txt && \
+    uv pip install --system -r .build-orch-requirements.txt && \
+    rm -f .build-requirements.txt .build-orch-requirements.txt /usr/local/bin/uv
 
 # Copy application code only (no scripts/, typings/, tests/, docs/)
 # function_app_orch.py is the orchestrator entry point, installed as

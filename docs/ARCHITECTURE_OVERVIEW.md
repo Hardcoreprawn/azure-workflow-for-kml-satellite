@@ -79,8 +79,14 @@ The name `orchestrator` refers to the API-facing app, not where Durable
 orchestration functions currently execute. With `PIPELINE_ROLE=orchestrator`,
 [pipeline registration](../blueprints/pipeline/__init__.py) omits activities and
 both orchestration listeners. `PIPELINE_ROLE=full` loads them on compute.
-[Shared registration](../function_registration.py) currently registers HTTP
-blueprints on both roles and the monitoring scheduler on compute only.
+[Role-owned registration](../function_registration.py) exposes only
+`GET, OPTIONS /api/health` and `/api/readiness` on compute. Admission owns every
+business HTTP endpoint, warm-up, contract, deep health, internal smoke, Durable
+client and Event Grid ingress. Compute owns both unchanged orchestration listeners,
+all activity bindings and the monitoring scheduler; it has no Event Grid binding.
+Unknown or contradictory entrypoint/`PIPELINE_ROLE` settings fail indexing.
+There is no combined local role. The shared Durable task hub, storage and queued
+activity names/payloads are unchanged.
 
 Browsers use the API-facing hostname from `/api-config.json`, obtained operationally
 with `tofu output -raw function_app_orch_default_hostname`. SWA serves static files;
@@ -88,6 +94,10 @@ CIAM/MSAL supplies bearer tokens verified by protected backend routes. Current
 diagnostics enforce bearer identity and originating-org access before status/telemetry.
 Registration, intended browser ingress
 and actual network access are different facts: compute isolation must be verified.
+Python route isolation does not remove Functions-managed `/admin` or
+`/runtime/webhooks/*` surfaces. Local indexing/HTTP evidence does not establish
+Azure ingress isolation, deployed key/identity wiring or production singleton
+execution; those retain their separate release gates.
 
 Cosmos stores application records; Blob Storage holds uploaded source, claims,
 manifests and raster artifacts. Durable owns execution history and work queues.

@@ -8,7 +8,11 @@ trigger routes registered in the Azure Functions app.
 from __future__ import annotations
 
 import ast
+import json
+import os
 import re
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -24,19 +28,23 @@ OPENAPI = ROOT / "docs" / "openapi.yaml"
 
 
 def _live_routes() -> set[str]:
-    """Return the set of route patterns from all registered HTTP functions."""
-    from function_app import app
-
-    # Clear stale state so get_functions() succeeds across test modules
-    app.functions_bindings = {}
-    routes: set[str] = set()
-    for fn_info in app.get_functions():
-        for binding in fn_info.get_bindings():
-            if binding.type in ("httpTrigger",):
-                route = getattr(binding, "route", None)
-                if route:
-                    routes.add(f"/api/{route}")
-    return routes
+    """Public documentation describes admission, indexed in a fresh process."""
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.index_function_surface", "function_app_orch"],
+        cwd=ROOT,
+        env={**os.environ, "PIPELINE_ROLE": "orchestrator"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    surface = json.loads(result.stdout.splitlines()[-1])
+    return {
+        f"/api/{binding['route']}"
+        for bindings in surface.values()
+        for binding in bindings
+        if binding["type"] == "httpTrigger"
+    }
 
 
 def _reference_routes() -> set[str]:

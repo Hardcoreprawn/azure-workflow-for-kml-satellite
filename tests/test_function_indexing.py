@@ -121,5 +121,5 @@ def test_function_count_is_expected():
     when intentionally adding or removing endpoints.
     """
     names = sorted(fn.get_function_name() or "" for fn in _ALL_FUNCTIONS)
-    # As of PR #301: 32 functions.  Update when adding/removing.
-    assert len(_ALL_FUNCTIONS) >= 30, f"Expected at least 30 registered functions, got {len(_ALL_FUNCTIONS)}: {names}"
+    # #1526: two probes, two orchestrators, 23 activities and one scheduler.
+    assert len(_ALL_FUNCTIONS) == 28, f"Expected 28 worker functions, got {len(_ALL_FUNCTIONS)}: {names}"

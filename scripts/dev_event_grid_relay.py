@@ -14,7 +14,7 @@ Grid subscription would.
 
 Usage:
     uv run python scripts/dev_event_grid_relay.py
-    uv run python scripts/dev_event_grid_relay.py --func-base http://func:80
+    uv run python scripts/dev_event_grid_relay.py --func-base http://orch:80
 
 Runs forever; stop with Ctrl+C (or `docker compose down` when run as the
 event-grid-relay service).
@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 
@@ -31,7 +32,8 @@ from _azurite import AZURITE_BLOB_BASE, AZURITE_CONN_STR
 from azure.storage.blob import BlobServiceClient
 from simulate_upload import DEFAULT_CONTAINER, DEFAULT_EVENT_GRID_FUNCTION_NAME, fire_event_grid
 
-DEFAULT_FUNC_BASE = "http://func:80"
+DEFAULT_FUNC_BASE = "http://orch:80"
+ADMISSION_HOST_ID = os.environ.get("ADMISSION_HOST_ID", "canopex-local-admission")
 POLL_INTERVAL_SECONDS = 2.0
 _TICKET_PREFIX = ".tickets/"
 _RELAYABLE_EXTENSIONS = (".kml", ".kmz")
@@ -76,7 +78,7 @@ def _extract_eventgrid_key(host_json_text: str) -> str | None:
 
 
 def _fetch_eventgrid_key(blob_service: BlobServiceClient, retries: int = 15, delay: float = 2.0) -> str | None:
-    """Read the func host's current Event Grid system key from Azurite.
+    """Read only the admission host's Event Grid system key from Azurite.
 
     The Functions host auto-generates and stores this in the
     azure-webjobs-secrets blob container (in plaintext locally — there's
@@ -89,12 +91,10 @@ def _fetch_eventgrid_key(blob_service: BlobServiceClient, retries: int = 15, del
     secrets_container = blob_service.get_container_client(_SECRETS_CONTAINER)
     for attempt in range(1, retries + 1):
         try:
-            blobs = sorted(secrets_container.list_blobs(), key=lambda b: b.last_modified, reverse=True)
-            for blob in blobs:
-                text = secrets_container.get_blob_client(blob.name).download_blob().readall()
-                key = _extract_eventgrid_key(text.decode())
-                if key:
-                    return key
+            text = secrets_container.get_blob_client(f"{ADMISSION_HOST_ID}/host.json").download_blob().readall()
+            key = _extract_eventgrid_key(text.decode())
+            if key:
+                return key
         except Exception as exc:
             print(f"  ... could not read Event Grid system key yet ({exc})")
         if attempt < retries:
@@ -117,7 +117,7 @@ def relay_forever(
     client = BlobServiceClient.from_connection_string(AZURITE_CONN_STR)
     container_client = client.get_container_client(container)
 
-    print("Fetching the func host's Event Grid system key from Azurite...")
+    print("Fetching the admission host's Event Grid system key from Azurite...")
     function_key = _fetch_eventgrid_key(client)
     if not function_key:
         print(

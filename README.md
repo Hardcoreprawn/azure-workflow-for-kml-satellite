@@ -59,9 +59,10 @@ make test-fast TESTS="tests/test_docs_route_drift.py"
 make check
 ```
 
-The local website is `http://localhost:4280`; its development proxy targets the
-compute host at `http://localhost:7071`. Direct orchestrator checks use
-`http://localhost:7072`. For host/container differences, lifecycle hooks,
+The local website is `http://localhost:4280`; its development proxy targets
+admission (`orch`) at `http://localhost:7072`. Compute at
+`http://localhost:7071` exposes only health/readiness application probes.
+For host/container differences, lifecycle hooks,
 credentials, rebuilds and shutdown, use the [runbook](docs/OPERATIONS_RUNBOOK.md).
 Starting the stack does not establish an authenticated browser session.
 
@@ -76,8 +77,10 @@ does not replace integration or pipeline acceptance:
 | `make test-int` | Required Azurite integration tier |
 | `make test-int-live` | Opt-in running-stack integration tier |
 | `make test-int-stripe` | Opt-in external Stripe test-mode tier |
-| `make test-pipeline-local` | Disposable synthetic pipeline gate |
-| `make verify-local` | Running-stack surface/integration verification |
+| `make test-pipeline-local` | Disposable two-host admission-to-worker synthetic pipeline gate |
+| `make blueprint-parity-check` | Fail-closed exact application route/method role matrix, not parity |
+| `make verify-local` | Running-stack role surface and storage-native integration verification (not auth proof) |
+| `make verify-local-api` | Separate verified-identity/ownership/artifact journey; recreates local services, never use on a shared stack |
 
 The [CI workflow](.github/workflows/ci.yml) is the executable CI definition.
 Do not infer CI coverage from local target names: JavaScript CI wiring and expanded

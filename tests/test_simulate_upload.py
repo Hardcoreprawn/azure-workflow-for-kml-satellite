@@ -54,7 +54,7 @@ def test_fire_event_grid_includes_function_name_and_code(monkeypatch: pytest.Mon
     )
 
     assert instance_id == "test-id"
-    assert captured["url"] == "http://localhost:7071/runtime/webhooks/eventgrid"
+    assert captured["url"] == "http://localhost:7072/runtime/webhooks/eventgrid"
     assert captured["params"] == {"functionName": "blob_trigger", "code": "abc123"}
 
 
@@ -113,7 +113,7 @@ def test_fire_event_grid_honours_func_base_override(monkeypatch: pytest.MonkeyPa
         blob_name="file.kml",
         content_length=123,
         container="kml-input",
-        func_base="http://func:80",
+        func_base="http://orch:80",
     )
 
-    assert captured["url"] == "http://func:80/runtime/webhooks/eventgrid"
+    assert captured["url"] == "http://orch:80/runtime/webhooks/eventgrid"
