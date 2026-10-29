@@ -47,6 +47,13 @@ Exact APIs:
 still validating bootstrap. Unknown/missing fields, duplicate JSON keys,
 non-finite numbers, wrong types, versions, principals, backend, ancestry,
 revisions and digests fail closed. CLI errors are explicit and omit tracebacks.
+UUIDs accept mixed/uppercase hexadecimal, including UUID segments in ARM
+references. Context, ancestry, identity-separation and grant comparisons ignore
+only UUID letter case; non-UUID text retains its existing exact constraints.
+The application role UUID is derived from the lowercase subscription UUID.
+Received bytes and their SHA256 remain untouched. JSON conversion failures
+(including overlong integer literals) become bounded `ContractError`/CLI errors;
+specific duplicate-key and non-finite-number errors retain their own messages.
 An artifact (including context/bootstrap) is at most `MAX_BYTES=65,536` bytes.
 The JSON-encoded artifact array has a separate
 `MAX_ARTIFACT_BUNDLE_BYTES=2,097,152` byte transport limit; the complete external

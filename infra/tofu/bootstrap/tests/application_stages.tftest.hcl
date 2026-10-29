@@ -257,3 +257,33 @@ run "reject_unapproved_application_network" {
   }
   expect_failures = [var.application_allowed_ip_ranges]
 }
+
+run "uuid_case_does_not_change_authorized_custodian_or_role_seed" {
+  command = plan
+  variables {
+    application_phase            = "disabled"
+    subscription_id              = "ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF"
+    bootstrap_operator_object_id = "AbCdEfAb-CdEf-4aBc-8dEf-AbCdEfAbCdEf"
+  }
+  override_data {
+    target = data.azurerm_client_config.operator
+    values = { object_id = "abcdefab-cdef-4abc-8def-abcdefabcdef" }
+  }
+  assert {
+    condition     = local.application_role_uuid == uuidv5("url", "canopex/abcdefab-cdef-4abc-8def-abcdefabcdef/dev/foundation-application")
+    error_message = "The same subscription UUID must always derive the same role UUID, irrespective of case."
+  }
+}
+
+run "uuid_case_cannot_alias_storage_encryption_as_custodian" {
+  command = plan
+  variables {
+    application_phase            = "disabled"
+    bootstrap_operator_object_id = "CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC"
+  }
+  override_data {
+    target = data.azurerm_client_config.operator
+    values = { object_id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }
+  }
+  expect_failures = [azurerm_role_assignment.key_custodian]
+}

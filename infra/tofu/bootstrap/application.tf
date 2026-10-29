@@ -17,7 +17,7 @@ locals {
   application_namespace      = "rg-${local.name_suffix}-application"
   application_vault_name     = "a${var.project_code}${var.environment}v${random_string.storage_suffix.result}"
   application_actions        = jsondecode(file("${path.module}/../../contracts/application-governance/actions.json"))
-  application_role_uuid      = uuidv5("url", "canopex/${var.subscription_id}/${var.environment}/foundation-application")
+  application_role_uuid      = uuidv5("url", "canopex/${lower(var.subscription_id)}/${var.environment}/foundation-application")
   application_custody_phases = local.application_enabled && contains(["custody", "encryption"], var.application_phase)
   application_context = local.application_enabled ? {
     environment                       = var.environment
@@ -117,7 +117,7 @@ resource "azurerm_role_definition" "application_foundation" {
 
   lifecycle {
     postcondition {
-      condition     = self.role_definition_resource_id == "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/${local.application_role_uuid}"
+      condition     = lower(self.role_definition_resource_id) == lower("/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/${local.application_role_uuid}")
       error_message = "The provider's actual role ID must match the versioned namespace contract; stop rather than publish a guessed role ID."
     }
   }

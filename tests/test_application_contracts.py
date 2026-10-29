@@ -6,6 +6,7 @@ import dataclasses
 import hashlib
 import io
 import json
+import re
 import subprocess
 import sys
 import unittest
@@ -153,6 +154,143 @@ class ApplicationContractTests(unittest.TestCase):
                 for raw in (b'{"x":1,"x":2}', b'{"x":NaN}', b"\xff"):
                     with self.assertRaises(ContractError):
                         decoder(raw)
+
+    def _lettered_uuid_inputs(self) -> tuple[bytes, dict[str, object]]:
+        replacements = {
+            str(index) * 8
+            + "-"
+            + str(index) * 4
+            + "-4"
+            + str(index) * 3
+            + "-8"
+            + str(index) * 3
+            + "-"
+            + str(index) * 12: f"a{str(index) * 7}-abcd-4{str(index) * 3}-8{str(index) * 3}-{str(index) * 12}"
+            for index in range(1, 10)
+        }
+        bootstrap = self.bootstrap.decode()
+        context = (FIXTURES / "context.json").read_text()
+        for original, replacement in replacements.items():
+            bootstrap = bootstrap.replace(original, replacement)
+            context = context.replace(original, replacement)
+        return bootstrap.encode(), json.loads(context)
+
+    def test_external_uuid_case_variants_preserve_raw_hashes_across_all_stages(self) -> None:
+        bootstrap, approved = self._lettered_uuid_inputs()
+        bootstrap = re.sub(
+            application_contract.UUID_PATTERN, lambda match: match[0].upper(), bootstrap.decode()
+        ).encode()
+        bootstrap += b" \n"
+        approved["bootstrap_sha256"] = hashlib.sha256(bootstrap).hexdigest()
+        role_uuid = ExpectedContext.from_bytes(encode(approved)).role_definition_id.rsplit("/", 1)[-1]
+        for spelling in (str.lower, str.upper, str.title):
+            with self.subTest(spelling=spelling.__name__):
+                context_raw = re.sub(
+                    application_contract.UUID_PATTERN,
+                    lambda match, spelling=spelling: spelling(match[0]),
+                    encode(approved).decode(),
+                )
+                context = ExpectedContext.from_bytes(context_raw.encode())
+                query = {
+                    "context": context_raw,
+                    "bootstrap": bootstrap.decode(),
+                    "artifacts": "[]",
+                    "phase": "namespace",
+                }
+                result = self._external_result(encode(query))
+                self.assertEqual(result.returncode, 0, result.stderr.decode())
+                self.assertEqual(parse_bootstrap(bootstrap, context).raw_sha256, approved["bootstrap_sha256"])
+                namespace = json.loads(result.stdout)["contract"].encode()
+                self.assertEqual(
+                    json.loads(namespace)["payload"]["foundation_role_definition_id"].rsplit("/", 1)[-1], role_uuid
+                )
+                previous = (namespace,)
+                for index, stage in enumerate(application_contract.STAGES[1:4], 1):
+                    payload = json.loads(self.chain[index])["payload"] if stage in ("prerequisites", "key") else {}
+                    payload_raw = (
+                        encode(payload).decode().replace(self.context.subscription_id, context.subscription_id)
+                    )
+                    payload = json.loads(
+                        re.sub(application_contract.UUID_PATTERN, lambda match: match[0].swapcase(), payload_raw)
+                    )
+                    artifact = create_artifact(stage, payload, bootstrap, previous, context)
+                    artifact = re.sub(
+                        application_contract.UUID_PATTERN, lambda match: match[0].swapcase(), artifact.decode()
+                    ).encode()
+                    previous = (*previous, artifact)
+                query = {**query, "phase": "encryption", "artifacts": json.dumps([raw.decode() for raw in previous])}
+                result = self._external_result(encode(query))
+                self.assertEqual(result.returncode, 0, result.stderr.decode())
+                final = json.loads(result.stdout)["contract"].encode()
+                self.assertEqual(json.loads(final)["prior_sha256"], hashlib.sha256(previous[-1]).hexdigest())
+                self.assertEqual(json.loads(final)["bootstrap_sha256"], hashlib.sha256(bootstrap).hexdigest())
+                self.assertEqual(
+                    parse_chain(bootstrap, (*previous, final), context, "encryption")[-1].raw_sha256,
+                    hashlib.sha256(final).hexdigest(),
+                )
+                with self.assertRaisesRegex(ContractError, "SHA256"):
+                    parse_bootstrap(bootstrap + b" ", context)
+
+    def test_uuid_case_cannot_bypass_identity_separation(self) -> None:
+        bootstrap, approved = self._lettered_uuid_inputs()
+        for field in ("principal_id", "client_id"):
+            with self.subTest(field=field):
+                document = json.loads(bootstrap)
+                document["identities"]["workload"][field] = document["identities"]["foundation"][field].upper()
+                raw = encode(document)
+                context = ExpectedContext.from_bytes(
+                    encode({**approved, "bootstrap_sha256": hashlib.sha256(raw).hexdigest()})
+                )
+                with self.assertRaisesRegex(ContractError, "must be distinct"):
+                    parse_bootstrap(raw, context)
+        context = ExpectedContext.from_bytes(
+            encode({**approved, "bootstrap_sha256": hashlib.sha256(bootstrap).hexdigest()})
+        )
+        namespace = create_artifact("namespace", {}, bootstrap, (), context)
+        payload = json.loads(self.chain[1])["payload"]
+        payload = json.loads(encode(payload).decode().replace(self.context.subscription_id, context.subscription_id))
+        for principal in (
+            context.foundation.principal_id,
+            context.bootstrap_operator_principal_id,
+            context.bootstrap_encryption_principal_id,
+        ):
+            with self.subTest(principal=principal), self.assertRaisesRegex(ContractError, "must differ"):
+                create_artifact(
+                    "prerequisites",
+                    {**payload, "encryption_principal_id": principal.upper()},
+                    bootstrap,
+                    (namespace,),
+                    context,
+                )
+        excluded = dataclasses.replace(context, bootstrap_operator_principal_id=context.foundation.principal_id.upper())
+        with self.assertRaisesRegex(ContractError, "distinct from deployment"):
+            parse_bootstrap(bootstrap, excluded)
+
+    def test_huge_json_integer_is_a_bounded_contract_error_in_decoders_and_cli(self) -> None:
+        raw = b'{"value":' + b"9" * 5000 + b"}"
+        self.assertLess(len(raw), MAX_BYTES)
+        for decoder in (
+            application_contract.decode,
+            application_contract.decode_artifact_bundle,
+            application_contract.decode_external_request,
+        ):
+            with self.subTest(decoder=decoder.__name__), self.assertRaisesRegex(ContractError, "invalid JSON"):
+                decoder(raw)
+        result = self._external_result(raw)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, b"")
+        self.assertIn(b"contract error: invalid JSON", result.stderr)
+        self.assertNotIn(b"Traceback", result.stderr)
+        self.assertLess(len(result.stderr), 1024)
+
+    def test_specific_json_contract_errors_are_not_wrapped_as_conversion_errors(self) -> None:
+        for raw, message in (
+            (b'{"x":1,"x":2}', "duplicate JSON fields are forbidden"),
+            (b'{"x":NaN}', "non-finite JSON number: NaN"),
+        ):
+            with self.subTest(message=message), self.assertRaises(ContractError) as caught:
+                application_contract.decode_external_request(raw)
+            self.assertEqual(str(caught.exception), message)
 
     def test_cli_validate_create_and_explicit_missing_file_error(self) -> None:
         common = [

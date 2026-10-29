@@ -201,6 +201,9 @@ mocked-provider tests. Provider installation needs registry access; Azure
 credentials, Azure CLI login and a remote state account are not required.
 It rejects leftover `errored_test.tfstate`, since a test cleanup failure must
 not masquerade as success.
+UUID letter case does not change the authenticated custodian or application
+role identifier. Custodian/deployment/encryption identity separation also compares
+UUIDs case-insensitively, so alternate spelling cannot bypass the exclusion.
 
 The new root uses a newer validator than the unchanged legacy deployment
 (1.8.0): that older mock implementation rejects AzureRM's required provider
