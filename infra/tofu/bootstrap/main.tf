@@ -104,16 +104,16 @@ resource "azurerm_role_assignment" "key_custodian" {
 
   lifecycle {
     precondition {
-      condition     = data.azurerm_client_config.operator.object_id == var.bootstrap_operator_object_id
+      condition     = lower(data.azurerm_client_config.operator.object_id) == lower(var.bootstrap_operator_object_id)
       error_message = "Authenticate as the explicitly approved bootstrap key custodian."
     }
     precondition {
       condition = !contains(
         concat(
-          [for identity in azurerm_user_assigned_identity.deployment : identity.principal_id],
-          [azurerm_user_assigned_identity.storage_encryption.principal_id]
+          [for identity in azurerm_user_assigned_identity.deployment : lower(identity.principal_id)],
+          [lower(azurerm_user_assigned_identity.storage_encryption.principal_id)]
         ),
-        var.bootstrap_operator_object_id
+        lower(var.bootstrap_operator_object_id)
       )
       error_message = "Bootstrap key custody must remain separate from deployment and storage-encryption identities."
     }

@@ -152,7 +152,8 @@ separate. No consumer reads an upstream state snapshot.
 
 ### Accepted application-foundation boundary
 
-The owner approved these code-scope decisions on 2026-10-28:
+The owner approved these code-scope decisions on 2026-10-28, with the final
+governance-owned vault decision on 2026-10-29:
 
 - Application storage requires Entra authentication, deny-default endpoint
   firewalls, infrastructure/CMK encryption, versioning and 30-day Blob/container
@@ -184,6 +185,17 @@ Implementation order is #1628 (governance/interface prerequisite), then #1627
 (the 10-resource Blob core, excluding RG, vault and role-assignment ownership).
 Both remain offline work; actual authority and permission propagation need
 separately approved cloud evidence.
+
+The offline governance implementation is
+[`infra/tofu/bootstrap/application.tf`](../../infra/tofu/bootstrap/application.tf):
+default-closed application phases, protected RG/vault, one explicit control-plane
+role and governance-owned custody/encryption grants. Its
+[strict immutable interface](../../infra/contracts/application-governance/README.md)
+retains bootstrap v1 and adds a separate application schema with raw-byte digest
+chaining. [Provider-backed action evidence](../../infra/tofu/bootstrap/README.md#exact-control-plane-allowlist-and-provider-evidence)
+and credential-free tests/scans support review; none establishes live permissions
+or authorizes activation. Governance never reads or manages application key
+material, and foundation receives no vault control-plane writes.
 
 | Layer / sole authority | Owns | Receives and publishes |
 | --- | --- | --- |

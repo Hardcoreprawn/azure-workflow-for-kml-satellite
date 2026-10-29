@@ -1,6 +1,6 @@
 # Isolated bootstrap boundary
 
-This standalone root implements the first slice of #1625 under #1620. It is
+This standalone root implements #1625 and application governance #1628 under #1620. It is
 **not wired into deployment** and does not authorize an Azure plan or apply.
 The existing application root and shared deployment identity remain unchanged.
 
@@ -9,6 +9,122 @@ Task Scheduler and sleeping workers. DEV uses the Consumption scheduler SKU;
 production SKU, region, operational limits and cloud spend remain separate
 decisions. This root creates **no scheduler, application hosts or runtime data
 services**. See [ADR 0008](../../../docs/adr/0008-supported-azure-hosting-and-deployment-ownership.md).
+
+## Default-closed application governance (#1628)
+
+The owner selected **governance-owned application RG and vault lifecycle** on
+2026-10-29. Foundation owns its application key, encryption UAMI, audit resources
+and storage, not vault control-plane writes or grants. `application.tf` is part
+of this existing bootstrap root, not a second overlapping namespace/RBAC writer.
+No Azure plan, apply, policy assignment, deployment or spending is authorized.
+
+`application_phase` defaults to `disabled`. Existing bootstrap resources,
+state-container grants and `bootstrap_contract` **schema v1 remain unchanged**.
+Applications use the separately named, immutable
+[application contract v1](../../contracts/application-governance/README.md).
+The reserved `enable_application_governance` hard stop is replaced, not retained
+as a compatibility switch.
+
+| Governance phase | Declarations added | Earlier application artifacts |
+| --- | --- | --- |
+| `namespace` | Fresh protected application RG, dedicated RBAC vault, exact custom role and RG-scoped foundation assignment | none |
+| `custody` | Foundation Crypto Officer at the application vault only | namespace, foundation prerequisites |
+| `encryption` | Crypto Service Encryption User at the versionless application key ARM scope, assigned to the encryption UAMI only | namespace, prerequisites, custody, foundation key |
+
+All application phases require bootstrap `state`, exact approved bootstrap JSON
+bytes and SHA256, explicit producer/policy revisions, and explicit application
+egress. Application egress is a subset of already validated bootstrap public IPv4
+ranges: these IaC runners also need their own upstream state backend. The vault
+denies other public traffic, permits Azure trusted services for authenticated CMK
+use, enables RBAC, 90-day soft deletion and purge protection.
+An application-only provider alias disables automatic recovery/adoption and purge
+on destroy without changing the original bootstrap provider behavior.
+RG/vault `prevent_destroy` guards accidental plans, not privileged cloud actions,
+configuration removal or state repair.
+
+### Vault authorization is an operation boundary, not field isolation
+
+AzureRM **4.22.0** [uses Key Vault API 2023-02-01 and writes inline access policies
+and authorization mode via vault PUT/PATCH](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.22.0/internal/services/keyvault/key_vault_resource.go#L325).
+The separate [access-policy resource](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.22.0/internal/services/keyvault/key_vault_access_policy_resource.go)
+uses add/replace/remove subresource operations. Excluding only that subresource
+would not prevent inline policy writes.
+The [selected API defaults a newly created vault to access-policy mode if RBAC
+is omitted](https://github.com/Azure/azure-rest-api-specs/blob/9473ef10695a6393bdd1011ce61769a79775b1ee/specification/keyvault/resource-manager/Microsoft.KeyVault/KeyVault/stable/2023-02-01/keyvault.json#L1267);
+Microsoft [warns that vault-write permission can self-grant in that mode](https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-access-policy).
+Microsoft [separately requires unrestricted roleAssignments/write when changing
+an existing vault's authorization model](https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-guide#enable-azure-rbac-permissions-on-key-vault).
+We do not claim that existing-model check can be bypassed.
+
+The selected solution gives foundation **only `Microsoft.KeyVault/vaults/read`**
+on the control plane: no vault creation, write, deletion, recovery or access-policy
+operation. Governance owns those operations and both key grants. No Azure Policy
+workaround, Secrets Officer, governance application-key self-grant, workload/release
+key grant, bootstrap-key access or broad permission fallback is introduced.
+Crypto Officer is privileged key administration, not service-exclusive key use.
+Inherited permissions remain a cloud gate: absence from an allowlist and
+`NotActions` are not deny assignments.
+
+### Exact control-plane allowlist and provider evidence
+
+[actions.json](../../contracts/application-governance/actions.json) is the single
+reviewed list, shared by the declaration and namespace artifact SHA256. All actions
+are scoped to the application RG; no data actions or wildcard operations exist.
+Sources below are the selected AzureRM **v4.22.0** implementation:
+
+| Allowed operations | Provider reason |
+| --- | --- |
+| `Microsoft.Resources/subscriptions/resourceGroups/read` | Foundation may read the governed namespace; no create/update/delete/move permission. |
+| `Microsoft.KeyVault/vaults/read` | [Key resource](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.22.0/internal/services/keyvault/key_vault_key_resource.go) resolves the vault endpoint; key lifecycle uses its separate data-plane grant. |
+| `Microsoft.ManagedIdentity/userAssignedIdentities/read`, `write`, `delete`, `assign/action` | [Encryption UAMI lifecycle](https://github.com/hashicorp/terraform-provider-azurerm/tree/v4.22.0/internal/services/managedidentity) and attaching that UAMI to CMK storage. No federated-credential operations. |
+| `Microsoft.OperationalInsights/workspaces/read`, `write`, `delete` | [Workspace create/read/delete](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.22.0/internal/services/loganalytics/log_analytics_workspace_resource.go). No log-query or shared-key grant. |
+| `Microsoft.Insights/diagnosticSettings/read`, `write`, `delete` | [Vault/blob diagnostic lifecycle](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.22.0/internal/services/monitor/monitor_diagnostic_setting_resource.go). No subscription-wide monitoring authority. |
+| `Microsoft.Storage/storageAccounts/read`, `write`, `delete`; `blobServices/read`, `blobServices/write`; `fileServices/read` | [Storage control-plane create/refresh/update/delete](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.22.0/internal/services/storage/storage_account_resource.go). Refresh reads file-service properties even though this slice creates no file-share resources. |
+| `Microsoft.Storage/storageAccounts/blobServices/containers/read`, `write`, `delete` | [Container ARM lifecycle](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.22.0/internal/services/storage/storage_container_resource.go#L254), selected by `storage_account_id`; no Blob data-plane grant. |
+
+Foundation must configure
+[`features.storage.data_plane_available=false`](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.22.0/internal/provider/features.go#L318):
+the [storage resource](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.22.0/internal/services/storage/storage_account_resource.go#L1516)
+gates data-plane startup probes and queue/static-website refresh on this feature.
+Use `storage_use_azuread=true`, no provider registration, no queue/static website
+configuration, and container `storage_account_id`, not the legacy name path.
+
+Do **not** add list-keys/shared-keys permissions to suppress provider messages.
+Storage refresh attempts ListKeys but explicitly tolerates 401/403 (lines
+2068–2078). Workspace refresh attempts shared-key retrieval even with local auth
+disabled but logs the error without failing the read (lines 491–510).
+These reads must remain denied; successful inherited key retrieval is a failed
+isolation gate. Nonfatal provider logging is not a reason to broaden permissions.
+
+### Artifacts, preflight and later permission gates
+
+The pinned external provider calls the shared stdlib parser **before application
+writes**. The entire earlier prefix is validated against actual bootstrap
+foundation identity/backend references, approved raw bootstrap SHA256 and explicit
+revisions. Namespace/vault creation depends on that validation; later grants
+consume only validated references. No completed foundation resource set, key,
+storage account or hostname is required for namespace declaration.
+
+Export `application_contract_json` with `tofu output -raw`, retaining exact bytes
+including the trailing LF. `application_contract_context_json` supplies the
+non-secret expected context for separate owner approval/custody; it must not be
+treated as independently trusted merely because the producer emitted it.
+The [shared API, stage fixtures and #1627 handoff](../../contracts/application-governance/README.md)
+define the exact consumer contract. Governance never creates, reads or stores
+application key material. Every artifact says `declared-not-activated`.
+
+Before a separately authorized trial, record a **five-minute maximum per gate**,
+at most **ten attempts**, and stop immediately on a wrong principal, scope, tenant,
+subscription, artifact digest, unexpected success of a forbidden operation, or
+non-permission error. A retry may address only bounded propagation; timeout stops
+advancement, with no fixed-sleep readiness claim or credential fallback.
+Verify permitted resource reads and diagnostics/network reachability; after
+custody verify foundation key creation, and after encryption verify the service
+identity's key use before storage creation. Use approved disposable negative
+targets to prove denial of RG mutation/move/delete, fresh vault creation, inline
+PUT/PATCH policy changes, mode changes, policy subresource add/replace/remove,
+role/trust/policy administration, key retrieval and upstream access, including
+inherited grants. No probe runner or Azure execution is enabled by this document.
 
 ## What this root owns
 
@@ -19,10 +135,10 @@ Use one independently custodied bootstrap state for each of `dev` and `prd`.
 | Bootstrap RG and state storage account | Bootstrap operator only; separate from application resources |
 | `foundation` container | Foundation identity: Storage Blob Data Contributor on this container only |
 | `workload` container | Workload identity: Storage Blob Data Contributor on this container only |
-| Foundation, workload and release identities | Separate user-assigned identities; no Graph, CMK, infrastructure or role-administration grants |
+| Foundation, workload and release identities | Separate user-assigned identities; default state-only access. Explicit application phases add foundation's scoped authority/custody only; no Graph, upstream CMK or role-administration grants |
 | Release identity | No state grant and no Azure resource deployment permissions yet |
 | GitHub federated credentials | Disabled by default; distinct environment/layer subjects on activation |
-| Dedicated bootstrap Key Vault/key | Approved bootstrap operator: Crypto Officer on this vault only; no deployment identity receives CMK administration |
+| Dedicated bootstrap Key Vault/key | Approved bootstrap operator: Crypto Officer on this vault only; no deployment identity receives bootstrap CMK administration |
 | Storage encryption identity | Separate from every deployment identity; Crypto Service Encryption User on the state key only |
 | Dedicated audit workspace | Bootstrap-owned, Entra-only; no deployment-identity log access, no resource-only access |
 
@@ -85,6 +201,9 @@ mocked-provider tests. Provider installation needs registry access; Azure
 credentials, Azure CLI login and a remote state account are not required.
 It rejects leftover `errored_test.tfstate`, since a test cleanup failure must
 not masquerade as success.
+UUID letter case does not change the authenticated custodian or application
+role identifier. Custodian/deployment/encryption identity separation also compares
+UUIDs case-insensitively, so alternate spelling cannot bypass the exclusion.
 
 The new root uses a newer validator than the unchanged legacy deployment
 (1.8.0): that older mock implementation rejects AzureRM's required provider
@@ -92,7 +211,8 @@ configuration and per-instance overrides. Do not silently run this root with the
 legacy CLI. AzureRM/random versions and checksums are pinned independently here.
 The required CI Lint job runs this same test target without OIDC permission.
 The Trivy IaC job also runs `make scan-bootstrap`, using the pinned scanner,
-synthetic `tests/scan.tfvars` and the full `state` phase. Medium/high/critical
+synthetic `tests/scan.tfvars` and the full `state` phase, then each explicit
+application namespace/custody/encryption fixture. Medium/high/critical
 findings fail it except for the three owner-approved, path-scoped entries in
 `.trivyignore.yaml`, expiring **2026-11-27**:
 
@@ -108,6 +228,14 @@ Review these exceptions before cloud authorization or expiry, whichever is first
 The repository-wide legacy exceptions do not apply to this blocking target.
 Scanning only the default identity phase must not conceal later storage/key
 resources. Never use scanner inputs for Azure.
+
+With `TRIVY_FORMAT=sarif TRIVY_OUTPUT=trivy-bootstrap.sarif`, the blocking
+target writes the state report to that path and application reports to
+`.namespace`, `.custody` and `.encryption` suffixes. Scanning remains fail-fast.
+Security CI uploads every report that exists, even after a failed phase or prior
+upload, under distinct `trivy-bootstrap`, `trivy-bootstrap-namespace`,
+`trivy-bootstrap-custody` and `trivy-bootstrap-encryption` categories. A missing
+later report is not a passing scan; report publication never overrides failure.
 
 Tests establish declared scopes, identity/subject separation, safe defaults,
 output shape and input validation. They **do not** establish Azure availability,
@@ -132,7 +260,7 @@ state locking/recovery or scale-from-zero.
    against the authenticated actor. This root explicitly grants that actor Crypto
    Officer on the dedicated bootstrap vault, not subscription Owner or rights to
    other vaults. Review this privileged bootstrap grant separately from the
-   deployment identities, which receive no CMK administration.
+   deployment identities, which receive no bootstrap CMK administration.
 5. Review the real plan **only after separate authorization**, with
    `enable_github_oidc=false`. Confirm the fresh bootstrap namespace does not
    adopt existing resources or overlap an application root. Review optional
@@ -218,9 +346,10 @@ entries contain only resource names, key, identity/tenant/subscription IDs and
 explicit Entra/OIDC authentication flags. There is no release backend entry.
 
 Subsequent consumers must reject unknown versions, mismatched environment/
-subscription/tenant, wrong layer identities, missing fields, any phase other than
-`state`, or disabled trust
-before writes. A successful export is **not** deployment readiness. The current
+subscription/tenant, wrong layer identities, missing fields and any phase other
+than `state` before writes. Disabled trust is valid for offline declaration
+artifacts but must block later OIDC execution; validation does not activate trust.
+A successful export is **not** deployment readiness. The current
 workflow consumes none of this contract; do not copy it into legacy secrets and
 assume a safe cutover.
 
@@ -233,10 +362,13 @@ trial must show:
   identity cannot access either, and none can read bootstrap state.
 - Cross-layer/cross-environment subjects and unapproved refs cannot assume the
   identities; inherited RBAC does not defeat the declared scopes.
-- None of these identities can grant roles, administer trust, mutate foundational
-  resources or access runtime secrets through unintended permissions.
-- The encryption identity can use only its key, cannot administer it, and has no
-  state-data access. Deployment identities cannot use or administer the key.
+- None of these identities can grant roles, administer trust or mutate upstream
+  bootstrap resources beyond their own state-container access. Foundation's
+  explicit application resource/key authority is separate; workload/release
+  identities receive none of it.
+- The bootstrap encryption identity can use only its state key, cannot administer
+  it, and has no state-data access. Deployment identities cannot use or administer
+  the bootstrap key.
 - Successful and denied state blob operations and key operations appear in the
   dedicated audit workspace; deployment identities cannot query these records.
 - Reapplying converges without changes; state recovery from a deliberate

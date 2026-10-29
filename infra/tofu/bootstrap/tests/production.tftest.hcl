@@ -41,6 +41,10 @@ mock_provider "random" {
   }
 }
 
+mock_provider "azurerm" {
+  alias = "application"
+}
+
 override_resource {
   target = azurerm_storage_container.state["foundation"]
   values = {
@@ -59,8 +63,8 @@ override_resource {
   target = azurerm_user_assigned_identity.deployment["foundation"]
   values = {
     id           = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-prd-bootstrap/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-kmlsat-prd-foundation"
-    client_id    = "33333333-3333-4333-8333-333333333333"
-    principal_id = "44444444-4444-4444-8444-444444444444"
+    client_id    = "13131313-1313-4131-8131-131313131313"
+    principal_id = "14141414-1414-4141-8141-141414141414"
   }
 }
 
@@ -136,5 +140,59 @@ run "production_has_its_own_namespace_and_trust" {
       ])
     )
     error_message = "Production grants and backend identities must retain the same per-layer isolation as DEV."
+  }
+}
+
+run "production_application_vault_and_authority_are_not_dev" {
+  command = plan
+  variables {
+    application_phase             = "namespace"
+    application_allowed_ip_ranges = ["203.0.113.10"]
+    application_bootstrap_json    = file("../../../tests/fixtures/application_governance/production-bootstrap.json")
+    application_bootstrap_sha256  = filesha256("../../../tests/fixtures/application_governance/production-bootstrap.json")
+    application_revisions = {
+      governance = "1111111111111111111111111111111111111111"
+      foundation = "2222222222222222222222222222222222222222"
+      policy     = "3333333333333333333333333333333333333333"
+    }
+  }
+  override_resource {
+    target = azurerm_user_assigned_identity.storage_encryption
+    values = {
+      id           = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-prd-bootstrap/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-kmlsat-prd-state-encryption"
+      principal_id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+    }
+  }
+  override_resource {
+    target = azurerm_resource_group.application[0]
+    values = {
+      id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-prd-application"
+    }
+  }
+  override_resource {
+    target = azurerm_key_vault.application[0]
+    values = {
+      id        = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-prd-application/providers/Microsoft.KeyVault/vaults/akmlsatprdvabc123"
+      vault_uri = "https://akmlsatprdvabc123.vault.azure.net/"
+    }
+  }
+  override_resource {
+    target = azurerm_role_definition.application_foundation[0]
+    values = {
+      role_definition_resource_id = "/subscriptions/11111111-1111-4111-8111-111111111111/providers/Microsoft.Authorization/roleDefinitions/67ac2670-3210-528b-8023-07ee3063ceec"
+    }
+  }
+  assert {
+    condition = (
+      azurerm_resource_group.application[0].name == "rg-kmlsat-prd-application" &&
+      azurerm_key_vault.application[0].name == "akmlsatprdvabc123" &&
+      output.application_contract.environment == "prd" &&
+      output.application_contract.payload.vault_id == azurerm_key_vault.application[0].id &&
+      output.application_contract.payload.foundation_role_definition_id == azurerm_role_definition.application_foundation[0].role_definition_resource_id &&
+      azurerm_role_assignment.application_foundation[0].scope == azurerm_resource_group.application[0].id &&
+      azurerm_role_assignment.application_foundation[0].principal_id == "14141414-1414-4141-8141-141414141414" &&
+      output.application_contract.backend.client_id == "13131313-1313-4131-8131-131313131313"
+    )
+    error_message = "Production must bind its own application namespace/vault, role and foundation principal/backend, never DEV."
   }
 }

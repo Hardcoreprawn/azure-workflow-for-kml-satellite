@@ -1,3 +1,72 @@
+variable "application_phase" {
+  description = "Offline declarations: disabled -> namespace -> custody -> encryption. Owner-verified permission/network gates remain separate."
+  type        = string
+  default     = "disabled"
+  nullable    = false
+
+  validation {
+    condition     = contains(["disabled", "namespace", "custody", "encryption"], var.application_phase) && (var.application_phase == "disabled" || var.bootstrap_phase == "state")
+    error_message = "Use disabled, namespace, custody or encryption; application declarations require the completed bootstrap state phase."
+  }
+}
+
+variable "application_bootstrap_json" {
+  description = "Exact approved raw bytes of bootstrap_contract v1 exported after state creation; never raw state."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition     = var.application_phase == "disabled" || length(var.application_bootstrap_json) > 0
+    error_message = "Application declarations require the explicit immutable bootstrap JSON artifact."
+  }
+}
+
+variable "application_bootstrap_sha256" {
+  description = "Independently approved SHA256 of the exact bootstrap artifact bytes, including whitespace."
+  type        = string
+  default     = ""
+}
+
+variable "application_revisions" {
+  description = "Explicit reviewed producer and policy commit revisions; these are not readiness claims."
+  type = object({
+    governance = string
+    foundation = string
+    policy     = string
+  })
+  default = {
+    governance = ""
+    foundation = ""
+    policy     = ""
+  }
+}
+
+variable "application_artifacts" {
+  description = "Ordered raw immutable stage JSON strings: [] for namespace, namespace/prerequisites for custody, then custody/key for encryption."
+  type        = list(string)
+  default     = []
+  nullable    = false
+
+  validation {
+    condition = length(var.application_artifacts) == lookup({
+      disabled = 0, namespace = 0, custody = 2, encryption = 4
+    }, var.application_phase, 0)
+    error_message = "Application phase cannot skip or omit earlier artifacts."
+  }
+}
+
+variable "application_allowed_ip_ranges" {
+  description = "Explicit application-vault egress approval, restricted to a subset of the already validated bootstrap public IPv4 ranges."
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition     = (var.application_phase == "disabled" || length(var.application_allowed_ip_ranges) > 0) && length(setsubtract(var.application_allowed_ip_ranges, var.bootstrap_allowed_ip_ranges)) == 0
+    error_message = "Explicit application vault egress must be a nonempty subset of approved bootstrap public IPv4 ranges."
+  }
+}
+
 variable "environment" {
   description = "One environment per independently custodied bootstrap state."
   type        = string

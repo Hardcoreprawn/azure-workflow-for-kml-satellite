@@ -1,0 +1,169 @@
+# Application-governance contract v1
+
+This is #1628's shared **offline declaration interface**, not permission readiness.
+The separately named `bootstrap_contract` **remains schema v1 unchanged**. This
+is a new application schema, not a second interpretation or compatibility reader
+for bootstrap v1. Governance owns the application RG **and vault lifecycle**;
+foundation owns application keys, encryption UAMI, audit and storage.
+
+## Canonical implementation and raw-byte provenance
+
+Import `scripts.application_contract` from the repository root. It uses only the
+Python standard library. Frozen dataclasses represent validated context,
+identities, backends and stage contracts. Each returned `values()` dictionary is
+a fresh projection, not mutable contract storage.
+
+```python
+from scripts.application_contract import (
+    ExpectedContext, parse_bootstrap, parse_chain, create_artifact, read_artifact,
+)
+
+context = ExpectedContext.from_bytes(read_artifact(context_path))
+bootstrap_raw = read_artifact(bootstrap_path)
+bootstrap = parse_bootstrap(bootstrap_raw, context)
+namespace_raw = read_artifact(namespace_path)
+namespace, = parse_chain(bootstrap_raw, (namespace_raw,), context, "namespace")
+prerequisites_raw = create_artifact(
+    "prerequisites", actual_prerequisite_references, bootstrap_raw,
+    (namespace_raw,), context,
+)
+```
+
+Exact APIs:
+
+- `ExpectedContext.from_bytes(raw: bytes) -> ExpectedContext`
+- `parse_bootstrap(raw: bytes, expected: ExpectedContext) -> BootstrapContract`
+- `parse_chain(bootstrap_raw: bytes, artifacts: tuple[bytes, ...], expected:
+  ExpectedContext, expected_stage: Stage | None) -> tuple[ApplicationContract, ...]`
+- `create_artifact(stage: Stage, payload: Mapping[str, str], bootstrap_raw: bytes,
+  previous: tuple[bytes, ...], expected: ExpectedContext) -> bytes`
+- `read_artifact(path: Path) -> bytes`
+- `decode_external_request(raw: bytes) -> object`
+- `decode_artifact_bundle(raw: bytes) -> object`
+- `ContractError(ValueError)` is the explicit boundary failure.
+
+`Stage` is the literal union of the five stages below. No parser contacts Azure.
+`parse_chain(..., expected_stage=None)` requires zero application artifacts while
+still validating bootstrap. Unknown/missing fields, duplicate JSON keys,
+non-finite numbers, wrong types, versions, principals, backend, ancestry,
+revisions and digests fail closed. CLI errors are explicit and omit tracebacks.
+UUIDs accept mixed/uppercase hexadecimal, including UUID segments in ARM
+references. Context, ancestry, identity-separation and grant comparisons ignore
+only UUID letter case; non-UUID text retains its existing exact constraints.
+The application role UUID is derived from the lowercase subscription UUID.
+Received bytes and their SHA256 remain untouched. JSON conversion failures
+(including overlong integer literals) become bounded `ContractError`/CLI errors;
+specific duplicate-key and non-finite-number errors retain their own messages.
+An artifact (including context/bootstrap) is at most `MAX_BYTES=65,536` bytes.
+The JSON-encoded artifact array has a separate
+`MAX_ARTIFACT_BUNDLE_BYTES=2,097,152` byte transport limit; the complete external
+query has `MAX_EXTERNAL_REQUEST_BYTES=16,777,216`. These bounded envelopes allow
+all five individually valid artifacts plus nested JSON escaping without lowering
+the individual limit or changing the wire schema.
+
+External consumers should read stdin with
+`sys.stdin.buffer.read(MAX_EXTERNAL_REQUEST_BYTES + 1)` and call
+`decode_external_request`; decode a string-valued artifact array with
+`decode_artifact_bundle`. Both reject duplicate keys/non-finite values/invalid
+JSON, but return an untyped JSON value: callers must still check their exact
+request fields and use the existing context/bootstrap/chain validators on every
+individual input. Never use the larger transport limit to read artifact files.
+
+**Hash exact received bytes**, including whitespace/newlines. Do not decode and
+re-encode a predecessor before computing its SHA256. Producers emit canonical
+UTF-8 JSON ending in exactly one LF newline. Received artifacts need not use canonical
+format, but subsequent artifacts must bind the actual received byte digest.
+SHA256 is provenance/integrity, not a signature or authorization: the context
+and artifact bundle need independently approved, immutable, access-controlled
+custody.
+
+## Expected context and envelope
+
+`tests/fixtures/application_governance/context.json` is the complete executable
+context shape. All fields are required; none is inferred from an untrusted
+artifact. Supply environment, tenant/subscription, project/location, exact
+governance vault name, governance/foundation/policy 40-character commit revisions,
+raw bootstrap SHA256, bootstrap operator/encryption principal exclusions, exact
+foundation identity and exact foundation backend. Foundation backend validation
+includes its own client ID (never workload), container, key, account, namespace,
+tenant/subscription and Entra/OIDC enabled with CLI fallback disabled.
+
+Every stage repeats the allowlisted envelope:
+`schema="canopex.application-governance"`, integer `schema_version=1`, `stage`,
+`status="declared-not-activated"`, environment/tenant/subscription,
+producer/revision, policy revision, bootstrap SHA256, prior-artifact SHA256,
+namespace `{id,name,location}`, vault `{id,uri,rbac_authorization,
+purge_protection_enabled,soft_delete_retention_days,network_default_action}`,
+foundation identity, backend,
+excluded principals and the stage-specific `payload`.
+Namespace's predecessor is the raw bootstrap artifact. Each later predecessor
+is the immediately preceding application artifact. The entire prefix is
+validated; a plausible last-stage object alone is insufficient.
+
+## Ordered stages and exact payloads
+
+| Stage / producer | Required earlier application artifacts | Exact payload fields |
+| --- | --- | --- |
+| `namespace` / governance | none | Generated by shared producer: `namespace_id`, `namespace_name`, `location`, `vault_id`, `vault_uri`, `foundation_role_definition_id`, `foundation_principal_id`, `actions_sha256` |
+| `prerequisites` / foundation | namespace | `vault_id` (echo governance), `encryption_identity_id`, `encryption_client_id`, `encryption_principal_id`, `audit_workspace_id`, `vault_diagnostic_id` |
+| `custody` / governance | namespace, prerequisites | Generated: `scope` (application vault), `principal_id` (foundation), `role_definition_id` (Crypto Officer) |
+| `key` / foundation | namespace, prerequisites, custody | `key_id` (versionless ARM ID), `key_uri` (versionless HTTPS URI) |
+| `encryption` / governance | namespace, prerequisites, custody, key | Generated: `scope` (versionless application key), `principal_id` (encryption UAMI), `role_definition_id` (Crypto Service Encryption User) |
+
+For generated governance payloads pass `{}` to `create_artifact`; callers cannot
+substitute a grant principal/scope. Foundation's namespace is
+`rg-{project}-{environment}-application`. Its UAMI is
+`id-{project}-{environment}-application-encryption`, workspace is
+`law-{project}-{environment}-application`, vault diagnostic name is
+`application-key-audit`, and its dedicated key is `application-cmk`. The vault
+name/ID comes **from governance**, never foundation-created/adopted resources.
+The diagnostic ARM reference uses the extension-resource form
+`{vault_id}/providers/Microsoft.Insights/diagnosticSettings/application-key-audit`;
+do not emit a provider-private state ID containing `|`.
+
+Custody/key/encryption are **declarations**, not evidence that an identity can
+create/use a key. Separate owner-authorized bounded permission/network gates
+must pass between custody and key, then encryption and storage. No fixed sleep,
+credential fallback, auto-activation or raw-state reading is part of this API.
+
+**#1627 owns the final storage manifest**, including
+`persistent-blob-core`/`not-activated` status and storage/container references.
+That final manifest is not a sixth governance stage: validate this complete
+five-stage prefix first and bind its final raw SHA256 in the separate foundation
+manifest. The foundation resource allowlist is ten resources; no vault or grant
+declarations belong to it.
+
+## CLI and synthetic fixtures
+
+```bash
+python3 -m unittest discover -s tests -p test_application_contracts.py
+python3 -m scripts.generate_application_contract_fixtures
+python3 scripts/application_contract.py validate \
+  --context tests/fixtures/application_governance/context.json \
+  --bootstrap tests/fixtures/application_governance/bootstrap.json \
+  --stage namespace \
+  --artifact tests/fixtures/application_governance/namespace.json
+```
+
+Repeat `--artifact` in stage order. `create` accepts the same context/bootstrap,
+the desired next `--stage`, earlier `--artifact` files, and a `--payload` JSON
+file for foundation-produced stages. Stdout is exactly the new artifact bytes.
+`external` is the Terraform adapter: stdin is a JSON object with string fields
+`context`, `bootstrap`, `artifacts` (a JSON array of raw artifact strings), and
+`phase` (`namespace`, `custody`, `encryption`). Stdout is a string-valued object
+containing `contract`, `scope`, `principal_id`, `role_definition_id`.
+
+The fixture directory contains bootstrap, context and all five stages. IDs,
+revisions and egress references are synthetic, **never cloud inputs**.
+The narrowly fingerprinted detect-secrets baseline entry for `context.json` is
+the SHA256 of the committed synthetic `bootstrap.json`, not a credential; verify
+it with `sha256sum tests/fixtures/application_governance/bootstrap.json`.
+`actions.json` is the single reviewed control-plane action list shared by
+Terraform and the namespace producer; fixture digest changes expose mutations.
+`actions_sha256` hashes `encode(actions())` (canonical ordered JSON array plus
+one LF), not the presentation whitespace in the source file.
+Foundation must configure AzureRM 4.22.0 with
+`features { storage { data_plane_available = false } }`,
+`storage_use_azuread = true`, and `resource_provider_registrations = "none"`,
+and use container `storage_account_id` (ARM API), never the legacy
+`storage_account_name` data-plane path.
