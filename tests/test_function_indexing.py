@@ -33,18 +33,16 @@ BLUEPRINT_MODULES = sorted(BLUEPRINTS_DIR.glob("*.py"))
 )
 def indexed_functions(request: pytest.FixtureRequest) -> tuple[list[dict[str, object]], int]:
     entrypoint, role, count = request.param
+    script = (
+        "import importlib,inspect,json,sys; "
+        "app=importlib.import_module(sys.argv[1]).app; "
+        "print(json.dumps([{'name':f.get_function_name(), "
+        "'parameters':list(inspect.signature(f.get_user_function()).parameters), "
+        "'bindings':[b.name for b in f.get_bindings() if b.name!='$return']} "
+        "for f in app.get_functions()]))"
+    )
     result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import importlib,inspect,json,sys; "
-            "app=importlib.import_module(sys.argv[1]).app; "
-            "print(json.dumps([{'name':f.get_function_name(), "
-            "'parameters':list(inspect.signature(f.get_user_function()).parameters), "
-            "'bindings':[b.name for b in f.get_bindings() if b.name!='$return']} "
-            "for f in app.get_functions()]))",
-            entrypoint,
-        ],
+        [sys.executable, "-c", script, entrypoint],
         cwd=ROOT,
         env={**os.environ, "PIPELINE_ROLE": role},
         capture_output=True,

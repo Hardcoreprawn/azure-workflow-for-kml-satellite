@@ -290,14 +290,13 @@ def test_function_app_orch_imports_and_indexes_without_monitoring_timer(monkeypa
 
 def test_worker_indexes_only_operational_http_routes():
     """The worker exposes probes, never an admission or business endpoint."""
+    script = (
+        "import json; import function_app; "
+        "print(json.dumps(sorted(f.get_trigger().route for f in "
+        "function_app.app.get_functions() if f.get_trigger().type == 'httpTrigger')))"
+    )
     result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import json; import function_app; "
-            "print(json.dumps(sorted(f.get_trigger().route for f in "
-            "function_app.app.get_functions() if f.get_trigger().type == 'httpTrigger')))",
-        ],
+        [sys.executable, "-c", script],
         cwd=REPO_ROOT,
         env={**os.environ, "PIPELINE_ROLE": "full"},
         capture_output=True,
