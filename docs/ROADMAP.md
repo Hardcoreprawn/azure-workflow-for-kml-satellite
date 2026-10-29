@@ -110,12 +110,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #1637 | Extended the isolated persistent foundation with the existing eight-container Cosmos schema, dedicated CMK/UAMI, governance-owned grant and closed-network Entra-only account (closes #1636). Seven-day recovery policy, rollback guards and clean-checkout mutation gates are verified offline; Azure permissions, restore and audit delivery remain unproven. |
 | #1634 | Isolated worker application HTTP to health/readiness and retained business HTTP/Event Grid on admission (closes #1526). Exact role indexing, non-destructive probes, two-host completion and authenticated local artifacts passed; Azure ingress, identity and wake-up proof remain separate. |
 | #1633 | Implemented the isolated, ten-declaration Blob/CMK/audit foundation and strict staged handoffs (closes #1627). Native plans, mutation gates and scoped scanner proofs passed; no Azure activation or complete application foundation is claimed. |
 | #1631 | Implemented governance-owned application namespace/vault, scoped foundation authority and immutable grant handoffs (closes #1628). Effective inherited permissions and propagation remain cloud-trial gates. |
 | #1630 | Recorded the approved governance/foundation ownership decisions (closes #1629), including governance-owned vault lifecycle and no foundation vault control-plane writes. |
 | #1626 | Implemented offline bootstrap state/identity boundaries, dedicated key custody and audit diagnostics (closes #1625). Native tests, full local checks and required hosted gates passed; effective Azure isolation and cloud authorization remain unproven/separate. |
-| #1624 | Merged the hosting/ownership proposal (closes #1622). Subsequent owner decision selects native Functions + DTS, sleeping workers and DEV Consumption only; #1625 starts offline bootstrap boundaries under #1620. No cloud trial or spend is approved. |
 | —  | **MILESTONE (2026-07-12): Domain-model overhaul begun — Organisation as the single ownership root** (epic #1057; model documented in `docs/DATA_MODEL.md` — conceptual/logical/physical + D1–D5 divergences). **D3 landed**: per-user quota retired, org pool is the sole accounting unit. D1 (auth active-org resolution) in progress; D2 (org-partitioning) sequenced after D1. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 
@@ -136,7 +136,7 @@ lifecycle ownership through the bounded Blob/CMK/audit slice. #1630 records the
 accepted decisions. These merges do not complete the whole foundation or prove
 effective Azure permissions. Remaining services, application/DTS migration, production
 SKU, cloud budget and authenticated wake-up proof remain unshipped.
-Issue #1636 extends that same offline foundation boundary with the existing eight-container
+**✅ #1636 via #1637** extends that same offline foundation boundary with the existing eight-container
 Cosmos inventory, a dedicated Cosmos CMK/encryption UAMI, governance's key-scoped
 grant, closed-network Entra-only account and seven-day continuous recovery policy.
 It does not add runtime grants/connectivity or prove restore/audit delivery.
