@@ -29,7 +29,8 @@ Owner decisions, 2026-09-16:
   split is not a goal; pure geospatial transforms remain useful within it.
 - A lightweight API/admission service accepts requests and buffers work durably.
   Independent workers execute processing. Workers retain operational probes, not
-  the full user API. The current shared HTTP registration requires migration (#1526).
+  the full user API. Role-owned HTTP registration implements this boundary (#1526);
+  deployed network isolation still requires separate release evidence.
 - Prefer scale-to-zero where wake-up latency is acceptable. If admission must stay
   warm, keep it low-cost; expensive workers should sleep when idle. Cost should
   follow usage. Containers and VM/Batch capacity are workload-dependent options.

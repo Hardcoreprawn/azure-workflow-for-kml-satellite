@@ -52,6 +52,21 @@ def test_valid_matrix_and_positive_probes_pass():
         assert validate_hosts(client, "http://worker", "http://admission")
 
 
+def test_required_admission_method_rejection_fails_whole_matrix():
+    def respond(request):
+        path = request.url.path
+        if path.endswith("this-route-does-not-exist"):
+            return httpx.Response(404)
+        if request.url.host == "worker" and path not in {"/api/health", "/api/readiness"}:
+            return httpx.Response(404)
+        if request.url.host == "admission" and request.method == "POST" and path == "/api/analysis/submit":
+            return httpx.Response(405)
+        return httpx.Response(200, json={"status": "ok"})
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        assert not validate_hosts(client, "http://worker", "http://admission")
+
+
 def test_business_404_body_is_present_not_absent():
     with httpx.Client(
         transport=httpx.MockTransport(lambda request: httpx.Response(404, json={"error": "missing"}))

@@ -180,9 +180,15 @@ def _stop_role_host(proc: subprocess.Popen, *, grace_seconds: float = 10.0) -> N
 
 
 def stop_func_host(procs: tuple[subprocess.Popen, subprocess.Popen]) -> None:
-    """Stop only the two owned process handles."""
+    """Attempt both bounded, owned shutdowns even if the first fails."""
+    failures: list[Exception] = []
     for proc in reversed(procs):
-        _stop_role_host(proc)
+        try:
+            _stop_role_host(proc)
+        except Exception as exc:
+            failures.append(exc)
+    if failures:
+        raise ExceptionGroup("Owned host shutdown failed", failures)
 
 
 def write_e2e_result(status_payload: dict[str, Any], path: Path = E2E_RESULT_PATH) -> None:

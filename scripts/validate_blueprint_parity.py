@@ -84,7 +84,7 @@ def check_host(client: httpx.Client, base: str, routes: tuple[RouteCheck, ...]) 
         ):
             # This exact application response proves the route without live Stripe credentials.
             state = RouteState.PRESENT
-        elif 300 <= response.status_code < 400 or response.status_code >= 500:
+        elif response.status_code == 405 or 300 <= response.status_code < 400 or response.status_code >= 500:
             state = RouteState.ERROR
         elif response.status_code == 404 and not response.content:
             state = RouteState.ABSENT

@@ -19,7 +19,7 @@ services:
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-canopex-dev}
       CANOPEX_DEVCONTAINER: "1"
       AZURITE_BLOB_HOST: azurite
-      FUNC_URL: http://func:80
+      FUNC_URL: http://orch:80
       VERIFY_COMPUTE_BASE: http://func:80
       VERIFY_ORCH_BASE: http://orch:80
       VERIFY_WEB_BASE: http://web:4280

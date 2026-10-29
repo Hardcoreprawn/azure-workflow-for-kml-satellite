@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -33,6 +36,29 @@ def test_compose_proxy_and_relay_use_admission():
     assert "orch" in services["event-grid-relay"]["depends_on"]
     assert services["orch"]["environment"]["AzureFunctionsWebHost__hostid"] == "canopex-local-admission"
     assert services["event-grid-relay"]["environment"]["ADMISSION_HOST_ID"] == "canopex-local-admission"
+
+
+def test_effective_devcontainer_smoke_targets_admission():
+    config = json.loads((ROOT / ".devcontainer/devcontainer.json").read_text())
+    environment = {}
+    for filename in config["dockerComposeFile"]:
+        layer = yaml.safe_load((ROOT / ".devcontainer" / filename).read_text())
+        environment.update(layer["services"].get(config["service"], {}).get("environment", {}))
+    environment.update(config.get("remoteEnv", {}))
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            """curl() { printf '%s\\n' '{"status":"healthy"}'; }; export -f curl; make SHELL=bash smoke""",
+        ],
+        cwd=ROOT,
+        env={**os.environ, "FUNC_URL": environment["FUNC_URL"]},
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=15,
+    )
+    assert "Smoke-checking http://orch:80/api/health/deep" in result.stdout
 
 
 def test_offline_gate_starts_separate_admission_and_worker(monkeypatch):
@@ -114,3 +140,24 @@ def test_offline_gate_cleans_worker_when_admission_start_fails(monkeypatch):
     with pytest.raises(OSError, match="start failed"):
         e2e_local.start_func_host(log_path=ROOT / ".unused.log")
     stop.assert_called_once_with(worker)
+
+
+@pytest.mark.parametrize("failure_point", ["terminate", "kill", "wait"])
+def test_shutdown_failure_still_attempts_both_owned_hosts(failure_point):
+    worker, admission = MagicMock(), MagicMock()
+    worker.poll.return_value = admission.poll.return_value = None
+    failure = OSError(f"{failure_point} failed")
+    if failure_point == "terminate":
+        admission.terminate.side_effect = failure
+    elif failure_point == "kill":
+        admission.wait.side_effect = subprocess.TimeoutExpired("func", 10)
+        admission.kill.side_effect = failure
+    else:
+        admission.wait.side_effect = [subprocess.TimeoutExpired("func", 10), failure]
+
+    with pytest.raises(ExceptionGroup, match="host shutdown") as raised:
+        e2e_local.stop_func_host((worker, admission))
+    assert raised.value.exceptions == (failure,)
+    admission.terminate.assert_called_once()
+    worker.terminate.assert_called_once()
+    worker.wait.assert_called_once_with(timeout=10.0)
