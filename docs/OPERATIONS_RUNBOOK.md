@@ -347,6 +347,42 @@ inability to evaluate the computed 180-day initial key expiry; they expire
 2026-11-27 and need review before any cloud authorization. Actual log delivery,
 cost/retention, key rotation/recovery and effective isolation remain trial gates.
 
+### Application namespace and custody (offline declarations, not activated)
+
+The owner approved #1628 before #1627. Governance owns the application RG/vault
+and its scoped foundation authority; foundation consumes these resources, without
+subscription-wide, namespace/vault-lifecycle or role-administration permissions.
+Governance grants foundation Crypto Officer on the dedicated application vault
+and grants the storage-encryption identity key-scoped encryption use. Foundation
+owns application key lifecycle, not the grants. No bootstrap state-key access
+or workload/release key-administration rights follow from these decisions.
+
+The application Blob/CMK/audit defaults are approved for implementation: deny-default
+endpoints, Entra-only storage, infrastructure encryption, 30-day Blob/container
+recovery and audit retention, 90-day vault recovery/purge protection, and 180-day
+key lifetimes with 90-day rotation. These are not legal-retention or budget approval.
+See [ADR 0008](adr/0008-supported-azure-hosting-and-deployment-ownership.md) for the
+staged namespace/vault, foundation identity/audit, custody, key, encryption-binding and storage
+handoffs. Never treat grant declarations or mock plans as effective readiness.
+Cloud use also requires negative proof for foundation vault creation/update/recovery
+and authorization-mode/access-policy mutation paths. Governance-owned vault lifecycle
+is the selected boundary; foundation key custody does not grant vault writes.
+Keep the deployment pause, production freeze and separate cloud-trial gates.
+
+The existing bootstrap root now exposes default-closed `application_phase`
+values `disabled`, `namespace`, `custody` and `encryption`. Its application-only
+vault provider disables automatic recovery/adoption; the original bootstrap
+provider and state grants are unchanged. The shared
+[immutable contract parser and stage interface](../infra/contracts/application-governance/README.md)
+validate the full earlier artifact prefix before application writes, including
+raw bootstrap-byte SHA256 and foundation backend/principal context. Export
+`application_contract_json` with `tofu output -raw`, preserving exact bytes.
+Run `make test-bootstrap` and `make scan-bootstrap` for the native phase tests,
+shared parser regressions and every explicit scanner phase. Consult the
+[bootstrap action evidence and bounded permission/network gates](../infra/tofu/bootstrap/README.md#exact-control-plane-allowlist-and-provider-evidence)
+before any separately authorized trial. Offline success does not prove effective
+RBAC, propagation, logging delivery, recovery or a no-change second apply.
+
 ### Why Function App Updates Use the Deployment Workflow
 
 This is an intentional workaround, not permission to make untracked manual

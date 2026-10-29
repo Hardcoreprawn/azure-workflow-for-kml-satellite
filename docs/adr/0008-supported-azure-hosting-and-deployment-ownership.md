@@ -20,6 +20,12 @@ merged the proposal for #1622 under #1620:
   (AZU-0010/AZU-0057 plus AZU-0014 for computed initial key expiry), expiring
   2026-11-27 or reviewed before cloud use.
   This approves code scope, not workspace spend or claims of delivered logs.
+- Approve #1627's bounded application Blob, dedicated CMK and audit scope, with
+  the protection defaults below. Foundation administers only its application
+  key; governance controls its grants.
+- Governance owns the application RG/vault and establishes scoped foundation authority
+  through #1628. Foundation consumes that namespace, without subscription-wide
+  authority or namespace lifecycle/role-administration permissions.
 
 Neither this acceptance nor a PR merge authorizes cloud spend, changes the live
 hosting/state/permissions, or lifts `DEPLOY_PAUSED` or the production freeze.
@@ -144,10 +150,57 @@ Split by trust and lifecycle, not one state per component. Modules organize code
 state separation limits blast radius only when credentials and permissions also
 separate. No consumer reads an upstream state snapshot.
 
+### Accepted application-foundation boundary
+
+The owner approved these code-scope decisions on 2026-10-28, with the final
+governance-owned vault decision on 2026-10-29:
+
+- Application storage requires Entra authentication, deny-default endpoint
+  firewalls, infrastructure/CMK encryption, versioning and 30-day Blob/container
+  recovery. The dedicated vault has 90-day recovery and purge protection; initial
+  and rotated keys have 180-day lifetimes with 90-day rotation. Dedicated audit
+  retention is 30 days. These are engineering defaults, not legal-retention or
+  production-budget approval; bootstrap scanner exceptions are not inherited.
+- Governance owns the application RG and dedicated vault, and grants foundation a reviewed
+  application-scoped control-plane allowlist, not generic RG Contributor.
+  Foundation must not be able to modify/delete the governance-owned RG/vault,
+  recover vaults, manage access policies/grants/trust, or administer upstream
+  bootstrap resources. Provider-required application vault reads may be included.
+- Governance grants foundation Crypto Officer on the dedicated application vault
+  and the encryption identity Crypto Service Encryption User on the application's
+  versionless key scope. Foundation owns key lifecycle, not either assignment.
+  Crypto Officer is privileged administration, not read-only access. Neither
+  foundation nor application release gains access to bootstrap state keys.
+- The owner selected governance-owned vault lifecycle after #1631's provider/API
+  investigation: fresh-vault writes can select legacy inline access policies.
+  Excluding only access-policy subresource actions is not sufficient. Foundation
+  receives no vault control-plane write or recovery authority; governance requires
+  RBAC authorization. This replaces the earlier foundation-owned vault proposal,
+  without introducing a policy-enforcement workaround. Effective negative tests,
+  including inherited authority, still gate cloud use.
+- Workload/release identities receive no application key-administration grant.
+  Other foundation families and runtime grants remain separate future slices.
+
+Implementation order is #1628 (governance/interface prerequisite), then #1627
+(the 10-resource Blob core, excluding RG, vault and role-assignment ownership).
+Both remain offline work; actual authority and permission propagation need
+separately approved cloud evidence.
+
+The offline governance implementation is
+[`infra/tofu/bootstrap/application.tf`](../../infra/tofu/bootstrap/application.tf):
+default-closed application phases, protected RG/vault, one explicit control-plane
+role and governance-owned custody/encryption grants. Its
+[strict immutable interface](../../infra/contracts/application-governance/README.md)
+retains bootstrap v1 and adds a separate application schema with raw-byte digest
+chaining. [Provider-backed action evidence](../../infra/tofu/bootstrap/README.md#exact-control-plane-allowlist-and-provider-evidence)
+and credential-free tests/scans support review; none establishes live permissions
+or authorizes activation. Governance never reads or manages application key
+material, and foundation receives no vault control-plane writes.
+
 | Layer / sole authority | Owns | Receives and publishes |
 | --- | --- | --- |
-| Subscription bootstrap/governance | Backend accounts, state ACLs/recovery, OIDC trust, subscription policy; privileged recovery | Owner-approved subscription/environment identities and narrowly delegated scopes; no application secret outputs |
-| Environment foundation | App RG, persistent services, log sinks/action group/budget, SWA control plane, keys, runtime identities and their approved grants | Bootstrap inputs; publishes allowlisted resource IDs/endpoints, identity IDs and exact browser origins |
+| Subscription bootstrap/governance | Backend accounts, state ACLs/recovery, OIDC trust, subscription policy; application RG/vault and foundation/key authority; privileged recovery | Versioned namespace/vault and staged grant references; no application secret outputs |
+| Environment foundation | Persistent services, log sinks/action group/budget, SWA control plane, application key lifecycle and runtime identities; later runtime bindings require separate review | Governed namespace/permissions; publishes allowlisted resource IDs/endpoints, identity IDs and exact browser origins |
 | Shared tenant identity | CIAM registration/SP/owners/federation and the complete approved redirect set | Explicit origins from every supported environment; publishes public auth configuration |
 | Environment workload platform | Host environment and supported host resources, ingress, identity attachment, probes, resource/scale policy, Event Grid topic and host/topic-dependent alerts/tests | Foundation and identity contracts; publishes supported host IDs/kind, API hostname and configuration policy |
 | Restricted host reconciler | One authoritative host configuration writer after initial creation | Validates platform policy plus release intent; applies only the selected hosting model's supported API |
@@ -188,6 +241,14 @@ or give the release job role-assignment rights.
    activates the subscription. There must not also be a Tofu subscription writer.
 7. Run authenticated smoke and record correlated release/run evidence. Failure
    blocks promotion; rollback/config recovery remains separately governed by #1327.
+
+For the approved Blob slice, the governance/foundation steps are explicitly
+staged: governed namespace/vault -> foundation identity/audit prerequisites ->
+governance custody grant -> foundation key -> governance service-encryption grant
+-> foundation storage. Each stage consumes only a prior immutable artifact.
+Namespace creation must not depend on a completed foundation manifest.
+Synthetic stage fixtures allow #1628's implementation to precede #1627 without
+a reverse issue dependency; resource-level permission readiness is still separate.
 
 ### Versioned interfaces and permission limits
 
@@ -264,14 +325,17 @@ Foundation/runtime distinction applies to data inside every listed service.
 
 | Proposed authority | Current declared addresses |
 | --- | --- |
-| Foundation: RG/naming/storage | `azurerm_resource_group.main`, `random_string.storage_suffix`, `azurerm_storage_account.main`, `azurerm_storage_container.kml_input`, `azurerm_storage_container.kml_output`, `azurerm_storage_container.deployments`, `azurerm_storage_container.pipeline_payloads`, `azurerm_storage_management_policy.main`, `azurerm_monitor_diagnostic_setting.storage_blob` |
+| Governance: application namespace/vault | `azurerm_resource_group.main`, `azurerm_key_vault.main` |
+| Foundation: naming/storage | `random_string.storage_suffix`, `azurerm_storage_account.main`, `azurerm_storage_container.kml_input`, `azurerm_storage_container.kml_output`, `azurerm_storage_container.deployments`, `azurerm_storage_container.pipeline_payloads`, `azurerm_storage_management_policy.main`, `azurerm_monitor_diagnostic_setting.storage_blob` |
 | Foundation: operations sinks/budget | `azurerm_log_analytics_workspace.main`, `azurerm_application_insights.main`, `azurerm_monitor_action_group.ops`, `azurerm_consumption_budget_resource_group.main` |
 | Workload platform: dependent operations bindings | `azurerm_monitor_metric_alert.failed_requests`, `azurerm_monitor_metric_alert.high_latency`, `azurerm_monitor_metric_alert.eventgrid_dropped_events`, `azurerm_application_insights_standard_web_test.site_ping` |
-| Foundation: CMK/vault | `azurerm_key_vault.main`, `azurerm_user_assigned_identity.storage_cmk`, `azurerm_role_assignment.deployer_key_vault_crypto_officer`, `time_sleep.deployer_key_vault_crypto_officer_propagation`, `azurerm_key_vault_key.storage_cmk`, `azurerm_role_assignment.storage_cmk_kv_crypto_user` |
+| Foundation: application key/encryption identity lifecycle | `azurerm_user_assigned_identity.storage_cmk`, `azurerm_key_vault_key.storage_cmk` |
+| Governance: replace legacy key grants with approved principals/scopes | `azurerm_role_assignment.deployer_key_vault_crypto_officer`, `azurerm_role_assignment.storage_cmk_kv_crypto_user` |
+| Retire fixed propagation helper; replace with readiness gates | `time_sleep.deployer_key_vault_crypto_officer_propagation` |
 | Foundation: optional communications/AI | `azurerm_communication_service.main`, `azurerm_email_communication_service.main`, `azurerm_email_communication_service_domain.azure_managed`, `azapi_update_resource.acs_link_email`, `azurerm_cognitive_account.openai`, `azurerm_cognitive_deployment.gpt4o_mini` |
 | Foundation: Cosmos | `azurerm_cosmosdb_account.main`, `azurerm_cosmosdb_sql_database.main`, `azurerm_cosmosdb_sql_container.runs`, `azurerm_cosmosdb_sql_container.subscriptions`, `azurerm_cosmosdb_sql_container.users`, `azurerm_cosmosdb_sql_container.monitors`, `azurerm_cosmosdb_sql_container.catalogue`, `azurerm_cosmosdb_sql_container.orgs`, `azurerm_cosmosdb_sql_container.feature_flags`, `azurerm_cosmosdb_sql_container.feature_flag_overrides` |
 | Foundation: browser control plane | `azurerm_static_web_app.main`, `azurerm_static_web_app_custom_domain.main` |
-| Foundation: reviewed grants, not release permissions | `azurerm_role_assignment.storage_blob_data_owner`, `azurerm_role_assignment.storage_queue_data_contributor`, `azurerm_role_assignment.storage_table_data_contributor`, `azurerm_role_assignment.storage_account_contributor`, `azurerm_role_assignment.key_vault_secrets_user`, `azurerm_role_assignment.orch_storage_blob_data_owner`, `azurerm_role_assignment.orch_storage_queue_data_contributor`, `azurerm_role_assignment.orch_storage_table_data_contributor`, `azurerm_role_assignment.orch_storage_account_contributor`, `azurerm_role_assignment.orch_key_vault_secrets_user`, `azurerm_role_assignment.key_vault_secrets_officer`, `azurerm_cosmosdb_sql_role_assignment.function_app`, `azurerm_cosmosdb_sql_role_assignment.function_app_orch` |
+| Future runtime bindings: separately reviewed authority, never release permissions | `azurerm_role_assignment.storage_blob_data_owner`, `azurerm_role_assignment.storage_queue_data_contributor`, `azurerm_role_assignment.storage_table_data_contributor`, `azurerm_role_assignment.storage_account_contributor`, `azurerm_role_assignment.key_vault_secrets_user`, `azurerm_role_assignment.orch_storage_blob_data_owner`, `azurerm_role_assignment.orch_storage_queue_data_contributor`, `azurerm_role_assignment.orch_storage_table_data_contributor`, `azurerm_role_assignment.orch_storage_account_contributor`, `azurerm_role_assignment.orch_key_vault_secrets_user`, `azurerm_role_assignment.key_vault_secrets_officer`, `azurerm_cosmosdb_sql_role_assignment.function_app`, `azurerm_cosmosdb_sql_role_assignment.function_app_orch` |
 | Workload platform / host handoff above | `azurerm_container_app_environment.main`, `azapi_resource.function_app`, `azapi_resource.function_app_orch`, `azapi_resource.event_grid_system_topic` |
 | Integration reconciler; remove competing declaration on implementation | `azapi_resource_action.function_host_keys`, `azapi_resource.event_grid_subscription` |
 | Shared tenant identity | `data.azuread_application.ciam`, `azuread_application_registration.ciam`, `azuread_service_principal.ciam`, `azuread_application_owner.ciam_deploy_sp`, `azuread_application_redirect_uris.ciam_spa`, `azuread_application_federated_identity_credential.ciam_deploy_sp`, `terraform_data.validate_ciam_vars` |
@@ -297,6 +361,7 @@ decisions and evidence before implementing or activating the affected boundary.
 | Backend and idle policy | DTS and sleeping workers accepted; Consumption for DEV only; production SKU/HA and backend migration remain gated |
 | Cost and latency | No cloud budget or latency thresholds approved; size/scale limits and residual costs must be bounded before trial |
 | State/identity boundaries | Layered direction and offline bootstrap slice accepted; #1625 implements isolated state and deployment identities, not application resource grants or runtime identity cutover |
+| Application namespace and custody | #1628 owns namespace/vault and grant declarations; #1627 consumes them and owns application key/data lifecycle without vault writes. Bounded scope/protection defaults accepted; exact role actions and real execution still need review/evidence |
 | Host write enforcement | Protected reconciler, policy ownership and denied bypass paths, not imaginary field-level RBAC |
 | Origins/shared resources | One complete CIAM writer, subscription Defender owner and SWA/DNS/CORS policy |
 | Activation and recovery | Single Event Grid owner, configuration recovery, rollback authority and release evidence retention |
@@ -307,7 +372,7 @@ decisions and evidence before implementing or activating the affected boundary.
 Do not create autonomous implementation assignments until the relevant owner
 decisions are accepted. #1619's bootstrap documentation fix is independent.
 
-The first bounded implementation is #1625: an independent bootstrap root with
+The first bounded implementation, #1625, merged in #1626: an independent bootstrap root with
 foundation/workload state containers, separate deployment identities, default-closed
 OIDC and a versioned non-secret handoff. It grants no application/role-administration
 permissions and does not rewire the legacy deployment. Foundation services,
@@ -317,7 +382,8 @@ readiness can be checked before dependent resources. Vault-scoped custodian and
 key-scoped encryption grants are bootstrap-only, not downstream deployment rights.
 
 1. **Bootstrap/foundation boundary:** implement selected states, scoped identities
-   and published contracts. Test manifest rejection and denied upstream access;
+   and published contracts. #1628 precedes #1627; bootstrap state isolation is
+   already implemented by #1626. Test manifest rejection and denied upstream access;
    isolated backend-disabled validation first. No real state move or apply here.
 2. **Supported host/config contract:** implement one chosen model and complete
    create/update/delete schema. Replace the backing-resource assumption with
