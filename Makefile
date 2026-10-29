@@ -84,6 +84,7 @@ test-bootstrap: ## Validate bootstrap schema and mocked contracts; no Azure cred
 	$(TOFU) -chdir=infra/tofu/bootstrap init -backend=false -input=false -lockfile=readonly
 	$(TOFU) -chdir=infra/tofu/bootstrap validate -no-color
 	$(TOFU) -chdir=infra/tofu/bootstrap test -no-color
+	python3 -m unittest discover -s tests -p test_application_contracts.py
 	@test ! -f infra/tofu/bootstrap/errored_test.tfstate || { echo "ERROR: bootstrap tests left errored_test.tfstate; inspect it before cleanup." >&2; exit 1; }
 
 test: ## Run unit tests (canonical — CI runs this exact command)
@@ -261,6 +262,10 @@ scan-iac: ## Trivy IaC/config scan (infra/tofu) — advisory
 scan-bootstrap: TRIVY_IGNOREFILE = infra/tofu/bootstrap/.trivyignore.yaml
 scan-bootstrap: ## Block bootstrap misconfigurations with only scoped, owner-approved exceptions
 	@$(_trivy); "$$T" config infra/tofu/bootstrap --tf-vars infra/tofu/bootstrap/tests/scan.tfvars --ignorefile "$(TRIVY_IGNOREFILE)" --severity CRITICAL,HIGH,MEDIUM --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
+	@$(_trivy); for phase in namespace custody encryption; do \
+		echo "Scanning application governance phase: $$phase"; \
+		"$$T" config infra/tofu/bootstrap --tf-vars "tests/fixtures/application_governance/scan-$$phase.tfvars.json" --ignorefile "$(TRIVY_IGNOREFILE)" --severity CRITICAL,HIGH,MEDIUM --exit-code 1 --format $(TRIVY_FORMAT) $(if $(TRIVY_OUTPUT),--output "$(TRIVY_OUTPUT).$$phase",) || exit $$?; \
+	done
 
 scan-fs: ## Trivy filesystem scan (deps + Dockerfiles, vulns only) — blocks on fixable CRITICAL/HIGH
 	@$(_trivy); "$$T" fs . $(_TRIVY_IGN) --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)

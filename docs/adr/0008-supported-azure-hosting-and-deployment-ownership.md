@@ -146,8 +146,8 @@ separate. No consumer reads an upstream state snapshot.
 
 | Layer / sole authority | Owns | Receives and publishes |
 | --- | --- | --- |
-| Subscription bootstrap/governance | Backend accounts, state ACLs/recovery, OIDC trust, subscription policy; privileged recovery; application RG lifecycle and application key grants (approved direction, #1628 implementation blocked) | Owner-approved subscription/environment identities and narrowly delegated scopes; no application secret outputs |
-| Environment foundation | Persistent services, dedicated application vault/key, encryption identity, log sinks/action group/budget, SWA control plane and runtime identities; consumes the governance-owned application RG | Bootstrap inputs; publishes allowlisted resource IDs/endpoints, identity IDs and exact browser origins; no application grant administration or bootstrap-key access |
+| Subscription bootstrap/governance | Backend accounts, state ACLs/recovery, OIDC trust, subscription policy; privileged recovery | Owner-approved subscription/environment identities and narrowly delegated scopes; no application secret outputs |
+| Environment foundation | App RG, persistent services, log sinks/action group/budget, SWA control plane, keys, runtime identities and their approved grants | Bootstrap inputs; publishes allowlisted resource IDs/endpoints, identity IDs and exact browser origins |
 | Shared tenant identity | CIAM registration/SP/owners/federation and the complete approved redirect set | Explicit origins from every supported environment; publishes public auth configuration |
 | Environment workload platform | Host environment and supported host resources, ingress, identity attachment, probes, resource/scale policy, Event Grid topic and host/topic-dependent alerts/tests | Foundation and identity contracts; publishes supported host IDs/kind, API hostname and configuration policy |
 | Restricted host reconciler | One authoritative host configuration writer after initial creation | Validates platform policy plus release intent; applies only the selected hosting model's supported API |
@@ -160,17 +160,6 @@ subscription and CIAM resources have one owner each, not dev/prd copies.
 The bootstrap backend is not application storage. State keys alone are not an
 ACL: scope each principal to its own state and required resources, prove upstream
 state reads are denied, and keep state recovery out of routine deployment.
-
-**#1628 vault-write enforcement stop (2026-10-28):** the selected AzureRM 4.22.0
-vault resource uses API 2023-02-01 and can write inline access policies through
-vault PUT/PATCH. Excluding the access-policy subresource operation is not
-field-level isolation. Microsoft's existing permission-model switch restriction
-does not establish that a principal with vault creation authority cannot create
-an access-policy vault. An enforceable policy/mediated boundary or revised vault
-ownership needs an additional owner decision before the application role and
-handoff schemas are implemented. The [bootstrap evidence and consumer stop](../../infra/tofu/bootstrap/README.md#application-governance-blocked-before-authority-is-declared-1628)
-record the provider/API sources. No policy, new grant or cloud execution is
-authorized by recording these options.
 
 Prefer stable, foundation-created user-assigned runtime identities if the chosen
 hosting model supports every required binding. Grants can then exist before host

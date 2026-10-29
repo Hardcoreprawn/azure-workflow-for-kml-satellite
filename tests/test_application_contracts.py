@@ -21,7 +21,7 @@ from scripts.application_contract import (
     parse_bootstrap,
     parse_chain,
 )
-from scripts.generate_application_contract_fixtures import build_fixtures
+from scripts.generate_application_contract_fixtures import build_fixtures, production_bootstrap, scan_fixtures
 
 FIXTURES = Path(__file__).parent / "fixtures" / "application_governance"
 STAGES = ("namespace", "prerequisites", "custody", "key", "encryption")
@@ -48,8 +48,9 @@ class ApplicationContractTests(unittest.TestCase):
         self.assertNotIn("encryption_identity_id", json.loads(result)["payload"])
 
     def test_fixtures_are_reproducible_from_shared_producer(self) -> None:
-        for name, raw in build_fixtures(self.bootstrap):
+        for name, raw in (*build_fixtures(self.bootstrap), *scan_fixtures(self.bootstrap)):
             self.assertEqual(raw, (FIXTURES / name).read_bytes())
+        self.assertEqual(production_bootstrap(self.bootstrap), (FIXTURES / "production-bootstrap.json").read_bytes())
 
     def test_external_adapter_builds_validated_encryption_without_azure(self) -> None:
         query = {

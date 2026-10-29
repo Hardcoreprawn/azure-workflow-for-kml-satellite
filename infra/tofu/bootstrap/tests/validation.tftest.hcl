@@ -1,4 +1,8 @@
 mock_provider "azurerm" {
+  alias = "application"
+}
+
+mock_provider "azurerm" {
   mock_resource "azurerm_log_analytics_workspace" {
     defaults = {
       id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-bootstrap/providers/Microsoft.OperationalInsights/workspaces/law-kmlsat-dev-bootstrap"

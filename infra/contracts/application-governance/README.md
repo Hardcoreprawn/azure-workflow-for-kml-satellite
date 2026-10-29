@@ -138,6 +138,8 @@ the SHA256 of the committed synthetic `bootstrap.json`, not a credential; verify
 it with `sha256sum tests/fixtures/application_governance/bootstrap.json`.
 `actions.json` is the single reviewed control-plane action list shared by
 Terraform and the namespace producer; fixture digest changes expose mutations.
+`actions_sha256` hashes `encode(actions())` (canonical ordered JSON array plus
+one LF), not the presentation whitespace in the source file.
 Foundation must configure AzureRM 4.22.0 with
 `features { storage { data_plane_available = false } }`,
 `storage_use_azuread = true`, and `resource_provider_registrations = "none"`,
