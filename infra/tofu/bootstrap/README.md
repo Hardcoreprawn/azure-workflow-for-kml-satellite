@@ -226,6 +226,14 @@ The repository-wide legacy exceptions do not apply to this blocking target.
 Scanning only the default identity phase must not conceal later storage/key
 resources. Never use scanner inputs for Azure.
 
+With `TRIVY_FORMAT=sarif TRIVY_OUTPUT=trivy-bootstrap.sarif`, the blocking
+target writes the state report to that path and application reports to
+`.namespace`, `.custody` and `.encryption` suffixes. Scanning remains fail-fast.
+Security CI uploads every report that exists, even after a failed phase or prior
+upload, under distinct `trivy-bootstrap`, `trivy-bootstrap-namespace`,
+`trivy-bootstrap-custody` and `trivy-bootstrap-encryption` categories. A missing
+later report is not a passing scan; report publication never overrides failure.
+
 Tests establish declared scopes, identity/subject separation, safe defaults,
 output shape and input validation. They **do not** establish Azure availability,
 effective permissions, inherited grants, eventual consistency, network access,

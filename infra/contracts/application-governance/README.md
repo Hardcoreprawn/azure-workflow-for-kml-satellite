@@ -38,6 +38,8 @@ Exact APIs:
 - `create_artifact(stage: Stage, payload: Mapping[str, str], bootstrap_raw: bytes,
   previous: tuple[bytes, ...], expected: ExpectedContext) -> bytes`
 - `read_artifact(path: Path) -> bytes`
+- `decode_external_request(raw: bytes) -> object`
+- `decode_artifact_bundle(raw: bytes) -> object`
 - `ContractError(ValueError)` is the explicit boundary failure.
 
 `Stage` is the literal union of the five stages below. No parser contacts Azure.
@@ -45,7 +47,20 @@ Exact APIs:
 still validating bootstrap. Unknown/missing fields, duplicate JSON keys,
 non-finite numbers, wrong types, versions, principals, backend, ancestry,
 revisions and digests fail closed. CLI errors are explicit and omit tracebacks.
-An artifact is at most 65,536 bytes.
+An artifact (including context/bootstrap) is at most `MAX_BYTES=65,536` bytes.
+The JSON-encoded artifact array has a separate
+`MAX_ARTIFACT_BUNDLE_BYTES=2,097,152` byte transport limit; the complete external
+query has `MAX_EXTERNAL_REQUEST_BYTES=16,777,216`. These bounded envelopes allow
+all five individually valid artifacts plus nested JSON escaping without lowering
+the individual limit or changing the wire schema.
+
+External consumers should read stdin with
+`sys.stdin.buffer.read(MAX_EXTERNAL_REQUEST_BYTES + 1)` and call
+`decode_external_request`; decode a string-valued artifact array with
+`decode_artifact_bundle`. Both reject duplicate keys/non-finite values/invalid
+JSON, but return an untyped JSON value: callers must still check their exact
+request fields and use the existing context/bootstrap/chain validators on every
+individual input. Never use the larger transport limit to read artifact files.
 
 **Hash exact received bytes**, including whitespace/newlines. Do not decode and
 re-encode a predecessor before computing its SHA256. Producers emit canonical

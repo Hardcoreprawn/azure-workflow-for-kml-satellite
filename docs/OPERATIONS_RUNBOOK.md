@@ -382,6 +382,9 @@ shared parser regressions and every explicit scanner phase. Consult the
 [bootstrap action evidence and bounded permission/network gates](../infra/tofu/bootstrap/README.md#exact-control-plane-allowlist-and-provider-evidence)
 before any separately authorized trial. Offline success does not prove effective
 RBAC, propagation, logging delivery, recovery or a no-change second apply.
+Security CI preserves each existing state/namespace/custody/encryption SARIF
+report under a distinct category even if the blocking scanner fails; an absent
+later-phase report must not be read as a passed gate.
 
 ### Why Function App Updates Use the Deployment Workflow
 
