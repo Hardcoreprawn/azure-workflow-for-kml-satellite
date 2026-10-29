@@ -20,7 +20,12 @@ def plan_fixture(phase: str = "storage") -> dict:
     manifest = (directory / ("manifest.json" if phase == "storage" else f"{phase}.json")).read_text()
     return {
         "configuration": {
-            "root_module": {"resources": [{"mode": "managed", "address": name} for name in sorted(INVENTORY)]}
+            "provider_config": {
+                "azurerm": {
+                    "expressions": {"features": [{"storage": [{"data_plane_available": {"constant_value": False}}]}]}
+                }
+            },
+            "root_module": {"resources": [{"mode": "managed", "address": name} for name in sorted(INVENTORY)]},
         },
         "planned_values": {
             "root_module": {
@@ -60,6 +65,30 @@ def test_rejects_extra_resource_declaration() -> None:
         {"mode": "managed", "address": "azurerm_role_assignment.forbidden"}
     )
     with pytest.raises(ContractError, match="inventory"):
+        validate_plan(plan, "storage")
+
+
+@pytest.mark.parametrize(
+    "features", [[{}], [{"storage": [{}]}], [{"storage": [{"data_plane_available": {"constant_value": True}}]}]]
+)
+def test_rejects_provider_data_plane_default_or_enabled(features: list[dict]) -> None:
+    plan = plan_fixture()
+    plan["configuration"]["provider_config"]["azurerm"]["expressions"]["features"] = features
+    with pytest.raises(ContractError, match=r"provider.*data plane"):
+        validate_plan(plan, "storage")
+
+
+@pytest.mark.parametrize(
+    "section,field,value",
+    [
+        ("configuration", "module_calls", {"forbidden": {"module": {"resources": []}}}),
+        ("planned_values", "child_modules", [{"address": "module.forbidden", "resources": []}]),
+    ],
+)
+def test_rejects_modules_even_when_root_inventory_matches(section: str, field: str, value: object) -> None:
+    plan = plan_fixture()
+    plan[section]["root_module"][field] = value
+    with pytest.raises(ContractError, match="module-free"):
         validate_plan(plan, "storage")
 
 

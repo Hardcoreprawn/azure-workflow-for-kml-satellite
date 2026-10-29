@@ -31,7 +31,11 @@ locals {
 }
 
 provider "azurerm" {
-  features {}
+  features {
+    storage {
+      data_plane_available = false
+    }
+  }
   subscription_id                 = local.context.subscription_id
   tenant_id                       = local.context.tenant_id
   client_id                       = local.context.foundation.client_id

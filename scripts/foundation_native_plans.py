@@ -37,6 +37,11 @@ PHASE_INVENTORY = {
 
 def validate_plan(plan: dict[str, object], phase: str) -> bytes:
     """Require exact inventories and validate actual generated candidate references."""
+    if plan["configuration"]["root_module"].get("module_calls") or plan["planned_values"]["root_module"].get(
+        "child_modules"
+    ):
+        raise ContractError("foundation is module-free; child resources cannot bypass the root inventory")
+    _validate_provider(plan["configuration"]["provider_config"])
     declarations = plan["configuration"]["root_module"]["resources"]
     actual = {resource["address"] for resource in declarations if resource["mode"] == "managed"}
     if actual != INVENTORY:
@@ -53,6 +58,17 @@ def validate_plan(plan: dict[str, object], phase: str) -> bytes:
     if published is not None and published.encode() != result:
         raise ContractError("native output differs from semantic-validator result")
     return result
+
+
+def _validate_provider(providers: dict[str, object]) -> None:
+    try:
+        value = providers["azurerm"]["expressions"]["features"][0]["storage"][0]["data_plane_available"][
+            "constant_value"
+        ]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ContractError("AzureRM provider storage data plane must be explicitly disabled") from exc
+    if value is not False:
+        raise ContractError("AzureRM provider storage data plane must be explicitly disabled")
 
 
 def _published_query(plan: dict[str, object], published: str | None, phase: str) -> dict[str, str]:

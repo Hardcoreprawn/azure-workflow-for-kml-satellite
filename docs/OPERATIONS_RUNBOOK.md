@@ -374,11 +374,16 @@ always declares `persistent-blob-core`, `not-activated`, no browser origins and
 `storage.data_plane_available=false`. No runtime admission or Cosmos is implied.
 
 `make scan-foundation` and the canonical CI Trivy action scan all actual evaluated
-phase plans, without global/bootstrap exceptions. `AZU-0010` (trusted-services
-bypass) and `AZU-0057` (Queue logging) currently remain **blocking and unapproved**;
-retain the stricter firewall and Blob-only scope pending owner disposition.
-No static scanner-only expiry, extra Queue configuration or inferred approval
-may be substituted. Key initial/rotated lifetimes are 180 days with 90-day
+phase plans, without global/bootstrap exceptions. The owner approved only
+`AZU-0010` (retain stricter storage bypass=None) and `AZU-0057` (retain Blob
+Read/Write/Delete diagnostics), scoped to foundation evaluated plans/main.tf,
+expiring **2026-11-27 00:00 UTC**. The dedicated policy validates approval metadata
+and expiry before scanning; mandatory unsuppressed, expired and wrong-path real
+scanner proofs each return the two findings and exit 1. No key-expiry exception,
+static scanner-only expiry, extra Queue configuration or broader approval may be
+substituted. The provider explicitly disables storage data-plane availability;
+native inventory validation rejects both module calls and planned child modules.
+Key initial/rotated lifetimes are 180 days with 90-day
 rotation; refreshed effective expiry must remain future-dated while rotation
 owns expiry drift. Destroy guards, soft deletion and versioning do not replace
 state/key recovery or legal retention.

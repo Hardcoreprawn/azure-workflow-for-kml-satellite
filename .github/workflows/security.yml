@@ -244,11 +244,11 @@ jobs:
           tofu_version: "1.13.2"
           tofu_wrapper: false
 
-      - name: Enforce every foundation phase without exceptions
+      - name: Enforce foundation phases and expiring owner-scoped exception proofs
         uses: ./.github/actions/trivy-scan
         with:
           scan: foundation
-          disable-ignore: "true"
+          ignorefile: infra/tofu/foundation/.trivyignore.yaml
           output: trivy-foundation.sarif
 
       - name: Upload foundation SARIF

@@ -56,6 +56,9 @@ environment, selected backend, bootstrap SHA256 and bootstrap-principal exclusio
 
 `data.external.inputs` runs the real standard-library validator before resources
 can write. Native tests mock AzureRM/random only, **not** this validator.
+The AzureRM provider explicitly sets `features.storage.data_plane_available=false`;
+ARM container operations remain selected through `storage_account_id`. The native
+plan gate verifies this provider setting, not merely the manifest's readiness flag.
 Unknown/duplicate fields, versions, types, identities, ancestry, digests, revisions,
 phase skipping and foreign backends fail closed. Backend selection is early-bound
 to the same context (OpenTofu's backend-variable support); use its exact approved
@@ -143,21 +146,33 @@ make check
 ```
 
 `test-foundation` exports evaluated native plans under ignored `.validation/`,
-checks the exact per-phase inventory and validates every generated artifact.
+rejects all configuration module calls/planned child modules, checks the exact
+per-phase inventory/provider feature and validates every generated artifact.
 Some data-source reads are deferred by OpenTofu because managed-resource
 preconditions depend on pending changes; the runner executes their fully evaluated
 candidate through the **same** producer/validator instead of mocking a success.
 `scan-foundation` scans all three actual evaluated plans with Trivy's
 `terraformplan-json` scanner, so computed expiry is real plan data, not a scanner-only
 dummy date. The canonical CI composite action invokes that same blocking target.
-It explicitly uses `/dev/null` as the ignorefile: no global/bootstrap exceptions.
+Only the dedicated [foundation policy](.trivyignore.yaml) is used, never global or
+bootstrap exceptions.
 
-**Current blocking scanner disposition:** Trivy 0.74.0 reports `AZU-0010`
-(requires Trusted Microsoft Services bypass) and `AZU-0057` (Queue logging).
-The first conflicts with the approved stricter firewall; the second is not the
-included Blob service's Read/Write/Delete diagnostic mechanism. Both remain
-**unsuppressed and blocking**, not owner-accepted exceptions. Do not add Queue
-logging, weaken the firewall or invent approval just to turn the gate green.
+**Owner-approved scanner disposition, 2026-10-29:**
+[approval](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/1633#issuecomment-6493579386)
+covers only `AVD-AZU-0010` (retain stricter `bypass=None`) and `AVD-AZU-0057`
+(retain Blob Read/Write/Delete diagnostics instead of adding unrelated Queue logging).
+Scope is the foundation evaluated-plan directory and scanner-reported `main.tf`.
+Both expire at **2026-11-27 00:00 UTC**. The file uses JSON-form YAML with an
+explicit UTC timestamp so both the stdlib metadata validator and Trivy interpret
+the same expiry. There is **no key-expiry exception**.
+
+`scan-foundation` first validates exact IDs/path/approval/expiry metadata, then
+runs Trivy and mandatory real-scanner proofs: approved policy passes; `/dev/null`
+baseline, expired-policy copy and wrong-path copy each produce both findings with
+exit 1. Missing/invalid/expired/broadened metadata fails even without findings.
+Evidence is retained in `.validation/foundation/exception-proofs/`.
+`test-foundation-mutations` rejects ten actual source regressions, including removal
+of the provider data-plane setting and an extra resource hidden in a real local module.
 
 Owner review and complete required hosted CI/security/integration/Pipeline checks
 remain mandatory. Before any future cloud work, separately authorize and prove

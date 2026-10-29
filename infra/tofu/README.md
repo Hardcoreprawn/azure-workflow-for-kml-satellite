@@ -8,7 +8,8 @@ The independent [persistent Blob foundation](foundation/README.md) (#1627)
 consumes governance-owned application RG/vault references and owns only the
 ten-resource Blob/key/UAMI/audit slice. `make test-foundation` validates raw
 contracts and all offline mock phases; `make scan-foundation` blocks on
-unsuppressed evaluated-plan findings. It is not activated or a migration of this
+evaluated-plan findings outside its dedicated owner-approved expiring policy.
+It is not activated or a migration of this
 legacy root, and does not own RG/vault lifecycle or application grants.
 
 - `infra/tofu` owns all Azure resources for migrated environments.

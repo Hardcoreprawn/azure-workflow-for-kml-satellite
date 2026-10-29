@@ -71,10 +71,35 @@ def test_mutation_rejects_success_shaped_gates_and_accepts_inventory_failure(mon
     mutations.run_mutation("tofu", "unit-regression", "secure", "insecure")
 
 
-def test_all_eight_mutations_are_executed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_all_ten_mutations_are_executed(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
-    monkeypatch.setattr(mutations, "run_mutation", lambda tofu, name, before, after: calls.append(name))
+    monkeypatch.setattr(mutations, "run_mutation", lambda tofu, name, before, after, **kwargs: calls.append(name))
     monkeypatch.setattr(sys, "argv", ["test_foundation_mutations", "--tofu", "/pinned/tofu"])
     mutations.main()
-    assert len(calls) == 8
-    assert calls[-1] == "extra-resource"
+    assert len(calls) == 10
+    assert calls[-1] == "child-module-resource"
+
+
+def test_local_module_mutation_initializes_offline_before_native_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_files(monkeypatch)
+    monkeypatch.setattr(Path, "mkdir", lambda *args: None)
+    calls: list[list[str]] = []
+
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "{}", "")
+
+    monkeypatch.setattr(mutations.subprocess, "run", run)
+
+    def rejected(*args: object) -> None:
+        raise ContractError("module-free")
+
+    monkeypatch.setattr(mutations, "export_plans", rejected)
+    mutations.run_mutation("tofu", "module", "secure", "insecure", with_module=True)
+    assert calls[0][-4:] == ["init", "-backend=false", "-input=false", "-lockfile=readonly"]
+    assert calls[1][-3:] == ["test", "-json", "-verbose"]
+    monkeypatch.setattr(
+        mutations.subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess([], 1, "", "init failed")
+    )
+    with pytest.raises(ContractError, match="initialization failed"):
+        mutations.run_mutation("tofu", "module", "secure", "insecure", with_module=True)

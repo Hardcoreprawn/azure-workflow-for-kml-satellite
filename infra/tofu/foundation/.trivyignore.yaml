@@ -1,0 +1,16 @@
+{
+  "misconfigurations": [
+    {
+      "id": "AVD-AZU-0010",
+      "paths": ["main.tf"],
+      "expired_at": "2026-11-27T00:00:00Z",
+      "statement": "Owner approved 2026-10-29: https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/1633#issuecomment-6493579386 . Only foundation evaluated plans/main.tf. Retain stricter storage bypass=None; no trusted-service Blob access is required by this slice. Reachability and permissions remain separate authorized-cloud gates."
+    },
+    {
+      "id": "AVD-AZU-0057",
+      "paths": ["main.tf"],
+      "expired_at": "2026-11-27T00:00:00Z",
+      "statement": "Owner approved 2026-10-29: https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/1633#issuecomment-6493579386 . Only foundation evaluated plans/main.tf. Blob Read/Write/Delete diagnostic settings and vault AuditEvent use a dedicated Entra-only workspace; this check does not recognize that Blob diagnostic path. No Queue service is included. Actual audit delivery remains unproven."
+    }
+  ]
+}

@@ -96,7 +96,7 @@ test-foundation: ## Validate isolated foundation raw contracts and mock plans; n
 	python3 -m scripts.foundation_native_plans .validation/foundation/events.jsonl .validation/foundation/plans
 	@test ! -f infra/tofu/foundation/errored_test.tfstate || { echo "ERROR: foundation native test left state; investigate." >&2; exit 1; }
 
-test-foundation-mutations: test-foundation ## Prove native gates reject eight real source mutations, offline
+test-foundation-mutations: test-foundation ## Prove native gates reject ten real source mutations, offline
 	python3 -m scripts.test_foundation_mutations --tofu "$(TOFU)"
 
 test: ## Run unit tests (canonical — CI runs this exact command)
@@ -275,8 +275,9 @@ scan-bootstrap: TRIVY_IGNOREFILE = infra/tofu/bootstrap/.trivyignore.yaml
 scan-bootstrap: ## Block bootstrap misconfigurations with only scoped, owner-approved exceptions
 	@$(_trivy); "$$T" config infra/tofu/bootstrap --tf-vars infra/tofu/bootstrap/tests/scan.tfvars --ignorefile "$(TRIVY_IGNOREFILE)" --severity CRITICAL,HIGH,MEDIUM --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
 
-scan-foundation: test-foundation ## Scan actual evaluated mock plans for every phase, with no inherited exceptions
-	@$(_trivy); "$$T" config .validation/foundation/plans --misconfig-scanners terraformplan-json --ignorefile /dev/null --severity CRITICAL,HIGH,MEDIUM --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
+scan-foundation: test-foundation ## Scan all actual phase plans with only two expiring owner-approved foundation exceptions
+	python3 -m scripts.foundation_scan_policy
+	@$(_trivy); "$$T" config .validation/foundation/plans --misconfig-scanners terraformplan-json --ignorefile infra/tofu/foundation/.trivyignore.yaml --severity CRITICAL,HIGH,MEDIUM --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT) && python3 -m scripts.test_foundation_scan_policy --trivy "$$T"
 
 scan-fs: ## Trivy filesystem scan (deps + Dockerfiles, vulns only) — blocks on fixable CRITICAL/HIGH
 	@$(_trivy); "$$T" fs . $(_TRIVY_IGN) --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)

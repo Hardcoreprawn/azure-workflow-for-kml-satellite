@@ -18,22 +18,35 @@ MUTATIONS = (
     ("expired-key", 'expiration_date = timeadd(plantimestamp(), "4320h")', 'expiration_date = "2000-01-01T00:00:00Z"'),
     ("resource-only-audit", "allow_resource_only_permissions = false", "allow_resource_only_permissions = true"),
     ("missing-read-audit", 'category = "StorageRead"', 'category = "StorageWrite"'),
+    ("provider-data-plane-default", "data_plane_available = false", ""),
 )
 
 
-def run_mutation(tofu: str, name: str, before: str, after: str) -> None:
+def run_mutation(tofu: str, name: str, before: str, after: str, *, with_module: bool = False) -> None:
     root = Path(__file__).resolve().parents[1]
     source = root / "infra/tofu/foundation"
     destination = root / ".validation/foundation-mutations" / name
     if destination.exists():
         shutil.rmtree(destination)
     shutil.copytree(source, destination, ignore=shutil.ignore_patterns(".terraform", "*.tfstate*"))
-    (destination / ".terraform").symlink_to(source / ".terraform", target_is_directory=True)
+    if with_module:
+        _prepare_module(source, destination)
+    else:
+        (destination / ".terraform").symlink_to(source / ".terraform", target_is_directory=True)
     main = destination / "main.tf"
     original = main.read_text()
     if before not in original:
         raise ContractError(f"{name}: mutation anchor missing")
     main.write_text(original.replace(before, after, 1))
+    if with_module:
+        initialized = subprocess.run(
+            [tofu, f"-chdir={destination}", "init", "-backend=false", "-input=false", "-lockfile=readonly"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if initialized.returncode:
+            raise ContractError(f"module mutation initialization failed: {initialized.stderr}")
     result = subprocess.run(
         [tofu, f"-chdir={destination}", "test", "-json", "-verbose"], check=False, capture_output=True, text=True
     )
@@ -43,8 +56,8 @@ def run_mutation(tofu: str, name: str, before: str, after: str) -> None:
     if result.returncode == 0:
         try:
             export_plans(evidence, destination / "plans")
-        except ContractError:
-            print(f"REJECTED {name}: strict evaluated-plan inventory/output validator")
+        except ContractError as exc:
+            print(f"REJECTED {name}: {exc}")
             return
         raise ContractError(f"{name}: native gates incorrectly accepted the regression")
     if not any(
@@ -53,6 +66,15 @@ def run_mutation(tofu: str, name: str, before: str, after: str) -> None:
     ):
         raise ContractError(f"{name}: failed for an unexpected reason; inspect {evidence}")
     print(f"REJECTED {name}: native security assertion/condition")
+
+
+def _prepare_module(source: Path, destination: Path) -> None:
+    data = destination / ".terraform"
+    data.mkdir()
+    (data / "providers").symlink_to(source / ".terraform/providers", target_is_directory=True)
+    module = destination / "mutation-child"
+    module.mkdir()
+    (module / "main.tf").write_text('resource "random_string" "forbidden" { length = 6 }\n')
 
 
 def main() -> None:
@@ -67,7 +89,14 @@ def main() -> None:
         'data "external" "inputs" {',
         'resource "random_string" "forbidden" { length = 6 }\n\ndata "external" "inputs" {',
     )
-    print("All 8 executable foundation mutations were rejected.")
+    run_mutation(
+        args.tofu,
+        "child-module-resource",
+        'data "external" "inputs" {',
+        'module "forbidden" { source = "./mutation-child" }\n\ndata "external" "inputs" {',
+        with_module=True,
+    )
+    print("All 10 executable foundation mutations were rejected.")
 
 
 if __name__ == "__main__":

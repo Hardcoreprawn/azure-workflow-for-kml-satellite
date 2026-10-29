@@ -166,9 +166,11 @@ contracts are validated before writes; final generated output uses the same
 semantic validator as fixtures and declares `persistent-blob-core/not-activated`,
 `storage.data_plane_available=false`, and no browser origins.
 Cosmos, browser bindings, runtime identities, alerting/budgets and other service
-families remain deferred. Mocked plans prove declarations only. Scanner
-`AZU-0010`/`AZU-0057` conflicts remain unsuppressed owner-disposition blockers;
-no cloud permissions, recovery, audit delivery or readiness is established here.
+families remain deferred. Mocked plans prove declarations only. The owner approved
+foundation-only `AZU-0010`/`AZU-0057` exceptions on 2026-10-29 through 2026-11-27
+00:00 UTC, retaining the stricter firewall and Blob diagnostics. Mandatory metadata,
+expiry and wrong-path proofs bound those exceptions; no key-expiry exception exists.
+No cloud permissions, recovery, audit delivery or readiness is established here.
 
 Separate foundation and workload states/principals per environment; shared
 subscription and CIAM resources have one owner each, not dev/prd copies.
