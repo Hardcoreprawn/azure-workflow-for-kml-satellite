@@ -488,3 +488,21 @@ def test_manifest_case_folding_does_not_relax_non_uuid_fields() -> None:
     value["namespace"]["name"] = str(value["namespace"]["name"]).upper()
     with pytest.raises(ContractError):
         validate_manifest(encode(value), "kmlsatdevappabc123", bootstrap, chain, context)
+
+
+def test_foundation_cli_rejects_numeric_overflow_without_traceback() -> None:
+    query = external_query("storage", 5)
+    request = {
+        **{key: value for key, value in query.items() if key != "writes_enabled"},
+        "candidate": '{"schema_version":1e999}',
+        "storage_name": "kmlsatdevappabc123",
+    }
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.validate_foundation_contract", "external-output"],
+        input=encode(request),
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert b"foundation contract error:" in result.stderr
+    assert b"Traceback" not in result.stderr

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import sys
 from collections.abc import Mapping, Sequence
@@ -71,7 +72,7 @@ def decode_external_request(raw: bytes) -> object:
 def _decode_bounded(raw: bytes, maximum: int, label: str) -> object:
     _require(isinstance(raw, bytes) and len(raw) <= maximum, f"{label} must be bounded raw bytes")
     try:
-        return json.loads(raw, object_pairs_hook=_unique, parse_constant=_reject_constant)
+        return json.loads(raw, object_pairs_hook=_unique, parse_constant=_reject_constant, parse_float=_finite_float)
     except ContractError:
         raise
     except (ValueError, RecursionError) as exc:
@@ -80,6 +81,12 @@ def _decode_bounded(raw: bytes, maximum: int, label: str) -> object:
 
 def _reject_constant(value: str) -> None:
     raise ContractError(f"non-finite JSON number: {value}")
+
+
+def _finite_float(value: str) -> float:
+    result = float(value)
+    _require(math.isfinite(result), "non-finite JSON number")
+    return result
 
 
 def encode(value: object) -> bytes:
