@@ -216,14 +216,14 @@ class TestStopFuncHost:
     def test_returns_immediately_if_already_exited(self):
         proc = MagicMock()
         proc.poll.return_value = 0
-        runner.stop_func_host(proc)
+        runner._stop_role_host(proc)
         proc.terminate.assert_not_called()
 
     def test_terminates_cleanly_when_process_responds(self):
         proc = MagicMock()
         proc.poll.return_value = None
         proc.wait.return_value = 0
-        runner.stop_func_host(proc)
+        runner._stop_role_host(proc)
         proc.terminate.assert_called_once()
         proc.kill.assert_not_called()
 
@@ -231,7 +231,7 @@ class TestStopFuncHost:
         proc = MagicMock()
         proc.poll.return_value = None
         proc.wait.side_effect = [subprocess.TimeoutExpired(cmd="func", timeout=10.0), 0]
-        runner.stop_func_host(proc)
+        runner._stop_role_host(proc)
         proc.terminate.assert_called_once()
         proc.kill.assert_called_once()
 

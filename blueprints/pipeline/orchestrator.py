@@ -22,7 +22,7 @@ import azure.durable_functions as df
 from treesight.constants import DEFAULT_OUTPUT_CONTAINER
 from treesight.pipeline.orchestrator import build_pipeline_summary, derive_project_context
 
-from . import bp
+from . import worker_bp as bp
 from ._aggregation import _aggregate_aoi_results, _validate_aoi_results
 from ._phase_acquisition import _phase_acquisition
 from ._phase_enrichment import _phase_enrichment, _safe_finalize_run, _safe_write_pipeline_stats

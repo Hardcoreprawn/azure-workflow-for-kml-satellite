@@ -31,11 +31,16 @@ azurite-data/
 
 # Local pipeline e2e gate (#1215)
 .e2e-local-func-host.log
+.e2e-local-func-host-admission.log
 .e2e-local-result.json
+.e2e-secrets-compute/
+.e2e-secrets-orchestrator/
+.local-validation/
 .azurite/
 
 # Real-acquisition local runner (#1379, #1405)
 .real-acquisition-func-host.log
+.real-acquisition-func-host-admission.log
 .real-acquisition-output/
 
 # Rust build artifacts

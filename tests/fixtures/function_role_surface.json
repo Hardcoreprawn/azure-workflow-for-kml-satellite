@@ -1,0 +1,1239 @@
+{
+  "compute": {
+    "acquire_composite": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "acquire_imagery": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "aoi_pipeline": [
+      {
+        "direction": "IN",
+        "name": "context",
+        "type": "orchestrationTrigger"
+      }
+    ],
+    "check_order_status": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "complete_billing": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "download_imagery": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "enrich_data_sources": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "enrich_finalize": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "enrich_imagery": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "enrich_single_aoi": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "fail_billing": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "finalize_run_completed": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "finalize_run_failed": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "health": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "health",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "load_aoi_claim": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "load_offloaded_features": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "monitoring_scheduler": [
+      {
+        "direction": "IN",
+        "name": "timer",
+        "runOnStartup": false,
+        "schedule": "0 0 */6 * * *",
+        "type": "timerTrigger"
+      }
+    ],
+    "parse_kml": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "poll_batch_fulfilment": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "post_process_imagery": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "prepare_aoi": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "readiness": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "readiness",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "run_enrichment": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "store_aoi_claims": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "submit_batch_fulfilment": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "treesight_orchestrator": [
+      {
+        "direction": "IN",
+        "name": "context",
+        "type": "orchestrationTrigger"
+      }
+    ],
+    "write_metadata": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ],
+    "write_pipeline_stats": [
+      {
+        "direction": "IN",
+        "name": "payload",
+        "type": "activityTrigger"
+      }
+    ]
+  },
+  "orchestrator": {
+    "analysis_history": [
+      {
+        "direction": "IN",
+        "name": "client",
+        "type": "durableClient"
+      },
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "analysis/history",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "analysis_notes": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "analysis/notes",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "analysis_override": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "analysis/override",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "analysis_parcel_review": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "analysis/{instance_id}/parcel/{aoi_index}/review",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "analysis_review_list": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "analysis/{instance_id}/review",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "analysis_submit": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "analysis/submit",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "billing_checkout": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "billing/checkout",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "billing_emulation": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "billing/emulation",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "billing_interest": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "billing/interest",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "billing_pool_status": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "billing/pool-status",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "billing_portal": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "billing/portal",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "billing_status": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "billing/status",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "billing_webhook": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST"
+        ],
+        "name": "req",
+        "route": "billing/webhook",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "blob_trigger": [
+      {
+        "direction": "IN",
+        "name": "client",
+        "type": "durableClient"
+      },
+      {
+        "direction": "IN",
+        "name": "event",
+        "type": "eventGridTrigger"
+      }
+    ],
+    "catalogue_by_aoi": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "catalogue/aoi/{aoiName}",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "catalogue_by_run": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "catalogue/run/{runId}",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "catalogue_detail": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "catalogue/{entryId}",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "catalogue_list": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "catalogue",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "contact_form": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "contact-form",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "contract": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "contract",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "convert_coordinates": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "convert-coordinates",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "delete_account_endpoint": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "DELETE"
+        ],
+        "name": "req",
+        "route": "user",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "eudr_assessment": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "eudr-assessment",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "eudr_billing_status": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "eudr/billing",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "eudr_subscribe": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "eudr/subscribe",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "eudr_summary_export": [
+      {
+        "direction": "IN",
+        "name": "client",
+        "type": "durableClient"
+      },
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "eudr/summary-export",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "eudr_usage_status": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "eudr/usage",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "export_data": [
+      {
+        "direction": "IN",
+        "name": "client",
+        "type": "durableClient"
+      },
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "export/{instance_id}/{format}",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "get_profile_endpoint": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "user",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "health": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "health",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "health_deep": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "health/deep",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "internal_health": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "internal-health",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "internal_smoke": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "internal-smoke",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "monitor_detail_endpoint": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "PATCH",
+          "DELETE",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "monitoring/{monitor_id}",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "monitoring_endpoint": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "monitoring",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "ops_dashboard": [
+      {
+        "direction": "IN",
+        "name": "client",
+        "type": "durableClient"
+      },
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET"
+        ],
+        "name": "req",
+        "route": "ops/dashboard",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "ops_list_users": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET"
+        ],
+        "name": "req",
+        "route": "ops/users",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "ops_lookup_user": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET"
+        ],
+        "name": "req",
+        "route": "ops/users/lookup",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "ops_set_user_role": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST"
+        ],
+        "name": "req",
+        "route": "ops/users/{user_id}/role",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "orchestrator_status": [
+      {
+        "direction": "IN",
+        "name": "client",
+        "type": "durableClient"
+      },
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "orchestrator/{instance_id}",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "org_endpoint": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "POST",
+          "PATCH",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "org",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "org_invite": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "org/invite",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "org_invite_accept": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "org/invites/{token}/accept",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "org_invite_revoke": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "PATCH",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "org/invites/{email}/revoke",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "org_invites_list": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "org/invites",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "org_member_manage": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "DELETE",
+          "PATCH",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "org/members/{member_id}",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "org_members_list": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "org/members",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "readiness": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "readiness",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "timelapse_analysis": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "timelapse-analysis",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "timelapse_analysis_load": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET"
+        ],
+        "name": "req",
+        "route": "timelapse-analysis-load/{instance_id}",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "timelapse_analysis_save": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "timelapse-analysis-save",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "timelapse_data": [
+      {
+        "direction": "IN",
+        "name": "client",
+        "type": "durableClient"
+      },
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "timelapse-data/{instance_id}",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "update_profile_endpoint": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "PATCH",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "user/profile",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "upload_status": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "GET",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "upload/status/{submission_id}",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ],
+    "upload_token": [
+      {
+        "authLevel": "ANONYMOUS",
+        "direction": "IN",
+        "methods": [
+          "POST",
+          "OPTIONS"
+        ],
+        "name": "req",
+        "route": "upload/token",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "OUT",
+        "name": "$return",
+        "type": "http"
+      }
+    ]
+  }
+}

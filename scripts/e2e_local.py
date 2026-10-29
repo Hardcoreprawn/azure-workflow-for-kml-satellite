@@ -2,7 +2,7 @@
 
 Runs the real pipeline — blob upload -> Event Grid trigger -> Durable
 orchestration -> acquisition -> fulfilment -> enrichment -> artifact —
-against Azurite and a real ``func start`` host process, with
+against Azurite and separate admission/worker ``func start`` host processes, with
 ``CANOPEX_TEST_MODE=1`` so imagery never reaches a real third-party
 provider (see ``treesight/providers/stub.py``). No live Azure environment
 required.
@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -50,7 +51,8 @@ from treesight.constants import (  # noqa: E402 - support direct execution witho
     E2E_PROGRESS_INTERVAL_SECONDS,
 )
 
-FUNC_BASE = "http://localhost:7071"
+FUNC_BASE = "http://localhost:7072"
+WORKER_BASE = "http://localhost:7071"
 DEFAULT_KML = REPO_ROOT / "tests" / "fixtures" / "sample.kml"
 DEFAULT_MANIFEST = REPO_ROOT / "tests" / "fixtures" / "catalogues" / "representative.json"
 FUNC_HOST_LOG_PATH = REPO_ROOT / ".e2e-local-func-host.log"
@@ -73,7 +75,7 @@ _DUMMY_CIAM_DEFAULTS = {
 }
 
 
-def build_func_host_env(base_env: dict[str, str], *, test_mode: bool = True) -> dict[str, str]:
+def build_func_host_env(base_env: dict[str, str], *, test_mode: bool = True, role: str = "compute") -> dict[str, str]:
     """Return the environment for the ``func start`` subprocess.
 
     Self-contained by design: ``local.settings.json`` is git-ignored, so a
@@ -87,6 +89,14 @@ def build_func_host_env(base_env: dict[str, str], *, test_mode: bool = True) -> 
     stripped rather than left to leak into a real-acquisition run.
     """
     env = dict(base_env)
+    if role not in {"compute", "orchestrator"}:
+        raise ValueError(f"Unknown local host role: {role}")
+    env["PIPELINE_ROLE"] = "full" if role == "compute" else "orchestrator"
+    if role == "orchestrator":
+        env["FUNCTIONS_WORKER_PROCESS_COUNT"] = "1"
+    env["PYTHON_SCRIPT_FILE_NAME"] = "function_app.py" if role == "compute" else "function_app_orch.py"
+    env["AzureFunctionsWebHost__hostid"] = f"canopex-e2e-{role}"
+    env["FUNCTIONS_SECRETS_PATH"] = str(REPO_ROOT / f".e2e-secrets-{role}")
     if test_mode:
         env["CANOPEX_TEST_MODE"] = "1"
     else:
@@ -120,14 +130,12 @@ def build_func_host_env(base_env: dict[str, str], *, test_mode: bool = True) -> 
     return env
 
 
-def start_func_host(*, log_path: Path, test_mode: bool = True) -> subprocess.Popen:
-    """Start ``func start --python`` in the background with an env built
-    by ``build_func_host_env`` — see that function for why."""
-    env = build_func_host_env(dict(os.environ), test_mode=test_mode)
+def _start_role_host(*, log_path: Path, test_mode: bool, role: str, port: int) -> subprocess.Popen:
+    env = build_func_host_env(dict(os.environ), test_mode=test_mode, role=role)
     log_file = log_path.open("w")
     try:
         return subprocess.Popen(
-            ["func", "start", "--python"],
+            ["func", "start", "--python", "--port", str(port)],
             cwd=REPO_ROOT,
             env=env,
             stdout=log_file,
@@ -138,7 +146,28 @@ def start_func_host(*, log_path: Path, test_mode: bool = True) -> subprocess.Pop
         log_file.close()
 
 
-def stop_func_host(proc: subprocess.Popen, *, grace_seconds: float = 10.0) -> None:
+def start_func_host(*, log_path: Path, test_mode: bool = True) -> tuple[subprocess.Popen, subprocess.Popen]:
+    """Start the real admission/worker pair; never reuse an unrelated running host."""
+    for port in (7071, 7072):
+        with socket.socket() as connection:
+            connection.settimeout(1)
+            if connection.connect_ex(("127.0.0.1", port)) == 0:
+                raise RuntimeError(f"Local gate requires owned free port {port}; use an isolated environment")
+    worker = _start_role_host(log_path=log_path, test_mode=test_mode, role="compute", port=7071)
+    try:
+        admission = _start_role_host(
+            log_path=log_path.with_name(f"{log_path.stem}-admission.log"),
+            test_mode=test_mode,
+            role="orchestrator",
+            port=7072,
+        )
+    except Exception:
+        _stop_role_host(worker)
+        raise
+    return worker, admission
+
+
+def _stop_role_host(proc: subprocess.Popen, *, grace_seconds: float = 10.0) -> None:
     """Terminate the func host, escalating to SIGKILL if it won't stop."""
     if proc.poll() is not None:
         return
@@ -148,6 +177,18 @@ def stop_func_host(proc: subprocess.Popen, *, grace_seconds: float = 10.0) -> No
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait(timeout=5.0)
+
+
+def stop_func_host(procs: tuple[subprocess.Popen, subprocess.Popen]) -> None:
+    """Attempt both bounded, owned shutdowns even if the first fails."""
+    failures: list[Exception] = []
+    for proc in reversed(procs):
+        try:
+            _stop_role_host(proc)
+        except Exception as exc:
+            failures.append(exc)
+    if failures:
+        raise ExceptionGroup("Owned host shutdown failed", failures)
 
 
 def write_e2e_result(status_payload: dict[str, Any], path: Path = E2E_RESULT_PATH) -> None:
@@ -170,8 +211,8 @@ def wait_for_func_host(*, timeout: float, interval: float = 2.0, progress_interv
         attempt += 1
         report_progress = now >= next_progress
         try:
-            resp = httpx.get(f"{FUNC_BASE}/api/health", timeout=5.0)
-            if resp.status_code == 200:
+            responses = [httpx.get(f"{base}/api/health", timeout=5.0) for base in (WORKER_BASE, FUNC_BASE)]
+            if all(response.status_code == 200 for response in responses):
                 return
         except httpx.TransportError as exc:
             if report_progress:

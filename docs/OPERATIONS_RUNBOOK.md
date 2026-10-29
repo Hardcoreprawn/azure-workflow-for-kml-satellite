@@ -285,12 +285,77 @@ API journey with three distinct signed identities: an owner, an authenticated
 user without an organization, and a user in a separate organization. It creates
 or reuses those organizations through `/api/org`. The issuer's private key is
 generated in memory on each start, its tokens expire after 15 minutes, and the
-target starts the Event Grid relay for clean-stack uploads, refreshes `func`
-after `orch` so the relay reads the compute host's current system key, then
+target starts the Event Grid relay for clean-stack uploads, using only
+`canopex-local-admission/host.json` (the admission host's system key), then
 removes the issuer and restores normal `orch`/relay configuration on exit. This
 proves local JWT discovery, signature,
 audience, authorization, and artifact behavior; it does not prove deployed CIAM
 configuration, cloud identity, or production-provider behavior.
+
+### Admission/worker HTTP boundary (#1526)
+
+`func` (7071, `PIPELINE_ROLE=full`) exposes only GET/OPTIONS `/api/health` and
+`/api/readiness`. `orch` (7072, `PIPELINE_ROLE=orchestrator`) retains all business
+APIs, browser warm-up, contract, deep health and internal smoke. It owns Event
+Grid ingress and Durable clients, but no orchestration/activity listeners or
+monitoring timer. Both Durable listeners, every activity and the monitoring
+scheduler remain compute-only. No combined development role exists. Unknown or
+contradictory entrypoint/role configuration fails indexing.
+
+Caller inventory: Compose's website proxy and Event Grid relay target `orch`;
+the relay reads the configured `ADMISSION_HOST_ID`'s system key, never a worker
+key. `dev_server.py`, `ux_journeys.py`, `make smoke`, `simulate_upload.py`,
+`load_baseline.py`, and the real-acquisition helper all target admission.
+`verify_local_stack.py` checks Cosmos and submits storage-native ingestion via
+admission only; completion is executed by the separate worker. The disposable
+`e2e_local.py` gate starts two host processes, with separate host IDs, secrets
+paths and role logs, sharing the existing Durable hub/storage contract.
+It refuses occupied ports instead of silently reusing another stack.
+
+Validation:
+
+- `make test-fast TESTS="tests/test_orchestrator_split.py"` pins exact fresh-process
+  names, routes, methods, authentication levels and all bindings.
+- `make blueprint-parity-check` retains its command name but now verifies **every**
+  application route/method against the role matrix. Empty 404 means absent;
+  transport failures, redirects, server errors and invalid unknown-route controls
+  fail closed. Both positive probes must succeed. The local matrix sends the
+  same synthetic admission Host header to both roles and controls to exercise
+  internal-smoke's existing hostname guard; that is not Azure ingress evidence.
+  The webhook's exact `503 Billing not configured` application response counts
+  as registered without requiring live Stripe secrets; generic 5xx fails.
+  Probes send a deliberately incomplete bearer header (rejected even with
+  `REQUIRE_AUTH=false`), clear test-principal credentials, and use invalid JSON
+  for mutating methods. Actual authentication wrappers and public-handler
+  validation prevent organisation/account, billing, quota and submission writes.
+  A successful mutation response fails the gate. Existing bounded operational
+  rate-limit accounting is permitted; authentication and abuse-limit ordering
+  and thresholds are unchanged. This is registration proof, not successful
+  business-operation or authenticated-identity proof.
+- `make test-pipeline-local` proves admission-to-worker synthetic completion;
+  this privileged storage-native check is **not** authentication evidence.
+- `make verify-local-api` separately proves signed identity, ownership/denial and
+  validated artifact downloads. It recreates development admission services;
+  relay startup uses the same verifier overlay so its admission dependency
+  cannot restore ordinary auth settings before the journey completes.
+  **never run it against a shared stack**. Independent validation must use its
+  own named network, storage, Cosmos, identity issuer, host secrets and task hub,
+  no shared volumes or fixed host-port collisions. Docker build/copy works when
+  the daemon cannot see a worktree's bind-mount paths.
+
+Owner-approved rollout must pair both role images with all caller destinations
+and admission key sources. Rollback restores the previous **pair of images and
+caller configuration**, including relay target/key source and website proxy,
+without changing the hub/storage or queued-work contracts. Reverting the old
+images **restores worker business APIs and Event Grid registration**; it is not
+a security-equivalent rollback. Recheck route matrix appropriate to the selected
+version, authorized completion, artifacts and probes before owner acceptance.
+
+These are local application-registration checks, not proof that Azure compute
+ingress or runtime-managed `/admin` and `/runtime/webhooks/*` endpoints are
+inaccessible. Azure networking, CIAM/key wiring, promotion and production
+singleton evidence remain #1620/#1528/#1503/#1327/#708 gates. No deployment,
+hosting migration, latency or cost claim is implied.
 
 To test against a real trusted CIAM issuer instead, configure both Function Apps
 with its authority, tenant, audience, and `REQUIRE_AUTH=true`, then run

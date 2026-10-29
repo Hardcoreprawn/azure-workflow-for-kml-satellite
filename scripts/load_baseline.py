@@ -338,7 +338,7 @@ def main() -> None:
         raise SystemExit("--concurrency must be >= 1")
 
     if not check_func_host():
-        raise SystemExit("Function host not reachable at localhost:7071. Start with: make dev-all")
+        raise SystemExit(f"Admission host not reachable at {FUNC_BASE}. Start with: make dev-all")
 
     output_dir = Path(args.out_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

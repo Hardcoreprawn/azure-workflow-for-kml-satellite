@@ -2335,8 +2335,8 @@ class TestCIFeedbackHygiene:
         assert "event-grid-relay" in services, "docker-compose.yml must define an event-grid-relay service"
         relay = services["event-grid-relay"]
         depends_on = relay.get("depends_on", {})
-        assert depends_on.get("func", {}).get("condition") == "service_healthy", (
-            "event-grid-relay must wait for func to be healthy before starting"
+        assert depends_on.get("orch", {}).get("condition") == "service_healthy", (
+            "event-grid-relay must wait for admission to be healthy before starting"
         )
         assert relay.get("environment", {}).get("PYTHONUNBUFFERED") == "1", (
             "without this, container stdout is fully block-buffered (no TTY) and `docker compose logs` appears silent"

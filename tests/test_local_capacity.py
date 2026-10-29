@@ -310,7 +310,7 @@ def test_health_observation_does_not_wait_for_logging_interval(
     from scripts.local_capacity import harness
 
     clock = {"now": 0.0}
-    responses = iter([503, 503, 200])
+    responses = iter([503, 503, 200, 503, 200, 200])
     monkeypatch.setattr(harness.time, "monotonic", lambda: clock["now"])
     monkeypatch.setattr(harness.time, "sleep", lambda seconds: clock.update(now=clock["now"] + seconds))
     monkeypatch.setattr(harness.httpx, "get", lambda *args, **kwargs: SimpleNamespace(status_code=next(responses)))

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from treesight.constants import DEFAULT_OUTPUT_CONTAINER, DEFAULT_PROVIDER
 
-from . import bp
+from . import worker_bp as bp
 
 logger = logging.getLogger(__name__)
 

@@ -1,93 +1,135 @@
-"""Local blueprint-parity validator for the compute/orchestrator big/little split (#1407/#1408).
+"""Fail-closed HTTP role matrix (the historical command name is retained).
 
-Confirms the routing surface actually works in Docker — not just that
-function_registration.py's blueprint lists match in a unit test — before any
-change to this contract reaches Azure. Prove it locally first; a real Azure
-deploy is the expensive way to discover a routing regression.
-
-Prerequisite: `make dev-all` running (brings up azurite, cosmos, func, orch).
-
-Usage:
-    uv run python scripts/validate_blueprint_parity.py
-    uv run python scripts/validate_blueprint_parity.py --compute-base http://localhost:7071 --orch-base http://localhost:7072
+Checks every indexed application route/method against both running hosts.
+This does not assert removal of platform /admin or /runtime/webhooks surfaces,
+nor prove Azure network isolation. Use fresh image indexing as a separate gate.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import re
 import sys
 from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
 
 import httpx
 
 DEFAULT_COMPUTE_BASE = "http://localhost:7071"
 DEFAULT_ORCH_BASE = "http://localhost:7072"
+CONTRACT_PATH = Path(__file__).resolve().parents[1] / "tests/fixtures/function_role_surface.json"
+WORKER_PATHS = frozenset({"/api/health", "/api/readiness"})
+# Exercise internal-smoke's existing hostname guard without changing the app.
+# The same Host header is used for controls and both roles; this is local proof only.
+LOCAL_SMOKE_HOST = "func-kmlsat-dev-orch.local.azurecontainerapps.io"
+
+
+class RouteState(StrEnum):
+    PRESENT = "present"
+    ABSENT = "absent"
+    ERROR = "error"
 
 
 @dataclass(frozen=True)
 class RouteCheck:
     method: str
     path: str
-    # Human label for the blueprint this route belongs to.
-    blueprint: str
+
+    @property
+    def key(self) -> str:
+        return f"{self.method} {self.path}"
 
 
-# One representative, cheaply-reachable route per HTTP blueprint that both
-# compute and orchestrator must register (#1407). Bodies are deliberately
-# invalid/empty — the goal is to prove the route is *registered* (any
-# response with a non-empty body, or a status other than a bare 404), not to
-# exercise full business logic.
-#
-# Exactly one entry per distinct blueprint label — check_host() keys its
-# results dict by `blueprint`, so a second entry sharing a label (e.g. an
-# earlier version also checked /api/internal-health under "health") would
-# silently overwrite the first result rather than adding coverage, hiding a
-# real registration gap. test_covers_every_registered_http_blueprint enforces
-# this stays 1:1 with function_registration._http_blueprints().
-ROUTES: tuple[RouteCheck, ...] = (
-    RouteCheck("GET", "/api/health", "health"),
-    RouteCheck("GET", "/api/billing/status", "billing"),
-    RouteCheck("POST", "/api/upload/token", "upload"),
-    RouteCheck("GET", "/api/monitoring", "monitoring"),
-    RouteCheck("GET", "/api/ops/dashboard", "ops"),
-    RouteCheck("GET", "/api/catalogue", "catalogue"),
-    RouteCheck("POST", "/api/contact-form", "contact"),
-    RouteCheck("PATCH", "/api/user/profile", "account"),
-    RouteCheck("GET", "/api/org", "org"),
-    RouteCheck("GET", "/api/export/local-parity-check/eudr-pdf", "export"),
-    RouteCheck("POST", "/api/convert-coordinates", "eudr"),
-    RouteCheck("POST", "/api/eudr-assessment", "analysis"),
-    # /api/orchestrator/{id} 404s with a real JSON body ({"error": "not found"})
-    # for an unknown instance — a business-logic 404, not the empty-body
-    # "route not registered" 404 (blueprints/pipeline/diagnostics.py).
-    RouteCheck("GET", "/api/orchestrator/local-parity-check", "pipeline"),
+def contract_routes() -> tuple[RouteCheck, ...]:
+    contract = json.loads(CONTRACT_PATH.read_text())["orchestrator"]
+    routes = []
+    for bindings in contract.values():
+        for binding in bindings:
+            if binding["type"] != "httpTrigger":
+                continue
+            path = binding["route"].replace("{format}", "eudr-pdf").replace("{aoi_index}", "0")
+            path = re.sub(r"\{[^}]+\}", "role-boundary-missing", path)
+            routes.extend(RouteCheck(method, f"/api/{path}") for method in binding["methods"])
+    return tuple(sorted(routes, key=lambda route: route.key))
+
+
+ROUTES = contract_routes()
+CONTROLS = tuple(
+    RouteCheck(method, "/api/this-route-does-not-exist") for method in sorted({route.method for route in ROUTES})
 )
 
-# A route no blueprint defines — the baseline for "genuinely unregistered".
-_CONTROL_ROUTE = RouteCheck("GET", "/api/this-route-does-not-exist", "(control)")
 
-
-def _is_registered(response: httpx.Response) -> bool:
-    """A registered route either isn't a 404, or is a 404 with a real body
-    (application-level "not found", e.g. export's unknown instance ID) —
-    Azure Functions' own unregistered-route 404 always has an empty body."""
-    if response.status_code != 404:
-        return True
-    return bool(response.text.strip())
-
-
-def check_host(client: httpx.Client, base: str, routes: tuple[RouteCheck, ...]) -> dict[str, bool]:
-    """Return {blueprint: is_registered} for every route against *base*."""
-    results: dict[str, bool] = {}
+def check_host(client: httpx.Client, base: str, routes: tuple[RouteCheck, ...]) -> dict[str, RouteState]:
+    """Transport and ambiguous responses are errors, never evidence of absence."""
+    results = {}
     for route in routes:
+        mutating = route.method not in {"GET", "OPTIONS"}
         try:
-            resp = client.request(route.method, base + route.path, timeout=10.0)
+            response = client.request(
+                route.method,
+                base.rstrip("/") + route.path,
+                # Missing bearer credentials fail parsing even with REQUIRE_AUTH=false.
+                # Public form/webhook handlers reject invalid JSON before domain writes.
+                headers={
+                    "Host": LOCAL_SMOKE_HOST,
+                    "Authorization": "Bearer",
+                    "X-MS-CLIENT-PRINCIPAL": "",
+                    "Content-Type": "application/json",
+                },
+                content=b"{" if mutating else None,
+                auth=None,
+                timeout=10.0,
+                follow_redirects=False,
+            )
         except httpx.TransportError as exc:
-            print(f"  ERROR reaching {base}{route.path}: {exc}", file=sys.stderr)
-            results[route.blueprint] = False
+            print(f"ERROR {base} {route.key}: {type(exc).__name__}", file=sys.stderr)
+            results[route.key] = RouteState.ERROR
             continue
-        results[route.blueprint] = _is_registered(resp)
+        if (
+            route.key == "POST /api/billing/webhook"
+            and response.status_code == 503
+            and response.content == b"Billing not configured"
+        ):
+            # This exact application response proves the route without live Stripe credentials.
+            state = RouteState.PRESENT
+        elif (
+            response.status_code == 405
+            or 300 <= response.status_code < 400
+            or response.status_code >= 500
+            or (mutating and 200 <= response.status_code < 300)
+        ):
+            state = RouteState.ERROR
+        elif response.status_code == 404 and not response.content:
+            state = RouteState.ABSENT
+        elif route.path in WORKER_PATHS and route.method == "GET" and response.status_code != 200:
+            state = RouteState.ERROR
+        else:
+            state = RouteState.PRESENT
+        results[route.key] = state
     return results
+
+
+def validate_hosts(client: httpx.Client, compute_base: str, orch_base: str) -> bool:
+    """Require valid negative controls and positive probes before route assertions."""
+    for base in (compute_base, orch_base):
+        controls = check_host(client, base, CONTROLS)
+        if any(state != RouteState.ABSENT for state in controls.values()):
+            print(f"FAIL invalid unknown-route controls on {base}: {controls}", file=sys.stderr)
+            return False
+    passed = True
+    for label, base in (("compute", compute_base), ("orchestrator", orch_base)):
+        results = check_host(client, base, ROUTES)
+        for route in ROUTES:
+            expected = RouteState.PRESENT
+            if label == "compute" and route.path not in WORKER_PATHS:
+                expected = RouteState.ABSENT
+            actual = results[route.key]
+            ok = actual == expected
+            passed = passed and ok
+            print(f"{'PASS' if ok else 'FAIL'} {label} {route.key}: {actual} (expected {expected})")
+    return passed
 
 
 def main() -> int:
@@ -95,44 +137,9 @@ def main() -> int:
     parser.add_argument("--compute-base", default=DEFAULT_COMPUTE_BASE)
     parser.add_argument("--orch-base", default=DEFAULT_ORCH_BASE)
     args = parser.parse_args()
-
-    print("Blueprint parity check — compute vs orchestrator (#1407)\n")
-
     with httpx.Client() as client:
-        control_compute = check_host(client, args.compute_base, (_CONTROL_ROUTE,))
-        control_orch = check_host(client, args.orch_base, (_CONTROL_ROUTE,))
-        compute_results = check_host(client, args.compute_base, ROUTES)
-        orch_results = check_host(client, args.orch_base, ROUTES)
-
-    if control_compute["(control)"] or control_orch["(control)"]:
-        print(
-            "WARNING: the control route (which no blueprint defines) was reported as "
-            "'registered' on at least one host — the 404-body heuristic may be unreliable "
-            "for this deployment; treat results below with caution.",
-            file=sys.stderr,
-        )
-
-    failed = False
-    print(f"{'blueprint':<12} {'compute':<10} {'orchestrator':<14} parity")
-    print("-" * 50)
-    for route in ROUTES:
-        bp = route.blueprint
-        compute_ok = compute_results[bp]
-        orch_ok = orch_results[bp]
-        parity = compute_ok == orch_ok
-        if not (compute_ok and orch_ok and parity):
-            failed = True
-        status = "OK" if (compute_ok and orch_ok) else "MISMATCH"
-        print(f"{bp:<12} {'yes' if compute_ok else 'NO':<10} {'yes' if orch_ok else 'NO':<14} {status}")
-
-    print()
-    if failed:
-        print("FAIL — at least one blueprint is not registered on both hosts.", file=sys.stderr)
-        return 1
-
-    print("PASS — every checked blueprint is registered on both compute and orchestrator.")
-    return 0
+        return 0 if validate_hosts(client, args.compute_base, args.orch_base) else 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

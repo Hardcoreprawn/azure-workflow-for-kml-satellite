@@ -10,27 +10,53 @@ Three known pitfalls:
   3. Parameterised generics (dict[str,Any]) on binding params
 """
 
+from __future__ import annotations
+
 import ast
-import inspect
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
 BLUEPRINTS_DIR = Path(__file__).resolve().parent.parent / "blueprints"
 BLUEPRINT_MODULES = sorted(BLUEPRINTS_DIR.glob("*.py"))
 
-# app.get_functions() has a side-effect: it populates functions_bindings
-# which makes subsequent calls raise ValueError (duplicate names).
-# Build the list once at module level and share across all tests.
-from function_app import app  # noqa: E402
 
-# Clear stale state left by earlier imports so get_functions() succeeds
-app.functions_bindings = {}
-_ALL_FUNCTIONS = app.get_functions()
+@pytest.fixture(
+    scope="module",
+    params=[("function_app", "full", 28), ("function_app_orch", "orchestrator", 55)],
+    ids=["worker", "admission"],
+)
+def indexed_functions(request: pytest.FixtureRequest) -> tuple[list[dict[str, object]], int]:
+    entrypoint, role, count = request.param
+    script = (
+        "import importlib,inspect,json,sys; "
+        "app=importlib.import_module(sys.argv[1]).app; "
+        "print(json.dumps([{'name':f.get_function_name(), "
+        "'parameters':list(inspect.signature(f.get_user_function()).parameters), "
+        "'bindings':[b.name for b in f.get_bindings() if b.name!='$return']} "
+        "for f in app.get_functions()]))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, entrypoint],
+        cwd=ROOT,
+        env={**os.environ, "PIPELINE_ROLE": role},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    return json.loads(result.stdout.splitlines()[-1]), count
 
 
 # ── 1. No __wrapped__ on any registered function ────────────────────────
 
 
-def test_no_undeclared_params_in_signatures():
+def test_no_undeclared_params_in_signatures(indexed_functions):
     """The worker calls inspect.signature() on each function and treats
     every parameter as a binding.  Any parameter that doesn't match a
     declared binding causes FunctionLoadError → 0 functions loaded.
@@ -38,13 +64,12 @@ def test_no_undeclared_params_in_signatures():
     This catches the @wraps/__wrapped__ pitfall (PR #301) and any other
     decorator that accidentally leaks extra parameters.
     """
-    for fn_info in _ALL_FUNCTIONS:
-        func_obj = fn_info.get_user_function()
-        sig_params = set(inspect.signature(func_obj).parameters)
-        binding_names = {b.name for b in fn_info.get_bindings() if b.name != "$return"}
+    for function in indexed_functions[0]:
+        sig_params = set(function["parameters"])
+        binding_names = set(function["bindings"])
         extra = sig_params - binding_names
         assert not extra, (
-            f"Function {fn_info.get_function_name()!r} signature exposes "
+            f"Function {function['name']!r} signature exposes "
             f"parameters {extra} that are not declared bindings {binding_names}. "
             f"The Azure Functions worker will treat these as undeclared bindings "
             f"and refuse to load ANY functions."
@@ -81,24 +106,22 @@ def test_no_future_annotations_in_blueprints():
 # ── 3. All registered function params map to known binding types ─────────
 
 
-def test_function_params_are_valid_bindings():
+def test_function_params_are_valid_bindings(indexed_functions):
     """Every parameter on every registered function must correspond to a
     binding.  The worker calls inspect.signature() and treats every param
     as a binding; extra params cause FunctionLoadError.
 
     We check that no leaked decorator parameters appear in the signature.
     """
-    for fn_info in _ALL_FUNCTIONS:
-        func_obj = fn_info.get_user_function()
-        sig = inspect.signature(func_obj)
-        for param_name in sig.parameters:
+    for function in indexed_functions[0]:
+        for param_name in function["parameters"]:
             assert param_name != "auth_claims", (
-                f"Function {fn_info.get_function_name()!r} exposes "
+                f"Function {function['name']!r} exposes "
                 f"'auth_claims' parameter — __wrapped__ is leaking "
                 f"the inner function signature."
             )
             assert param_name != "user_id", (
-                f"Function {fn_info.get_function_name()!r} exposes "
+                f"Function {function['name']!r} exposes "
                 f"'user_id' parameter — __wrapped__ is leaking "
                 f"the inner function signature."
             )
@@ -107,19 +130,19 @@ def test_function_params_are_valid_bindings():
 # ── 4. function_app.py loads and all functions are indexed ───────────────
 
 
-def test_function_app_loads_all_blueprints():
+def test_function_app_loads_all_blueprints(indexed_functions):
     """function_app.py must import cleanly and register a non-zero number
     of functions.  This catches import-time failures.
     """
-    assert len(_ALL_FUNCTIONS) > 0, (
-        "function_app.app.get_functions() returned 0 functions — something is wrong with blueprint registration."
+    assert len(indexed_functions[0]) > 0, (
+        "app.get_functions() returned 0 functions — something is wrong with blueprint registration."
     )
 
 
-def test_function_count_is_expected():
+def test_function_count_is_expected(indexed_functions):
     """Guard against accidentally dropping functions.  Update the count
     when intentionally adding or removing endpoints.
     """
-    names = sorted(fn.get_function_name() or "" for fn in _ALL_FUNCTIONS)
-    # As of PR #301: 32 functions.  Update when adding/removing.
-    assert len(_ALL_FUNCTIONS) >= 30, f"Expected at least 30 registered functions, got {len(_ALL_FUNCTIONS)}: {names}"
+    functions, expected_count = indexed_functions
+    names = sorted(function["name"] for function in functions)
+    assert len(functions) == expected_count, f"Expected {expected_count} functions, got {len(functions)}: {names}"

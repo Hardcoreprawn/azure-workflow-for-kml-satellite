@@ -29,9 +29,9 @@ COPY --from=uv /uv /usr/local/bin/uv
 
 # Install Python packages (production only, from lockfile)
 COPY pyproject.toml uv.lock ./
-RUN uv export --no-dev --no-hashes > /tmp/requirements.txt && \
-    uv pip install --system -r /tmp/requirements.txt && \
-    rm -f /tmp/requirements.txt /usr/local/bin/uv
+RUN uv export --no-dev --no-hashes > .build-requirements.txt && \
+    uv pip install --system -r .build-requirements.txt && \
+    rm -f .build-requirements.txt /usr/local/bin/uv
 
 # Copy application code only (no scripts/, typings/, tests/, docs/)
 COPY host.json function_app.py function_registration.py ./

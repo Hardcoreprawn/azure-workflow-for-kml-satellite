@@ -96,11 +96,19 @@ def assert_complete(result: dict[str, Any], *, parcels: int, images: int) -> Non
         raise ValueError("missing enrichmentManifest")
 
 
+def is_compute_worker(arguments: list[str], environment: bytes) -> bool:
+    """Admission has its own language worker and must not inflate compute counts."""
+    return any(argument.endswith("/worker.py") for argument in arguments) and b"PIPELINE_ROLE=full" in (
+        environment.split(b"\0")
+    )
+
+
 def process_snapshot() -> list[dict[str, Any]]:
     processes = []
     for directory in Path("/proc").glob("[0-9]*"):
         try:
             arguments = directory.joinpath("cmdline").read_bytes().decode().split("\0")
+            environment = directory.joinpath("environ").read_bytes()
             fields = directory.joinpath("stat").read_text().rsplit(") ", 1)[1].split()
         except (OSError, UnicodeError, IndexError):
             continue
@@ -109,7 +117,7 @@ def process_snapshot() -> list[dict[str, Any]]:
         processes.append(
             {
                 "pid": int(directory.name),
-                "worker": any(argument.endswith("/worker.py") for argument in arguments),
+                "worker": is_compute_worker(arguments, environment),
                 "cpuSeconds": (int(fields[11]) + int(fields[12])) / os.sysconf("SC_CLK_TCK"),
                 "rssBytes": int(fields[21]) * os.sysconf("SC_PAGE_SIZE"),
                 "threads": int(fields[17]),

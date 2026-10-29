@@ -306,18 +306,17 @@ def test_api_verifier_restores_normal_auth_configuration_after_journey_failure(
     assert result.returncode == 17, result.stderr
     calls = docker_calls(docker_environment)
     start_calls = [call for call in calls if "up" in call]
-    assert len(start_calls) == 5
+    assert len(start_calls) == 4
     assert "func" in start_calls[0] and "local-ciam" in start_calls[0]
     assert "orch" in start_calls[1] and "--force-recreate" in start_calls[1]
-    assert "func" in start_calls[2] and "--force-recreate" in start_calls[2]
-    assert start_calls[3][-1] == "event-grid-relay"
-    assert "local-ciam" not in start_calls[4]
-    assert "orch" in start_calls[4] and "event-grid-relay" in start_calls[4]
+    assert start_calls[2][-1] == "event-grid-relay"
+    assert "local-ciam" not in start_calls[3]
+    assert "orch" in start_calls[3] and "event-grid-relay" in start_calls[3]
     cleanup_indexes = [
         index for index, call in enumerate(calls) if "local-ciam" in call and ("stop" in call or "rm" in call)
     ]
     assert cleanup_indexes
-    assert max(cleanup_indexes) < calls.index(start_calls[4])
+    assert max(cleanup_indexes) < calls.index(start_calls[3])
 
 
 @pytest.mark.parametrize(
@@ -348,8 +347,38 @@ def test_api_verifier_starts_relay_and_uses_reachable_urls(
     assert len(start_calls) >= 4
     assert "local-ciam" in start_calls[0] and "func" in start_calls[0]
     assert "orch" in start_calls[1] and "--force-recreate" in start_calls[1]
-    assert "func" in start_calls[2] and "--force-recreate" in start_calls[2]
-    assert "event-grid-relay" in start_calls[3] and "--force-recreate" in start_calls[3]
+    assert "event-grid-relay" in start_calls[2] and "--force-recreate" in start_calls[2]
+    assert not any("func" in call and "--force-recreate" in call for call in start_calls)
+    admission_environments = []
+    for call in start_calls:
+        services = {}
+        for index, argument in enumerate(call[:-1]):
+            if argument != "-f":
+                continue
+            layer = yaml.safe_load(Path(call[index + 1]).read_text())
+            for name, service in layer["services"].items():
+                previous = services.get(name, {})
+                services[name] = {
+                    **previous,
+                    **service,
+                    "environment": {**previous.get("environment", {}), **service.get("environment", {})},
+                }
+        # Compose reconciles admission through the relay's dependency even when
+        # admission was not explicitly named on the command line.
+        relay_starts_admission = (
+            "event-grid-relay" in call
+            and "--no-deps" not in call
+            and "orch" in services["event-grid-relay"]["depends_on"]
+        )
+        if "orch" in call or relay_starts_admission:
+            admission_environments.append(services["orch"]["environment"])
+    assert len(admission_environments) == 3
+    for environment in admission_environments[:-1]:
+        assert environment["REQUIRE_AUTH"] == "true"
+        assert environment["CIAM_AUTHORITY"] == "http://local-ciam:8080"
+    normal = yaml.safe_load((ROOT / "docker-compose.yml").read_text())["services"]["orch"]["environment"]
+    assert admission_environments[-1]["REQUIRE_AUTH"] == normal["REQUIRE_AUTH"]
+    assert admission_environments[-1]["CIAM_AUTHORITY"] == normal["CIAM_AUTHORITY"]
     uv_environment = json.loads(Path(os.environ["UV_API_ENV_LOG"]).read_text())
     assert tuple(uv_environment.values()) == expected_hosts
 

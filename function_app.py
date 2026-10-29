@@ -1,4 +1,4 @@
-"""Azure Functions entry point — registers all blueprints."""
+"""Worker entry point — probes, Durable listeners and monitoring scheduler."""
 
 import logging
 

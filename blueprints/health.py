@@ -18,6 +18,7 @@ from treesight.constants import API_CONTRACT_VERSION
 from ._helpers import cors_headers, cors_preflight
 
 bp = func.Blueprint()
+probes_bp = func.Blueprint()
 logger = logging.getLogger(__name__)
 
 _INTERNAL_SMOKE_HOST_RE = re.compile(r"^func-kmlsat-(dev|prd)-orch\..+\.azurecontainerapps\.io$")
@@ -29,7 +30,7 @@ def _internal_smoke_allowed(req: func.HttpRequest) -> bool:
     return bool(_INTERNAL_SMOKE_HOST_RE.fullmatch(hostname))
 
 
-@bp.route(route="health", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+@probes_bp.route(route="health", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def health(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_preflight(req)
@@ -59,7 +60,7 @@ def internal_health(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-@bp.route(route="readiness", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+@probes_bp.route(route="readiness", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def readiness(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_preflight(req)

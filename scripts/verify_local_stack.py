@@ -5,30 +5,21 @@ event-grid-relay, ollama).
 
 Checks, in order:
 1. Service health   — every compose service is up and its own healthcheck passes.
-2. Blueprint parity — compute and orchestrator serve the identical HTTP
-   surface (#1407/#1408) — delegates to validate_blueprint_parity.py.
+2. Role matrix      — compute exposes probes only; admission owns business HTTP.
+   Delegates to validate_blueprint_parity.py with fail-closed controls.
 3. Storage (Azurite) — blob container list/create round-trip.
-4. Cosmos            — billing/status (Cosmos-backed) responds on both hosts.
+4. Cosmos            — billing/status (Cosmos-backed) responds on admission.
 5. Full pipeline     — upload -> blob trigger -> orchestration -> Completed,
-   run against BOTH compute and orchestrator (the same fixture, twice),
-   proving blob_trigger genuinely works on either host post-#1407.
-6. Website           — static site serves and its /api/* proxy reaches func.
+   submitted through admission, executed by the separate compute worker.
+6. Website           — static site serves and its /api/* proxy reaches admission.
 7. Event Grid relay  — the dev_event_grid_relay.py container is running
    (liveness only; the pipeline check above exercises the same code path
    deterministically rather than depending on the relay's own poll timing).
 9. Ollama            — best-effort; failure here is a WARNING, not a FAILURE,
    since a GPU/pulled model is not required for the rest of the app to work.
 
-KNOWN FLAKY CHECK — pipeline (#1414): compute and orchestrator share one
-Durable Task Hub, and both register the orchestrator-trigger function.
-Whichever app's worker wins a given instance's partition lease runs its
-replay — if that's the orchestrator (which has no activities registered,
-by design), the run can hang forever at "parsing_kml" with zero errors.
-This is a real, pre-existing production reliability bug (see #1414), not
-a flake in this script — a failure here may mean you hit it. Re-running
-usually succeeds (it's a race, not a hard failure), but each occurrence
-is worth a comment on #1414 with the stuck instance ID and which host's
-logs show the stall, until it's fixed.
+Only compute registers Durable orchestration/activity listeners. Both hosts
+share the Durable task hub and storage; admission owns clients and Event Grid.
 
 Usage:
     make dev-all
@@ -56,7 +47,7 @@ from pathlib import Path
 import httpx
 from _azurite import AZURITE_CONN_STR
 from azure.storage.blob import BlobServiceClient
-from dev_event_grid_relay import _extract_eventgrid_key
+from dev_event_grid_relay import _fetch_eventgrid_key
 from e2e_local import assert_pipeline_succeeded, poll_orchestration
 from e2e_smoke_gate import (
     bearer_headers as _bearer_headers,
@@ -73,7 +64,7 @@ from e2e_smoke_gate import (
     upload_kml as _upload_api_kml,
 )
 from simulate_upload import DEFAULT_CONTAINER, fire_event_grid, upload_kml
-from validate_blueprint_parity import ROUTES, check_host
+from validate_blueprint_parity import validate_hosts
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_KML = REPO_ROOT / "tests" / "fixtures" / "sample.kml"
@@ -172,17 +163,10 @@ def check_service_health() -> list[Result]:
 
 
 def check_parity() -> list[Result]:
-    print("\n[2/9] Blueprint parity (compute vs orchestrator, #1407)")
+    print("\n[2/9] Fail-closed worker/admission route matrix")
     with httpx.Client() as client:
-        compute_results = check_host(client, COMPUTE_BASE, ROUTES)
-        orch_results = check_host(client, ORCH_BASE, ROUTES)
-    results: list[Result] = []
-    for route in ROUTES:
-        bp = route.blueprint
-        ok = compute_results.get(bp, False) and orch_results.get(bp, False)
-        _print_result(bp, ok)
-        results.append((f"parity:{bp}", ok))
-    return results
+        ok = validate_hosts(client, COMPUTE_BASE, ORCH_BASE)
+    return [("role-matrix", ok)]
 
 
 def check_storage() -> list[Result]:
@@ -205,7 +189,7 @@ def check_cosmos() -> list[Result]:
     print("\n[4/9] Cosmos (via billing/status)")
     results: list[Result] = []
     with httpx.Client() as client:
-        for label, base in (("compute", COMPUTE_BASE), ("orchestrator", ORCH_BASE)):
+        for label, base in (("orchestrator", ORCH_BASE),):
             try:
                 resp = client.get(f"{base}/api/billing/status", timeout=10.0)
                 ok = resp.status_code == 200 and "tier" in resp.json()
@@ -218,34 +202,10 @@ def check_cosmos() -> list[Result]:
 
 
 def _all_eventgrid_keys() -> list[str]:
-    """Return every Event Grid system key currently stored in Azurite.
-
-    Each running host (func, orch) writes its own secrets blob, named by
-    container hostname -- there is no reliable way to tell which blob
-    belongs to which host from the blob name alone once more than one
-    host shares the same Azurite secrets store (#1407 added the second
-    host). Rather than guess, callers try every key in turn.
-    """
-    # Mirrors dev_event_grid_relay.py's own container name (that constant is
-    # private/underscored there, so duplicated here rather than imported).
+    """Return only the configured admission host's Event Grid key."""
     client = BlobServiceClient.from_connection_string(AZURITE_CONN_STR)
-    container = client.get_container_client("azure-webjobs-secrets")
-    keys: list[str] = []
-    try:
-        blobs = list(container.list_blobs())
-    except Exception as exc:
-        print(f"  ... could not list Event Grid secrets container: {exc}")
-        return keys
-    for blob in blobs:
-        try:
-            text = container.get_blob_client(blob.name).download_blob().readall().decode()
-        except Exception as exc:
-            print(f"  ... could not read secrets blob {blob.name!r}: {exc}")
-            continue
-        key = _extract_eventgrid_key(text)
-        if key:
-            keys.append(key)
-    return keys
+    key = _fetch_eventgrid_key(client)
+    return [key] if key else []
 
 
 def _run_pipeline(host_label: str, base: str) -> tuple[bool, str | None]:
@@ -262,8 +222,7 @@ def _run_pipeline(host_label: str, base: str) -> tuple[bool, str | None]:
 
     instance_id: str | None = None
     last_error: Exception | None = None
-    # No key first (works when host-key auth is disabled), then every known
-    # key in turn (see _all_eventgrid_keys for why there's more than one).
+    # Core Tools can disable host-key auth; containers use the admission key.
     for function_key in (None, *_all_eventgrid_keys()):
         try:
             instance_id = fire_event_grid(
@@ -292,7 +251,7 @@ def check_pipeline() -> tuple[list[Result], str | None]:
     print("\n[5/9] Full pipeline (upload -> blob trigger -> orchestration -> Completed)")
     results: list[Result] = []
     last_instance_id: str | None = None
-    for host_label, base in (("compute", COMPUTE_BASE), ("orchestrator", ORCH_BASE)):
+    for host_label, base in (("orchestrator", ORCH_BASE),):
         ok, instance_id = _run_pipeline(host_label, base)
         _print_result(f"pipeline via {host_label}", ok)
         results.append((f"pipeline:{host_label}", ok))
@@ -632,7 +591,7 @@ def check_website() -> list[Result]:
             print(f"  ... /api/* proxy check failed: {exc}")
             proxy_ok = False
     _print_result("static site serves", site_ok)
-    _print_result("/api/* proxy reaches func", proxy_ok)
+    _print_result("/api/* proxy reaches admission", proxy_ok)
     results.append(("website:static", site_ok))
     results.append(("website:proxy", proxy_ok))
     return results

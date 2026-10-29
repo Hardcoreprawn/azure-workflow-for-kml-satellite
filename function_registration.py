@@ -2,23 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Literal
 
-# Roles that control which blueprints are registered.
-# - "compute": full HTTP surface + activity functions (PIPELINE_ROLE=full) + monitoring scheduler timer
-# - "orchestrator": full HTTP surface (identical to compute), no activities, no scheduler (#1407)
-#
-# Both roles serve the same public HTTP blueprints ("little" tier, big/little split) —
-# none of them import GDAL/rasterio/fiona/shapely/pyproj at load time, so they run fine on
-# the slim orchestrator image (Dockerfile.orchestrator). Only Durable activity execution
-# (GDAL-heavy, gated by PIPELINE_ROLE inside blueprints/pipeline/__init__.py) and the
-# monitoring scheduler timer (which calls treesight.pipeline.enrichment.run_enrichment,
-# also GDAL-heavy, and must run exactly once across the fleet) are compute-only ("big" tier).
+# Existing deployment role names are retained; "full" means worker, not a combined app.
 PipelineRole = Literal["compute", "orchestrator"]
 
 
 def _http_blueprints() -> tuple[Any, ...]:
-    """Load the public HTTP blueprint set shared by every Function App role.
+    """Load admission-owned HTTP blueprints and Event Grid ingress.
 
     Verified GDAL/rasterio/fiona/shapely/pyproj-free at both static (AST) and
     runtime (sys.modules) import-time for #1407 — safe on the slim
@@ -34,6 +26,7 @@ def _http_blueprints() -> tuple[Any, ...]:
     from blueprints.eudr import bp as eudr_bp
     from blueprints.export import bp as export_bp
     from blueprints.health import bp as health_bp
+    from blueprints.health import probes_bp
     from blueprints.monitoring import bp as monitoring_bp
     from blueprints.ops import bp as ops_bp
     from blueprints.org import bp as org_bp
@@ -42,6 +35,7 @@ def _http_blueprints() -> tuple[Any, ...]:
 
     return (
         health_bp,
+        probes_bp,
         billing_bp,
         contact_bp,
         eudr_bp,
@@ -70,16 +64,20 @@ def _monitoring_scheduler_blueprint() -> Any:
 
 
 def register_function_blueprints(app: Any, *, role: PipelineRole = "compute") -> None:
-    """Register blueprints on the provided Function App instance.
+    """Register only the role-owned surface; reject contradictory settings."""
+    expected_roles = {"compute": "full", "orchestrator": "orchestrator"}
+    if role not in expected_roles:
+        raise ValueError(f"Unknown function entrypoint role: {role!r}")
+    pipeline_role = os.environ.get("PIPELINE_ROLE", "full")
+    if pipeline_role != expected_roles[role]:
+        raise ValueError(f"Entrypoint role {role!r} contradicts PIPELINE_ROLE={pipeline_role!r}")
+    if role == "compute":
+        from blueprints.health import probes_bp
+        from blueprints.pipeline import worker_bp
 
-    Both roles register the identical public HTTP blueprint set (#1407) —
-    the ``role`` parameter only controls the compute-only extra:
-    - ``compute`` (default): HTTP blueprints + monitoring scheduler timer.
-      Also runs Durable activity functions via ``PIPELINE_ROLE=full``.
-    - ``orchestrator``: HTTP blueprints only. No activities
-      (``PIPELINE_ROLE=orchestrator``), no scheduler.
-    """
+        app.register_functions(probes_bp)
+        app.register_functions(worker_bp)
+        app.register_functions(_monitoring_scheduler_blueprint())
+        return
     for blueprint in _http_blueprints():
         app.register_functions(blueprint)
-    if role == "compute":
-        app.register_functions(_monitoring_scheduler_blueprint())

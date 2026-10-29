@@ -23,7 +23,7 @@ from _azurite import AZURITE_BLOB_BASE, AZURITE_CONN_STR
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from local_durable import fetch_poll_status
 
-FUNC_BASE = "http://localhost:7071"
+FUNC_BASE = "http://localhost:7072"
 DEFAULT_KML = "tests/fixtures/sample.kml"
 DEFAULT_CONTAINER = "kml-input"
 DEFAULT_EVENT_GRID_FUNCTION_NAME = "blob_trigger"
@@ -94,7 +94,7 @@ def fire_event_grid(
     # Plain string join, not httpx.URL(...).join(...): the URL helper
     # silently drops a default-for-scheme port (e.g. ":80") when
     # normalising, which would misrepresent (though not break) the
-    # displayed/compared endpoint for func_base values like "http://func:80".
+    # displayed/compared endpoint for func_base values like "http://orch:80".
     endpoint = f"{func_base.rstrip('/')}/runtime/webhooks/eventgrid"
     query_params: dict[str, str] = {"functionName": function_name}
     if function_key:
@@ -204,7 +204,7 @@ def main() -> None:
     # Step 1: Check func host
     print("[1/3] Checking func host...")
     if not check_func_host():
-        print("  ERROR: Function host not reachable at localhost:7071")
+        print(f"  ERROR: Admission host not reachable at {FUNC_BASE}")
         print("  Start it with: make dev-all")
         sys.exit(1)
     print("  Function host is running.")
