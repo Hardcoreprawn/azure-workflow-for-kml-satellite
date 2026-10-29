@@ -324,10 +324,20 @@ Validation:
   internal-smoke's existing hostname guard; that is not Azure ingress evidence.
   The webhook's exact `503 Billing not configured` application response counts
   as registered without requiring live Stripe secrets; generic 5xx fails.
+  Probes send a deliberately incomplete bearer header (rejected even with
+  `REQUIRE_AUTH=false`), clear test-principal credentials, and use invalid JSON
+  for mutating methods. Actual authentication wrappers and public-handler
+  validation prevent organisation/account, billing, quota and submission writes.
+  A successful mutation response fails the gate. Existing bounded operational
+  rate-limit accounting is permitted; authentication and abuse-limit ordering
+  and thresholds are unchanged. This is registration proof, not successful
+  business-operation or authenticated-identity proof.
 - `make test-pipeline-local` proves admission-to-worker synthetic completion;
   this privileged storage-native check is **not** authentication evidence.
 - `make verify-local-api` separately proves signed identity, ownership/denial and
-  validated artifact downloads. It recreates development admission services:
+  validated artifact downloads. It recreates development admission services;
+  relay startup uses the same verifier overlay so its admission dependency
+  cannot restore ordinary auth settings before the journey completes.
   **never run it against a shared stack**. Independent validation must use its
   own named network, storage, Cosmos, identity issuer, host secrets and task hub,
   no shared volumes or fixed host-port collisions. Docker build/copy works when

@@ -12,10 +12,9 @@ PIPELINE_ROLE=orchestrator is set in Dockerfile.orchestrator so
 blueprints/pipeline/__init__.py skips importing the activities and
 orchestration-trigger modules.
 
-The orchestrator deliberately omits only the monitoring scheduler timer
-(GDAL-heavy, and must run exactly once across the fleet) — every other
-public-API blueprint is registered identically to the compute role, since
-none of them depend on GDAL/rasterio (see function_registration.py).
+The admission role owns the business HTTP and Event Grid surfaces. The compute
+role exposes only application health/readiness probes and owns both Durable
+listeners, all activities and the monitoring scheduler (see function_registration.py).
 """
 
 import logging

@@ -65,11 +65,21 @@ def check_host(client: httpx.Client, base: str, routes: tuple[RouteCheck, ...]) 
     """Transport and ambiguous responses are errors, never evidence of absence."""
     results = {}
     for route in routes:
+        mutating = route.method not in {"GET", "OPTIONS"}
         try:
             response = client.request(
                 route.method,
                 base.rstrip("/") + route.path,
-                headers={"Host": LOCAL_SMOKE_HOST},
+                # Missing bearer credentials fail parsing even with REQUIRE_AUTH=false.
+                # Public form/webhook handlers reject invalid JSON before domain writes.
+                headers={
+                    "Host": LOCAL_SMOKE_HOST,
+                    "Authorization": "Bearer",
+                    "X-MS-CLIENT-PRINCIPAL": "",
+                    "Content-Type": "application/json",
+                },
+                content=b"{" if mutating else None,
+                auth=None,
                 timeout=10.0,
                 follow_redirects=False,
             )
@@ -84,7 +94,12 @@ def check_host(client: httpx.Client, base: str, routes: tuple[RouteCheck, ...]) 
         ):
             # This exact application response proves the route without live Stripe credentials.
             state = RouteState.PRESENT
-        elif response.status_code == 405 or 300 <= response.status_code < 400 or response.status_code >= 500:
+        elif (
+            response.status_code == 405
+            or 300 <= response.status_code < 400
+            or response.status_code >= 500
+            or (mutating and 200 <= response.status_code < 300)
+        ):
             state = RouteState.ERROR
         elif response.status_code == 404 and not response.content:
             state = RouteState.ABSENT

@@ -156,7 +156,7 @@ case "$action" in
         trap 'exit 143' TERM
         "${api_verifier_compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" local-ciam func
         "${api_verifier_compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate orch
-        "${compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate event-grid-relay
+        "${api_verifier_compose[@]}" up -d --wait --wait-timeout "${DEV_WAIT_TIMEOUT:-240}" --force-recreate event-grid-relay
         if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" ]]; then
             verifier_compute_base="http://func:80"
             verifier_orch_base="http://orch:80"

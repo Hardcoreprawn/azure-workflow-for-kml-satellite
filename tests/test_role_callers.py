@@ -63,6 +63,9 @@ def test_effective_devcontainer_smoke_targets_admission():
 
 def test_offline_gate_starts_separate_admission_and_worker(monkeypatch):
     calls = []
+    connection = MagicMock()
+    connection.__enter__.return_value.connect_ex.return_value = 1
+    monkeypatch.setattr(e2e_local.socket, "socket", lambda: connection)
 
     def start(**kwargs):
         calls.append(kwargs)
@@ -74,6 +77,15 @@ def test_offline_gate_starts_separate_admission_and_worker(monkeypatch):
     assert {call["role"] for call in calls} == {"compute", "orchestrator"}
     assert len({call["port"] for call in calls}) == 2
     assert len({call["log_path"] for call in calls}) == 2
+
+
+def test_offline_start_unit_test_is_independent_of_occupied_dev_ports(monkeypatch):
+    occupied = MagicMock()
+    occupied.__enter__.return_value.connect_ex.return_value = 0
+    monkeypatch.setattr(e2e_local.socket, "socket", lambda: occupied)
+    with monkeypatch.context() as isolated:
+        test_offline_gate_starts_separate_admission_and_worker(isolated)
+    occupied.__enter__.return_value.connect_ex.assert_not_called()
 
 
 def test_capacity_counts_compute_workers_not_admission():
