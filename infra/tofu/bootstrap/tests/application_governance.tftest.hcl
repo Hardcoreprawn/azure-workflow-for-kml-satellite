@@ -1,4 +1,8 @@
 mock_provider "azurerm" {
+  alias = "application"
+}
+
+mock_provider "azurerm" {
   mock_resource "azurerm_key_vault" {
     defaults = {
       id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-bootstrap/providers/Microsoft.KeyVault/vaults/bootstrap-dev"
@@ -30,28 +34,28 @@ run "application_governance_defaults_closed" {
   command = plan
 
   assert {
-    condition     = var.enable_application_governance == false
-    error_message = "Application governance must default closed pending an enforceable vault-write boundary."
+    condition     = var.application_phase == "disabled" && length(azurerm_resource_group.application) == 0 && length(azurerm_key_vault.application) == 0 && output.application_contract == null
+    error_message = "Application authority and resources must default closed."
   }
 }
 
-run "reject_unreviewed_application_authority_dev" {
+run "reject_application_before_bootstrap_state" {
   command = plan
 
   variables {
-    enable_application_governance = true
+    application_phase = "namespace"
   }
 
-  expect_failures = [var.enable_application_governance]
+  expect_failures = [var.application_phase]
 }
 
-run "reject_unreviewed_application_authority_prd" {
+run "reject_unknown_application_phase" {
   command = plan
 
   variables {
-    environment                   = "prd"
-    enable_application_governance = true
+    environment       = "prd"
+    application_phase = "storage"
   }
 
-  expect_failures = [var.enable_application_governance]
+  expect_failures = [var.application_phase]
 }

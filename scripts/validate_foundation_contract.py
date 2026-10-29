@@ -10,13 +10,15 @@ from pathlib import Path
 from typing import cast
 
 from scripts.application_contract import (
-    MAX_BYTES,
+    MAX_EXTERNAL_REQUEST_BYTES,
     ApplicationContract,
     ContractError,
     ExpectedContext,
     Stage,
     create_artifact,
     decode,
+    decode_artifact_bundle,
+    decode_external_request,
     digest,
     encode,
     parse_bootstrap,
@@ -141,7 +143,7 @@ def create_manifest(
 
 
 def _query(raw: bytes, fields: set[str]) -> dict[str, str]:
-    value = decode(raw)
+    value = decode_external_request(raw)
     if not isinstance(value, dict) or set(value) != fields or not all(isinstance(v, str) for v in value.values()):
         raise ContractError("external query has missing, extra or non-string fields")
     return value
@@ -149,7 +151,7 @@ def _query(raw: bytes, fields: set[str]) -> dict[str, str]:
 
 def _bundle(query: dict[str, str]) -> tuple[ExpectedContext, bytes, tuple[bytes, ...]]:
     expected = ExpectedContext.from_bytes(query["context"].encode())
-    artifacts = decode(query["artifacts"].encode())
+    artifacts = decode_artifact_bundle(query["artifacts"].encode())
     if not isinstance(artifacts, list) or not all(isinstance(item, str) for item in artifacts):
         raise ContractError("artifacts must be an ordered array of raw JSON strings")
     return expected, query["bootstrap"].encode(), tuple(item.encode() for item in artifacts)
@@ -205,9 +207,9 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.command == "external-gate":
-            result = external_gate(sys.stdin.buffer.read(MAX_BYTES + 1))
+            result = external_gate(sys.stdin.buffer.read(MAX_EXTERNAL_REQUEST_BYTES + 1))
         elif args.command == "external-output":
-            result = external_output(sys.stdin.buffer.read(MAX_BYTES + 1))
+            result = external_output(sys.stdin.buffer.read(MAX_EXTERNAL_REQUEST_BYTES + 1))
         else:
             result = _validate_cli(args)
         sys.stdout.buffer.write(result)

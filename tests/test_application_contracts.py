@@ -12,7 +12,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from scripts import application_contract
 from scripts.application_contract import (
+    MAX_BYTES,
     ContractError,
     ExpectedContext,
     create_artifact,
@@ -21,7 +23,7 @@ from scripts.application_contract import (
     parse_bootstrap,
     parse_chain,
 )
-from scripts.generate_application_contract_fixtures import build_fixtures
+from scripts.generate_application_contract_fixtures import build_fixtures, production_bootstrap, scan_fixtures
 
 FIXTURES = Path(__file__).parent / "fixtures" / "application_governance"
 STAGES = ("namespace", "prerequisites", "custody", "key", "encryption")
@@ -48,8 +50,9 @@ class ApplicationContractTests(unittest.TestCase):
         self.assertNotIn("encryption_identity_id", json.loads(result)["payload"])
 
     def test_fixtures_are_reproducible_from_shared_producer(self) -> None:
-        for name, raw in build_fixtures(self.bootstrap):
+        for name, raw in (*build_fixtures(self.bootstrap), *scan_fixtures(self.bootstrap)):
             self.assertEqual(raw, (FIXTURES / name).read_bytes())
+        self.assertEqual(production_bootstrap(self.bootstrap), (FIXTURES / "production-bootstrap.json").read_bytes())
 
     def test_external_adapter_builds_validated_encryption_without_azure(self) -> None:
         query = {
@@ -69,6 +72,87 @@ class ApplicationContractTests(unittest.TestCase):
         result = json.loads(stdout.buffer.getvalue())
         self.assertEqual(result["contract"].encode(), self.chain[4])
         self.assertEqual(result["principal_id"], "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+
+    def _external_result(self, raw: bytes) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.run(
+            [sys.executable, "scripts/application_contract.py", "external"],
+            input=raw,
+            capture_output=True,
+            check=False,
+        )
+
+    def test_external_accepts_large_digest_bound_bundle_of_bounded_artifacts(self) -> None:
+        bootstrap = self.bootstrap.ljust(MAX_BYTES, b" ")
+        context = dataclasses.replace(self.context, bootstrap_sha256=hashlib.sha256(bootstrap).hexdigest())
+        parse_bootstrap(bootstrap, context)
+        previous: tuple[bytes, ...] = ()
+        for index, stage in enumerate(application_contract.STAGES[:4]):
+            payload = json.loads(self.chain[index])["payload"] if stage in ("prerequisites", "key") else {}
+            artifact = create_artifact(stage, payload, bootstrap, previous, context)
+            previous = (*previous, artifact.ljust(MAX_BYTES, b"\t"))
+        parse_chain(bootstrap, previous, context, "key")
+        bundle = json.dumps([raw.decode() for raw in previous])
+        self.assertGreater(len(bundle.encode()), MAX_BYTES)
+        request = encode(
+            {
+                "context": encode(dataclasses.asdict(context)).decode(),
+                "bootstrap": bootstrap.decode(),
+                "artifacts": bundle,
+                "phase": "encryption",
+            }
+        )
+        self.assertGreater(len(request), MAX_BYTES)
+        result = self._external_result(request)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        artifact = json.loads(result.stdout)["contract"].encode()
+        self.assertEqual(parse_chain(bootstrap, (*previous, artifact), context, "encryption")[-1].stage, "encryption")
+
+    def test_external_rejects_individual_oversize_artifacts(self) -> None:
+        query = {
+            "context": (FIXTURES / "context.json").read_text(),
+            "bootstrap": self.bootstrap.decode(),
+            "artifacts": json.dumps([raw.decode() for raw in self.chain[:4]]),
+            "phase": "encryption",
+        }
+        for field in ("context", "bootstrap", "artifacts"):
+            with self.subTest(field=field):
+                oversize = self.chain[0].ljust(MAX_BYTES + 1, b" ").decode()
+                value = json.dumps([oversize, *(raw.decode() for raw in self.chain[1:4])])
+                if field != "artifacts":
+                    value = str(query[field]).ljust(MAX_BYTES + 1)
+                changed = {**query, field: value}
+                if field == "bootstrap":
+                    context = dataclasses.replace(
+                        self.context, bootstrap_sha256=hashlib.sha256(value.encode()).hexdigest()
+                    )
+                    changed["context"] = encode(dataclasses.asdict(context)).decode()
+                result = self._external_result(encode(changed))
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(b"artifact must be bounded raw bytes", result.stderr)
+                self.assertEqual(result.stdout, b"")
+
+    def test_external_rejects_oversize_bundle_and_request_with_explicit_errors(self) -> None:
+        query = {
+            "context": (FIXTURES / "context.json").read_text(),
+            "bootstrap": self.bootstrap.decode(),
+            "artifacts": "[]".ljust(application_contract.MAX_ARTIFACT_BUNDLE_BYTES + 1),
+            "phase": "namespace",
+        }
+        result = self._external_result(encode(query))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(b"artifact bundle must be bounded raw bytes", result.stderr)
+        result = self._external_result(b"{}".ljust(application_contract.MAX_EXTERNAL_REQUEST_BYTES + 1))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(b"external request must be bounded raw bytes", result.stderr)
+        self.assertEqual(result.stdout, b"")
+
+    def test_shared_transport_decoders_preserve_strict_json_validation(self) -> None:
+        for decoder in (application_contract.decode_external_request, application_contract.decode_artifact_bundle):
+            with self.subTest(decoder=decoder.__name__):
+                self.assertEqual(decoder(b"{}".ljust(MAX_BYTES + 1)), {})
+                for raw in (b'{"x":1,"x":2}', b'{"x":NaN}', b"\xff"):
+                    with self.assertRaises(ContractError):
+                        decoder(raw)
 
     def test_cli_validate_create_and_explicit_missing_file_error(self) -> None:
         common = [

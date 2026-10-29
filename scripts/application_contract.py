@@ -23,6 +23,9 @@ STAGES: tuple[Stage, ...] = ("namespace", "prerequisites", "custody", "key", "en
 CRYPTO_OFFICER = "14b46e9e-c2b7-41b4-b07b-48a6ebf60603"
 CRYPTO_SERVICE = "e147488a-f6f5-4113-8e2d-b22465e65bf6"
 MAX_BYTES = 65536
+# Transport envelopes contain several raw artifacts and nested JSON escaping.
+MAX_ARTIFACT_BUNDLE_BYTES = 2 * 1024 * 1024
+MAX_EXTERNAL_REQUEST_BYTES = 16 * 1024 * 1024
 UUID_PATTERN = r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}"
 REVISION_PATTERN = r"[0-9a-f]{40}"
 DIGEST_PATTERN = r"[0-9a-f]{64}"
@@ -52,7 +55,21 @@ def _unique(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 def decode(raw: bytes) -> object:
     """Decode bounded raw JSON without dropping duplicate keys or non-finite values."""
-    _require(isinstance(raw, bytes) and len(raw) <= MAX_BYTES, "artifact must be bounded raw bytes")
+    return _decode_bounded(raw, MAX_BYTES, "artifact")
+
+
+def decode_artifact_bundle(raw: bytes) -> object:
+    """Decode a bounded transport bundle; consumers must still validate each artifact."""
+    return _decode_bounded(raw, MAX_ARTIFACT_BUNDLE_BYTES, "artifact bundle")
+
+
+def decode_external_request(raw: bytes) -> object:
+    """Decode a bounded external-provider envelope, preserving strict JSON validation."""
+    return _decode_bounded(raw, MAX_EXTERNAL_REQUEST_BYTES, "external request")
+
+
+def _decode_bounded(raw: bytes, maximum: int, label: str) -> object:
+    _require(isinstance(raw, bytes) and len(raw) <= maximum, f"{label} must be bounded raw bytes")
     try:
         return json.loads(raw, object_pairs_hook=_unique, parse_constant=_reject_constant)
     except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
@@ -500,10 +517,10 @@ def create_artifact(
 
 
 def _external(raw: bytes) -> bytes:
-    query = _object(decode(raw), ("context", "bootstrap", "artifacts", "phase"), "external query")
+    query = _object(decode_external_request(raw), ("context", "bootstrap", "artifacts", "phase"), "external query")
     expected = ExpectedContext.from_bytes(_text(query["context"], "context").encode())
     bootstrap = _text(query["bootstrap"], "bootstrap").encode()
-    supplied = decode(_text(query["artifacts"], "artifacts").encode())
+    supplied = decode_artifact_bundle(_text(query["artifacts"], "artifacts").encode())
     _require(
         isinstance(supplied, list) and all(isinstance(item, str) for item in supplied),
         "artifacts must be raw JSON strings",
@@ -542,7 +559,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.command == "external":
-            result = _external(sys.stdin.buffer.read(MAX_BYTES + 1))
+            result = _external(sys.stdin.buffer.read(MAX_EXTERNAL_REQUEST_BYTES + 1))
         else:
             if args.context is None or args.bootstrap is None or args.stage is None:
                 raise ContractError("--context, --bootstrap and --stage are required")

@@ -375,3 +375,66 @@ def test_output_protocol_rejects_future_names_and_non_string_references() -> Non
         external_output(encode(output_query))
     with pytest.raises(ContractError, match="only string"):
         external_output(encode({**output_query, "storage_name": "", "candidate": '{"value":true}'}))
+
+
+def large_valid_request() -> tuple[dict[str, str], tuple[bytes, ...]]:
+    query = external_query("storage", 5)
+    context = ExpectedContext.from_bytes(query["context"].encode())
+    bootstrap = query["bootstrap"].encode()
+    chain: tuple[bytes, ...] = ()
+    for stage, source in zip(STAGES, json.loads(query["artifacts"]), strict=True):
+        payload = json.loads(source)["payload"] if stage in ("prerequisites", "key") else {}
+        artifact = create_artifact(stage, payload, bootstrap, chain, context)
+        chain = (*chain, artifact + b" " * (16000 - len(artifact)))
+    return {**query, "artifacts": json.dumps([raw.decode() for raw in chain])}, chain
+
+
+@pytest.mark.parametrize("command", ["external-gate", "external-output"])
+def test_foundation_cli_accepts_large_digest_bound_artifact_bundle(command: str) -> None:
+    query, chain = large_valid_request()
+    assert all(len(raw) <= 65536 for raw in chain)
+    if command == "external-output":
+        context = ExpectedContext.from_bytes(query["context"].encode())
+        query = {
+            **{key: value for key, value in query.items() if key != "writes_enabled"},
+            "candidate": json.dumps(manifest_values("kmlsatdevappabc123", context, chain)),
+            "storage_name": "kmlsatdevappabc123",
+        }
+    raw = encode(query)
+    assert len(raw) > 65536
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.validate_foundation_contract", command],
+        input=raw,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    produced = json.loads(result.stdout)
+    if command == "external-gate":
+        assert produced["write_ready"] == "true"
+    else:
+        assert json.loads(produced["contract"])["encryption_grant_sha256"] == digest(chain[-1])
+
+
+def test_foundation_cli_still_rejects_individually_oversized_artifact() -> None:
+    query, chain = large_valid_request()
+    oversized = (*chain[:-1], chain[-1] + b" " * 65536)
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.validate_foundation_contract", "external-gate"],
+        input=encode({**query, "artifacts": json.dumps([raw.decode() for raw in oversized])}),
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert b"artifact must be bounded raw bytes" in result.stderr
+    assert b"Traceback" not in result.stderr
+
+
+def test_external_request_and_bundle_limits_remain_independently_bounded() -> None:
+    from scripts.application_contract import MAX_ARTIFACT_BUNDLE_BYTES, MAX_EXTERNAL_REQUEST_BYTES
+
+    with pytest.raises(ContractError, match="external request"):
+        external_gate(b" " * (MAX_EXTERNAL_REQUEST_BYTES + 1))
+    query = external_query("prerequisites", 1)
+    with pytest.raises(ContractError, match="artifact bundle"):
+        external_gate(encode({**query, "artifacts": " " * (MAX_ARTIFACT_BUNDLE_BYTES + 1)}))

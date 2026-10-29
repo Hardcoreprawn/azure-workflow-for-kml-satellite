@@ -47,9 +47,15 @@ select a hosting implementation.
 the 2026-10-28 owner selection of native Container Apps Functions with Durable
 Task Scheduler and sleeping heavy workers. DTS Consumption is approved as the
 DEV design only, not for production or as cloud-spend authorization. The offline
-bootstrap/state-and-identity slice is #1625; current runtime still uses
+bootstrap/state-and-identity slice #1625 merged in #1626; current runtime still uses
 AzureStorage. API/bundle/region verification, production SKU, budget and deployed
 wake-up evidence remain gates. No deployment freeze is lifted.
+
+The owner also accepted governance-owned application namespaces/vaults and scoped
+foundation authority (#1628), followed by the bounded Blob/CMK/audit core (#1627).
+Foundation manages the application key, without vault control-plane writes;
+governance owns vault lifecycle and access grants.
+Neither slice is implemented or authorized to create Azure resources yet.
 
 ## Current Runtime
 

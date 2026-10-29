@@ -84,6 +84,7 @@ test-bootstrap: ## Validate bootstrap schema and mocked contracts; no Azure cred
 	$(TOFU) -chdir=infra/tofu/bootstrap init -backend=false -input=false -lockfile=readonly
 	$(TOFU) -chdir=infra/tofu/bootstrap validate -no-color
 	$(TOFU) -chdir=infra/tofu/bootstrap test -no-color
+	python3 -m unittest discover -s tests -p test_application_contracts.py
 	@test ! -f infra/tofu/bootstrap/errored_test.tfstate || { echo "ERROR: bootstrap tests left errored_test.tfstate; inspect it before cleanup." >&2; exit 1; }
 
 .PHONY: test-foundation test-foundation-mutations scan-foundation
@@ -274,6 +275,10 @@ scan-iac: ## Trivy IaC/config scan (infra/tofu) — advisory
 scan-bootstrap: TRIVY_IGNOREFILE = infra/tofu/bootstrap/.trivyignore.yaml
 scan-bootstrap: ## Block bootstrap misconfigurations with only scoped, owner-approved exceptions
 	@$(_trivy); "$$T" config infra/tofu/bootstrap --tf-vars infra/tofu/bootstrap/tests/scan.tfvars --ignorefile "$(TRIVY_IGNOREFILE)" --severity CRITICAL,HIGH,MEDIUM --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
+	@$(_trivy); for phase in namespace custody encryption; do \
+		echo "Scanning application governance phase: $$phase"; \
+		"$$T" config infra/tofu/bootstrap --tf-vars "tests/fixtures/application_governance/scan-$$phase.tfvars.json" --ignorefile "$(TRIVY_IGNOREFILE)" --severity CRITICAL,HIGH,MEDIUM --exit-code 1 --format $(TRIVY_FORMAT) $(if $(TRIVY_OUTPUT),--output "$(TRIVY_OUTPUT).$$phase",) || exit $$?; \
+	done
 
 scan-foundation: test-foundation ## Scan all actual phase plans with only two expiring owner-approved foundation exceptions
 	python3 -m scripts.foundation_scan_policy

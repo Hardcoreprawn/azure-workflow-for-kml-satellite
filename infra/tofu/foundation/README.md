@@ -65,6 +65,12 @@ to the same context (OpenTofu's backend-variable support); use its exact approve
 context at initialization and planning, never overriding with a foreign
 `-backend-config`. No backend is initialized by offline gates.
 
+Each artifact retains the shared 65,536-byte bound. The shared transport decoders
+separately bound the ordered artifact array to 2 MiB and the external-provider
+request to 16 MiB, allowing a valid multi-artifact bundle without truncating it at
+one artifact's limit. Actual CLI regressions exercise large digest-bound bundles
+and still reject individually oversized artifacts.
+
 Both `writes_enabled=false` (default) and disabled bootstrap federation reject a
 write plan. CLI inspection may accept trust-disabled **state-phase** fixtures,
 reporting `write_ready=false`, `cloud_authorized=false`. A trust-enabled declaration
