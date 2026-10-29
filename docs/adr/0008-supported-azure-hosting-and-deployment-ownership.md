@@ -23,7 +23,7 @@ merged the proposal for #1622 under #1620:
 - Approve #1627's bounded application Blob, dedicated CMK and audit scope, with
   the protection defaults below. Foundation administers only its application
   key; governance controls its grants.
-- Governance owns the application RG and establishes scoped foundation authority
+- Governance owns the application RG/vault and establishes scoped foundation authority
   through #1628. Foundation consumes that namespace, without subscription-wide
   authority or namespace lifecycle/role-administration permissions.
 
@@ -160,33 +160,34 @@ The owner approved these code-scope decisions on 2026-10-28:
   and rotated keys have 180-day lifetimes with 90-day rotation. Dedicated audit
   retention is 30 days. These are engineering defaults, not legal-retention or
   production-budget approval; bootstrap scanner exceptions are not inherited.
-- Governance owns the application RG and grants foundation a reviewed
+- Governance owns the application RG and dedicated vault, and grants foundation a reviewed
   application-scoped control-plane allowlist, not generic RG Contributor.
-  Foundation must not be able to modify/delete the governance-owned RG, manage
-  access grants/trust, or administer upstream bootstrap resources.
+  Foundation must not be able to modify/delete the governance-owned RG/vault,
+  recover vaults, manage access policies/grants/trust, or administer upstream
+  bootstrap resources. Provider-required application vault reads may be included.
 - Governance grants foundation Crypto Officer on the dedicated application vault
   and the encryption identity Crypto Service Encryption User on the application's
   versionless key scope. Foundation owns key lifecycle, not either assignment.
   Crypto Officer is privileged administration, not read-only access. Neither
   foundation nor application release gains access to bootstrap state keys.
-- Vault-write authority is not field-level isolation. Implementation must verify
-  the selected API/provider checks for RBAC-mode changes and inline/subresource
-  access-policy mutation. Require RBAC authorization and a reviewed enforcement
-  design before merge. If RBAC cannot enforce governance-exclusive grant control,
-  require a separately reviewed enforceable control or revised ownership boundary.
-  Effective negative tests, including inherited authority, gate cloud use;
-  configuration and CI alone cannot prove this protection.
+- The owner selected governance-owned vault lifecycle after #1631's provider/API
+  investigation: fresh-vault writes can select legacy inline access policies.
+  Excluding only access-policy subresource actions is not sufficient. Foundation
+  receives no vault control-plane write or recovery authority; governance requires
+  RBAC authorization. This replaces the earlier foundation-owned vault proposal,
+  without introducing a policy-enforcement workaround. Effective negative tests,
+  including inherited authority, still gate cloud use.
 - Workload/release identities receive no application key-administration grant.
   Other foundation families and runtime grants remain separate future slices.
 
 Implementation order is #1628 (governance/interface prerequisite), then #1627
-(the 11-resource Blob core, excluding RG and role-assignment ownership).
+(the 10-resource Blob core, excluding RG, vault and role-assignment ownership).
 Both remain offline work; actual authority and permission propagation need
 separately approved cloud evidence.
 
 | Layer / sole authority | Owns | Receives and publishes |
 | --- | --- | --- |
-| Subscription bootstrap/governance | Backend accounts, state ACLs/recovery, OIDC trust, subscription policy; application RG and foundation/key authority; privileged recovery | Versioned namespace and staged grant references; no application secret outputs |
+| Subscription bootstrap/governance | Backend accounts, state ACLs/recovery, OIDC trust, subscription policy; application RG/vault and foundation/key authority; privileged recovery | Versioned namespace/vault and staged grant references; no application secret outputs |
 | Environment foundation | Persistent services, log sinks/action group/budget, SWA control plane, application key lifecycle and runtime identities; later runtime bindings require separate review | Governed namespace/permissions; publishes allowlisted resource IDs/endpoints, identity IDs and exact browser origins |
 | Shared tenant identity | CIAM registration/SP/owners/federation and the complete approved redirect set | Explicit origins from every supported environment; publishes public auth configuration |
 | Environment workload platform | Host environment and supported host resources, ingress, identity attachment, probes, resource/scale policy, Event Grid topic and host/topic-dependent alerts/tests | Foundation and identity contracts; publishes supported host IDs/kind, API hostname and configuration policy |
@@ -230,7 +231,7 @@ or give the release job role-assignment rights.
    blocks promotion; rollback/config recovery remains separately governed by #1327.
 
 For the approved Blob slice, the governance/foundation steps are explicitly
-staged: governed namespace -> foundation vault/identity/audit prerequisites ->
+staged: governed namespace/vault -> foundation identity/audit prerequisites ->
 governance custody grant -> foundation key -> governance service-encryption grant
 -> foundation storage. Each stage consumes only a prior immutable artifact.
 Namespace creation must not depend on a completed foundation manifest.
@@ -312,11 +313,11 @@ Foundation/runtime distinction applies to data inside every listed service.
 
 | Proposed authority | Current declared addresses |
 | --- | --- |
-| Governance: application namespace | `azurerm_resource_group.main` |
+| Governance: application namespace/vault | `azurerm_resource_group.main`, `azurerm_key_vault.main` |
 | Foundation: naming/storage | `random_string.storage_suffix`, `azurerm_storage_account.main`, `azurerm_storage_container.kml_input`, `azurerm_storage_container.kml_output`, `azurerm_storage_container.deployments`, `azurerm_storage_container.pipeline_payloads`, `azurerm_storage_management_policy.main`, `azurerm_monitor_diagnostic_setting.storage_blob` |
 | Foundation: operations sinks/budget | `azurerm_log_analytics_workspace.main`, `azurerm_application_insights.main`, `azurerm_monitor_action_group.ops`, `azurerm_consumption_budget_resource_group.main` |
 | Workload platform: dependent operations bindings | `azurerm_monitor_metric_alert.failed_requests`, `azurerm_monitor_metric_alert.high_latency`, `azurerm_monitor_metric_alert.eventgrid_dropped_events`, `azurerm_application_insights_standard_web_test.site_ping` |
-| Foundation: CMK/vault lifecycle | `azurerm_key_vault.main`, `azurerm_user_assigned_identity.storage_cmk`, `azurerm_key_vault_key.storage_cmk` |
+| Foundation: application key/encryption identity lifecycle | `azurerm_user_assigned_identity.storage_cmk`, `azurerm_key_vault_key.storage_cmk` |
 | Governance: replace legacy key grants with approved principals/scopes | `azurerm_role_assignment.deployer_key_vault_crypto_officer`, `azurerm_role_assignment.storage_cmk_kv_crypto_user` |
 | Retire fixed propagation helper; replace with readiness gates | `time_sleep.deployer_key_vault_crypto_officer_propagation` |
 | Foundation: optional communications/AI | `azurerm_communication_service.main`, `azurerm_email_communication_service.main`, `azurerm_email_communication_service_domain.azure_managed`, `azapi_update_resource.acs_link_email`, `azurerm_cognitive_account.openai`, `azurerm_cognitive_deployment.gpt4o_mini` |
@@ -348,7 +349,7 @@ decisions and evidence before implementing or activating the affected boundary.
 | Backend and idle policy | DTS and sleeping workers accepted; Consumption for DEV only; production SKU/HA and backend migration remain gated |
 | Cost and latency | No cloud budget or latency thresholds approved; size/scale limits and residual costs must be bounded before trial |
 | State/identity boundaries | Layered direction and offline bootstrap slice accepted; #1625 implements isolated state and deployment identities, not application resource grants or runtime identity cutover |
-| Application namespace and custody | #1628 owns namespace and grant declarations; #1627 consumes them and owns application key/data lifecycle. Bounded scope/protection defaults accepted; exact role actions and real execution still need review/evidence |
+| Application namespace and custody | #1628 owns namespace/vault and grant declarations; #1627 consumes them and owns application key/data lifecycle without vault writes. Bounded scope/protection defaults accepted; exact role actions and real execution still need review/evidence |
 | Host write enforcement | Protected reconciler, policy ownership and denied bypass paths, not imaginary field-level RBAC |
 | Origins/shared resources | One complete CIAM writer, subscription Defender owner and SWA/DNS/CORS policy |
 | Activation and recovery | Single Event Grid owner, configuration recovery, rollback authority and release evidence retention |

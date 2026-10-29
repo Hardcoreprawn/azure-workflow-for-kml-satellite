@@ -51,9 +51,10 @@ bootstrap/state-and-identity slice #1625 merged in #1626; current runtime still 
 AzureStorage. API/bundle/region verification, production SKU, budget and deployed
 wake-up evidence remain gates. No deployment freeze is lifted.
 
-The owner also accepted governance-owned application namespaces and scoped
+The owner also accepted governance-owned application namespaces/vaults and scoped
 foundation authority (#1628), followed by the bounded Blob/CMK/audit core (#1627).
-Foundation manages the application key; governance owns its access grants.
+Foundation manages the application key, without vault control-plane writes;
+governance owns vault lifecycle and access grants.
 Neither slice is implemented or authorized to create Azure resources yet.
 
 ## Current Runtime
