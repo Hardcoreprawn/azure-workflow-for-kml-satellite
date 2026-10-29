@@ -292,6 +292,36 @@ class ApplicationContractTests(unittest.TestCase):
                 application_contract.decode_external_request(raw)
             self.assertEqual(str(caught.exception), message)
 
+    def test_all_decoders_reject_numeric_overflow_but_preserve_finite_floats(self) -> None:
+        for decoder in (
+            application_contract.decode,
+            application_contract.decode_artifact_bundle,
+            application_contract.decode_external_request,
+        ):
+            self.assertEqual(decoder(b"[1.25,1e308,-1e308,1e-999]"), [1.25, 1e308, -1e308, 0.0])
+            for number in ("1e999", "-1e999", "NaN", "Infinity", "-Infinity"):
+                with self.subTest(decoder=decoder.__name__, number=number):
+                    with self.assertRaisesRegex(ContractError, "^non-finite JSON number"):
+                        decoder(f'{{"value":{number}}}'.encode())
+
+    def test_external_numeric_overflow_in_envelope_has_no_traceback(self) -> None:
+        for number in ("1e999", "-1e999"):
+            with self.subTest(number=number):
+                namespace = encode({**json.loads(self.chain[0]), "status": "OVERFLOW"})
+                namespace = namespace.replace(b'"OVERFLOW"', number.encode())
+                query = {
+                    "context": (FIXTURES / "context.json").read_text(),
+                    "bootstrap": self.bootstrap.decode(),
+                    "artifacts": json.dumps([namespace.decode(), self.chain[1].decode()]),
+                    "phase": "custody",
+                }
+                result = self._external_result(encode(query))
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(result.stdout, b"")
+                self.assertIn(b"contract error: non-finite JSON number", result.stderr)
+                self.assertNotIn(b"Traceback", result.stderr)
+                self.assertLess(len(result.stderr), 1024)
+
     def test_cli_validate_create_and_explicit_missing_file_error(self) -> None:
         common = [
             "--context",
