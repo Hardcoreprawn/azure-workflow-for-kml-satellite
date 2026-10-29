@@ -266,6 +266,9 @@ range, unsupported /31–/32 rules, malformed/IPv6 input and the existing phase 
 of the provider data-plane setting, an extra resource hidden in a real local module,
 and restoration of the old permissive egress predicate. The egress mutation must
 fail specifically for missing variable validation, not an unrelated provider error.
+The standalone target depends on both `test-bootstrap` and `test-foundation`, so
+both roots initialize providers with their backends disabled before any mutation.
+It requires no preinitialized `.terraform` directories.
 
 Owner review and complete required hosted CI/security/integration/Pipeline checks
 remain mandatory. Before any future cloud work, separately authorize and prove

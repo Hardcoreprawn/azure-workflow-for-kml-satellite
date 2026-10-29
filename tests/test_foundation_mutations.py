@@ -13,6 +13,23 @@ from scripts import test_foundation_mutations as mutations
 from scripts.application_contract import ContractError
 
 
+def test_standalone_target_initializes_both_roots_before_mutations() -> None:
+    result = subprocess.run(
+        ["make", "--dry-run", "test-foundation-mutations", "TOFU=/pinned/tofu"],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    commands = result.stdout.splitlines()
+    mutation = 'python3 -m scripts.test_foundation_mutations --tofu "/pinned/tofu"'
+    assert commands.count(mutation) == 1
+    for boundary in ("bootstrap", "foundation"):
+        initialize = f"/pinned/tofu -chdir=infra/tofu/{boundary} init -backend=false -input=false -lockfile=readonly"
+        assert initialize in commands, f"standalone mutations must initialize {boundary} providers"
+        assert commands.index(initialize) < commands.index(mutation)
+
+
 def fake_files(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     writes: dict[str, str] = {}
     monkeypatch.setattr(Path, "exists", lambda _: True)
