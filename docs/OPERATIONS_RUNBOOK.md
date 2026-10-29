@@ -347,6 +347,44 @@ inability to evaluate the computed 180-day initial key expiry; they expire
 2026-11-27 and need review before any cloud authorization. Actual log delivery,
 cost/retention, key rotation/recovery and effective isolation remain trial gates.
 
+### Isolated persistent Blob core (not activated)
+
+The [foundation root](../infra/tofu/foundation/README.md) (#1627) is a ten-resource
+offline slice, not a working environment. Governance owns application RG/vault
+lifecycle and all key grants; foundation owns the application key, encryption
+UAMI, private Blob account/three containers and dedicated audit resources.
+The sequence is namespace/vault → foundation prerequisites → governance custody
+→ foundation key → governance encryption grant → foundation storage. Each stage
+requires the exact immutable raw prefix and independent expected context.
+
+Run `make test-foundation` (OpenTofu 1.13.2; backend disabled, read-only lock,
+mocked plan only) and `make test-foundation-mutations`. The mandatory raw-input
+gate and generated-output validator use the shared governance parser; disabled
+OIDC or the default `writes_enabled=false` blocks writes. The final manifest
+always declares `persistent-blob-core`, `not-activated`, no browser origins and
+`storage.data_plane_available=false`. No runtime admission or Cosmos is implied.
+
+`make scan-foundation` and the canonical CI Trivy action scan all actual evaluated
+phase plans, without global/bootstrap exceptions. The owner approved only
+`AZU-0010` (retain stricter storage bypass=None) and `AZU-0057` (retain Blob
+Read/Write/Delete diagnostics), scoped to foundation evaluated plans/main.tf,
+expiring **2026-11-27 00:00 UTC**. The dedicated policy validates approval metadata
+and expiry before scanning; mandatory unsuppressed, expired and wrong-path real
+scanner proofs each return the two findings and exit 1. No key-expiry exception,
+static scanner-only expiry, extra Queue configuration or broader approval may be
+substituted. The provider explicitly disables storage data-plane availability;
+native inventory validation rejects both module calls and planned child modules.
+Key initial/rotated lifetimes are 180 days with 90-day
+rotation; refreshed effective expiry must remain future-dated while rotation
+owns expiry drift. Destroy guards, soft deletion and versioning do not replace
+state/key recovery or legal retention.
+
+Cloud permissions, propagation, network/OIDC protection, actual audit delivery,
+rotation/recovery, state locking and a no-change second apply still need separate
+owner-authorized evidence. This slice does not lift pause/freeze or authorize
+spend; deferred Cosmos, browser bindings, workload, release and integration
+families remain necessary before a trial.
+
 ### Application namespace and custody (offline declarations, not activated)
 
 The owner approved #1628 before #1627. Governance owns the application RG/vault

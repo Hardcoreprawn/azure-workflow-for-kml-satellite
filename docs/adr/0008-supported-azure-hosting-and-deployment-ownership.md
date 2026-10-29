@@ -200,13 +200,30 @@ material, and foundation receives no vault control-plane writes.
 | Layer / sole authority | Owns | Receives and publishes |
 | --- | --- | --- |
 | Subscription bootstrap/governance | Backend accounts, state ACLs/recovery, OIDC trust, subscription policy; application RG/vault and foundation/key authority; privileged recovery | Versioned namespace/vault and staged grant references; no application secret outputs |
-| Environment foundation | Persistent services, log sinks/action group/budget, SWA control plane, application key lifecycle and runtime identities; later runtime bindings require separate review | Governed namespace/permissions; publishes allowlisted resource IDs/endpoints, identity IDs and exact browser origins |
+| Environment foundation | Persistent services, log sinks/action group/budget, SWA control plane, application key/data lifecycle, encryption identity and runtime identities; later runtime bindings require separate review | Governed namespace/permissions; publishes allowlisted resource IDs/endpoints, identity IDs and exact browser origins; no RG/vault lifecycle, grant/policy/access-policy administration or bootstrap-key access |
 | Shared tenant identity | CIAM registration/SP/owners/federation and the complete approved redirect set | Explicit origins from every supported environment; publishes public auth configuration |
 | Environment workload platform | Host environment and supported host resources, ingress, identity attachment, probes, resource/scale policy, Event Grid topic and host/topic-dependent alerts/tests | Foundation and identity contracts; publishes supported host IDs/kind, API hostname and configuration policy |
 | Restricted host reconciler | One authoritative host configuration writer after initial creation | Validates platform policy plus release intent; applies only the selected hosting model's supported API |
 | Application release/publisher | Immutable image intent, application-config revision, frontend content | Published contracts, no upstream state; emits deployment evidence and invokes approved reconciliation |
 | Integration reconciler | Entire Event Grid subscription and restricted endpoint-key acquisition | Topic/host identities plus readiness evidence; activation only after verified readiness |
 | Runtime / secret custodian | Runtime owns blobs, records and Durable history/queues; custodian owns secret values/rotation | Scoped data access / versioned secret references, never infrastructure administration |
+
+**Bounded foundation implementation (#1627):** the independent
+[`infra/tofu/foundation`](../../infra/tofu/foundation/README.md) root contains
+exactly ten declarations: storage suffix/account/three private Blob containers,
+application key, encryption UAMI, dedicated audit workspace and Blob/vault
+diagnostics. It does not implement the whole proposed foundation row. The sequence
+is governance namespace/vault → foundation prerequisites → governance custody →
+foundation key → governance encryption grant → foundation storage. Shared raw-byte
+contracts are validated before writes; final generated output uses the same
+semantic validator as fixtures and declares `persistent-blob-core/not-activated`,
+`storage.data_plane_available=false`, and no browser origins.
+Cosmos, browser bindings, runtime identities, alerting/budgets and other service
+families remain deferred. Mocked plans prove declarations only. The owner approved
+foundation-only `AZU-0010`/`AZU-0057` exceptions on 2026-10-29 through 2026-11-27
+00:00 UTC, retaining the stricter firewall and Blob diagnostics. Mandatory metadata,
+expiry and wrong-path proofs bound those exceptions; no key-expiry exception exists.
+No cloud permissions, recovery, audit delivery or readiness is established here.
 
 Separate foundation and workload states/principals per environment; shared
 subscription and CIAM resources have one owner each, not dev/prd copies.

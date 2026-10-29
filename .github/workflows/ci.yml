@@ -122,6 +122,8 @@ jobs:
           tofu_wrapper: false
       - name: Validate isolated bootstrap contracts
         run: make test-bootstrap
+      - name: Validate isolated foundation contracts and all mock phases
+        run: make test-foundation
 
   test:
     name: Test

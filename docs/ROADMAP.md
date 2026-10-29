@@ -110,12 +110,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #1633 | Implemented the isolated, ten-declaration Blob/CMK/audit foundation and strict staged handoffs (closes #1627). Native plans, mutation gates and scoped scanner proofs passed; no Azure activation or complete application foundation is claimed. |
+| #1631 | Implemented governance-owned application namespace/vault, scoped foundation authority and immutable grant handoffs (closes #1628). Effective inherited permissions and propagation remain cloud-trial gates. |
+| #1630 | Recorded the approved governance/foundation ownership decisions (closes #1629), including governance-owned vault lifecycle and no foundation vault control-plane writes. |
 | #1626 | Implemented offline bootstrap state/identity boundaries, dedicated key custody and audit diagnostics (closes #1625). Native tests, full local checks and required hosted gates passed; effective Azure isolation and cloud authorization remain unproven/separate. |
 | #1624 | Merged the hosting/ownership proposal (closes #1622). Subsequent owner decision selects native Functions + DTS, sleeping workers and DEV Consumption only; #1625 starts offline bootstrap boundaries under #1620. No cloud trial or spend is approved. |
 | #1623 | Corrected missing bootstrap-script guidance and environment-suffixed backend secrets (closes #1619). Truthful prerequisites, not evidence that bootstrap or deployment occurred. |
-| #1621 | Added fail-fast compute resource resolution before configuration writes (closes #884). Mocked regression gates verify the guard, not Azure topology; #1620 retains supported hosting and deployment-boundary acceptance before cloud re-entry. |
-| #1607 | Restored advisory Infracost estimates without Azure login or remote state (closes #1606). Hosted breakdown, artifact and comment publication verified; partial configuration estimate, not a billing forecast. |
-| #1610 | Updated fpdf2 to 2.8.8 for the reported resource-access and SVG-expansion advisories. Required CI passed; no open Dependabot alerts at the post-merge check. |
 | —  | **MILESTONE (2026-07-12): Domain-model overhaul begun — Organisation as the single ownership root** (epic #1057; model documented in `docs/DATA_MODEL.md` — conceptual/logical/physical + D1–D5 divergences). **D3 landed**: per-user quota retired, org pool is the sole accounting unit. D1 (auth active-org resolution) in progress; D2 (org-partitioning) sequenced after D1. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 
@@ -129,11 +129,12 @@ state, identity and deployment interfaces before shared-cloud re-entry.
 The #1623/#1624 documentation slices are merged. Native Functions + DTS and
 sleeping heavy workers are now the accepted direction, with DTS Consumption for
 DEV only. #1625 is complete via #1626's offline bootstrap implementation.
-The owner approved #1627's bounded Blob/CMK/audit scope and protection defaults.
-Issue #1628 now precedes it: governance owns the application namespace, vault and grants;
-foundation owns application key/data lifecycle. Issue #1627 remains blocked on
-that implementation prerequisite, not on undecided custody. These slices do not
-complete the whole foundation. Remaining services, application/DTS migration, production
+The approved offline boundaries are implemented:
+**✅ #1628 via #1631** gives governance ownership of the application namespace,
+vault and grants; **✅ #1627 via #1633** gives foundation application key/data
+lifecycle ownership through the bounded Blob/CMK/audit slice. #1630 records the
+accepted decisions. These merges do not complete the whole foundation or prove
+effective Azure permissions. Remaining services, application/DTS migration, production
 SKU, cloud budget and authenticated wake-up proof remain unshipped.
 The #1528 trial retains its explicit authorization and implementation blockers.
 Infracost #1604 and repair #1607 are merged; #1607's hosted setup,

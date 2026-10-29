@@ -63,6 +63,8 @@ infra/**/*.tfplan
 infra/**/tfplan
 infra/**/.terraform.lock.hcl
 !infra/tofu/bootstrap/.terraform.lock.hcl
+!infra/tofu/foundation/.terraform.lock.hcl
+.validation/
 infra/**/terraform.tfvars
 infra/**/override.tf
 infra/**/override.tf.json

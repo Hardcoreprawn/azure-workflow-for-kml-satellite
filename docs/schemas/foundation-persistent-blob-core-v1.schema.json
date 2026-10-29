@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://canopex.com/schemas/foundation-persistent-blob-core-v1.schema.json",
+  "title": "Persistent Blob core declaration (not activated)",
+  "description": "Structural schema only. scripts.validate_foundation_contract additionally validates the full raw governance prefix and exact independently approved context/references.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "contract_scope", "status", "environment", "tenant_id",
+    "subscription_id", "producer", "producer_revision", "policy_revision",
+    "bootstrap_sha256", "encryption_grant_sha256", "namespace", "storage",
+    "encryption", "audit", "approved_browser_origins"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "contract_scope": { "const": "persistent-blob-core" },
+    "status": { "const": "not-activated" },
+    "environment": { "enum": ["dev", "prd"] },
+    "tenant_id": { "$ref": "#/$defs/uuid" },
+    "subscription_id": { "$ref": "#/$defs/uuid" },
+    "producer": { "const": "foundation" },
+    "producer_revision": { "$ref": "#/$defs/revision" },
+    "policy_revision": { "$ref": "#/$defs/revision" },
+    "bootstrap_sha256": { "$ref": "#/$defs/digest" },
+    "encryption_grant_sha256": { "$ref": "#/$defs/digest" },
+    "namespace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "location"],
+      "properties": {
+        "id": { "$ref": "#/$defs/arm" },
+        "name": { "type": "string", "pattern": "^rg-[a-z0-9]{3,12}-(dev|prd)-application$" },
+        "location": { "type": "string", "pattern": "^[a-z][a-z0-9]+$" }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "blob_endpoint", "data_plane_available", "containers"],
+      "properties": {
+        "id": { "$ref": "#/$defs/arm" },
+        "name": { "type": "string", "pattern": "^[a-z0-9]{3,24}$" },
+        "blob_endpoint": { "type": "string", "pattern": "^https://[a-z0-9]{3,24}\\.blob\\.core\\.windows\\.net/$" },
+        "data_plane_available": { "type": "boolean", "const": false },
+        "containers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kml_input", "kml_output", "pipeline_payloads"],
+          "properties": {
+            "kml_input": { "$ref": "#/$defs/container" },
+            "kml_output": { "$ref": "#/$defs/container" },
+            "pipeline_payloads": { "$ref": "#/$defs/container" }
+          }
+        }
+      }
+    },
+    "encryption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault_id", "vault_uri", "key_id", "key_uri", "identity_id", "client_id", "principal_id"],
+      "properties": {
+        "vault_id": { "$ref": "#/$defs/arm" },
+        "vault_uri": { "type": "string", "pattern": "^https://[a-z][a-z0-9-]{1,22}[a-z0-9]\\.vault\\.azure\\.net/$" },
+        "key_id": { "type": "string", "pattern": "^/subscriptions/.+/providers/Microsoft.KeyVault/vaults/[^/]+/keys/application-cmk$" },
+        "key_uri": { "type": "string", "pattern": "^https://[a-z][a-z0-9-]{1,22}[a-z0-9]\\.vault\\.azure\\.net/keys/application-cmk$" },
+        "identity_id": { "$ref": "#/$defs/arm" },
+        "client_id": { "$ref": "#/$defs/uuid" },
+        "principal_id": { "$ref": "#/$defs/uuid" }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspace_id", "vault_diagnostic_id", "blob_diagnostic_id"],
+      "properties": {
+        "workspace_id": { "$ref": "#/$defs/arm" },
+        "vault_diagnostic_id": { "$ref": "#/$defs/arm" },
+        "blob_diagnostic_id": { "$ref": "#/$defs/arm" }
+      }
+    },
+    "approved_browser_origins": { "type": "array", "maxItems": 0 }
+  },
+  "$defs": {
+    "uuid": { "type": "string", "pattern": "^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$" },
+    "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "arm": { "type": "string", "pattern": "^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[^/]+(/[^\\s|]+)*$" },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "$ref": "#/$defs/arm" },
+        "name": { "enum": ["kml-input", "kml-output", "pipeline-payloads"] }
+      }
+    }
+  }
+}
