@@ -70,6 +70,10 @@ separately bound the ordered artifact array to 2 MiB and the external-provider
 request to 16 MiB, allowing a valid multi-artifact bundle without truncating it at
 one artifact's limit. Actual CLI regressions exercise large digest-bound bundles
 and still reject individually oversized artifacts.
+UUID spelling is compared using governance's UUID-only comparator; the final
+schema accepts either UUID letter case while non-UUID fields remain exact.
+Provider identity/ARM bindings compare case-insensitively. Original bootstrap and
+predecessor bytes are never rewritten before SHA256 calculation.
 
 Both `writes_enabled=false` (default) and disabled bootstrap federation reject a
 write plan. CLI inspection may accept trust-disabled **state-phase** fixtures,

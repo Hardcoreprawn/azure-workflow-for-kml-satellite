@@ -15,6 +15,7 @@ from scripts.application_contract import (
     ContractError,
     ExpectedContext,
     Stage,
+    _ids_equal,
     create_artifact,
     decode,
     decode_artifact_bundle,
@@ -124,9 +125,9 @@ def validate_manifest(
     validate_inputs(bootstrap, artifacts, expected, "storage", require_write_ready=False)
     wanted = manifest_values(storage_name, expected, artifacts)
     value = decode(raw)
-    # Canonical JSON comparison preserves JSON type distinctions (false != 0, true != 1)
-    # while enforcing every nested field, reference, literal and empty origin set.
-    if encode(value) != encode(wanted):
+    # Share governance's UUID-only comparison, without rewriting raw digest inputs.
+    # JSON type distinctions and every non-UUID field remain exact.
+    if not _ids_equal(value, wanted):
         raise ContractError("foundation manifest does not match schema and approved context/references")
     return wanted
 

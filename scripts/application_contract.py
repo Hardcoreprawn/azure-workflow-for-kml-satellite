@@ -26,7 +26,7 @@ MAX_BYTES = 65536
 # Transport envelopes contain several raw artifacts and nested JSON escaping.
 MAX_ARTIFACT_BUNDLE_BYTES = 2 * 1024 * 1024
 MAX_EXTERNAL_REQUEST_BYTES = 16 * 1024 * 1024
-UUID_PATTERN = r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}"
+UUID_PATTERN = r"[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}"
 REVISION_PATTERN = r"[0-9a-f]{40}"
 DIGEST_PATTERN = r"[0-9a-f]{64}"
 
@@ -72,7 +72,9 @@ def _decode_bounded(raw: bytes, maximum: int, label: str) -> object:
     _require(isinstance(raw, bytes) and len(raw) <= maximum, f"{label} must be bounded raw bytes")
     try:
         return json.loads(raw, object_pairs_hook=_unique, parse_constant=_reject_constant)
-    except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
+    except ContractError:
+        raise
+    except (ValueError, RecursionError) as exc:
         raise ContractError(f"invalid JSON: {exc}") from exc
 
 
@@ -87,6 +89,15 @@ def encode(value: object) -> bytes:
 
 def digest(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _uuid_comparison(value: object) -> bytes:
+    """Fold UUID spellings only for comparison; never rewrite authenticated raw bytes."""
+    return re.sub(UUID_PATTERN.encode(), lambda match: match[0].lower(), encode(value))
+
+
+def _ids_equal(actual: object, expected: object) -> bool:
+    return _uuid_comparison(actual) == _uuid_comparison(expected)
 
 
 def _text(value: object, label: str, pattern: str = r"[\s\S]+") -> str:
@@ -207,7 +218,9 @@ class ExpectedContext:
 
     @property
     def role_definition_id(self) -> str:
-        role_uuid = uuid5(NAMESPACE_URL, f"canopex/{self.subscription_id}/{self.environment}/foundation-application")
+        role_uuid = uuid5(
+            NAMESPACE_URL, f"canopex/{self.subscription_id.lower()}/{self.environment}/foundation-application"
+        )
         return self.role_id(str(role_uuid))
 
     def role_id(self, role_uuid: str) -> str:
@@ -229,19 +242,21 @@ def _bootstrap_identities(item: dict[str, object], expected: ExpectedContext) ->
     rg = f"/subscriptions/{expected.subscription_id}/resourceGroups/rg-{expected.project_code}-{expected.environment}-bootstrap"
     for layer, identity in zip(("foundation", "workload", "release"), result, strict=True):
         _require(
-            identity.resource_id
-            == f"{rg}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-{expected.project_code}-{expected.environment}-{layer}",
+            _ids_equal(
+                identity.resource_id,
+                f"{rg}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-{expected.project_code}-{expected.environment}-{layer}",
+            ),
             f"wrong {layer} identity ancestry",
         )
         _require(identity.github_environment == f"{expected.environment}-{layer}", f"wrong {layer} GitHub environment")
-    _require(len({identity.principal_id for identity in result}) == 3, "deployment principals must be distinct")
-    _require(len({identity.client_id for identity in result}) == 3, "deployment client IDs must be distinct")
-    exclusions = {expected.bootstrap_operator_principal_id, expected.bootstrap_encryption_principal_id}
+    _require(len({identity.principal_id.lower() for identity in result}) == 3, "deployment principals must be distinct")
+    _require(len({identity.client_id.lower() for identity in result}) == 3, "deployment client IDs must be distinct")
+    exclusions = {expected.bootstrap_operator_principal_id.lower(), expected.bootstrap_encryption_principal_id.lower()}
     _require(
-        len(exclusions) == 2 and exclusions.isdisjoint(identity.principal_id for identity in result),
+        len(exclusions) == 2 and exclusions.isdisjoint(identity.principal_id.lower() for identity in result),
         "bootstrap custody/encryption principals must be distinct from deployment principals",
     )
-    _require(result[0] == expected.foundation, "foundation principal/context mismatch")
+    _require(_ids_equal(asdict(result[0]), asdict(expected.foundation)), "foundation principal/context mismatch")
     return result
 
 
@@ -252,9 +267,10 @@ def _bootstrap_backends(
     parsed = tuple(Backend.parse(backends[layer]) for layer in ("foundation", "workload"))
     for layer, backend, identity in zip(("foundation", "workload"), parsed, identities[:2], strict=True):
         _require(backend.container_name == layer and backend.key == "terraform.tfstate", f"wrong {layer} backend")
-        _require(backend.client_id == identity.client_id, f"wrong {layer} backend principal")
+        _require(_ids_equal(backend.client_id, identity.client_id), f"wrong {layer} backend principal")
         _require(
-            backend.tenant_id == expected.tenant_id and backend.subscription_id == expected.subscription_id,
+            _ids_equal(backend.tenant_id, expected.tenant_id)
+            and _ids_equal(backend.subscription_id, expected.subscription_id),
             f"wrong {layer} backend tenant/subscription",
         )
         _require(
@@ -263,7 +279,7 @@ def _bootstrap_backends(
         )
         _text(backend.storage_account_name, "backend storage account", r"[a-z0-9]{3,24}")
     _require(parsed[0].storage_account_name == parsed[1].storage_account_name, "backend accounts differ")
-    _require(parsed[0] == expected.backend, "foundation backend/context mismatch")
+    _require(_ids_equal(asdict(parsed[0]), asdict(expected.backend)), "foundation backend/context mismatch")
     return parsed[0]
 
 
@@ -290,7 +306,7 @@ def parse_bootstrap(raw: bytes, expected: ExpectedContext) -> BootstrapContract:
     _require(item["phase"] == "state", "bootstrap must have reached state phase")
     _require(type(item["oidc_enabled"]) is bool, "oidc_enabled must be boolean")
     for field in ("environment", "tenant_id", "subscription_id"):
-        _require(item[field] == asdict(expected)[field], f"bootstrap {field} mismatch")
+        _require(_ids_equal(item[field], asdict(expected)[field]), f"bootstrap {field} mismatch")
     identities = _bootstrap_identities(item, expected)
     backend = _bootstrap_backends(item, identities, expected)
     encryption = _object(item["encryption"], ("vault_uri", "storage_identity_id", "key_uri"), "bootstrap encryption")
@@ -300,8 +316,10 @@ def parse_bootstrap(raw: bytes, expected: ExpectedContext) -> BootstrapContract:
     _require(encryption["key_uri"] == f"{vault_uri}keys/bootstrap-state", "wrong bootstrap key ancestry")
     bootstrap_rg = f"/subscriptions/{expected.subscription_id}/resourceGroups/{backend.resource_group_name}"
     _require(
-        encryption["storage_identity_id"]
-        == f"{bootstrap_rg}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-{expected.project_code}-{expected.environment}-state-encryption",
+        _ids_equal(
+            encryption["storage_identity_id"],
+            f"{bootstrap_rg}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-{expected.project_code}-{expected.environment}-state-encryption",
+        ),
         "wrong bootstrap encryption identity",
     )
     _require(vault_uri != expected.vault_uri, "application vault must differ from bootstrap vault")
@@ -382,21 +400,27 @@ def _prerequisites(payload: object, expected: ExpectedContext, bootstrap: Bootst
     )
     item = _object(payload, fields, "prerequisites payload")
     result = {field: _text(item[field], field) for field in fields}
-    _require(result["vault_id"] == expected.vault_id, "foundation must echo governance vault")
+    _require(_ids_equal(result["vault_id"], expected.vault_id), "foundation must echo governance vault")
     suffix = f"{expected.project_code}-{expected.environment}-application"
     _require(
-        result["encryption_identity_id"]
-        == f"{expected.namespace_id}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-{suffix}-encryption",
+        _ids_equal(
+            result["encryption_identity_id"],
+            f"{expected.namespace_id}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-{suffix}-encryption",
+        ),
         "wrong encryption identity ancestry",
     )
     _require(
-        result["audit_workspace_id"]
-        == f"{expected.namespace_id}/providers/Microsoft.OperationalInsights/workspaces/law-{suffix}",
+        _ids_equal(
+            result["audit_workspace_id"],
+            f"{expected.namespace_id}/providers/Microsoft.OperationalInsights/workspaces/law-{suffix}",
+        ),
         "wrong audit workspace ancestry",
     )
     _require(
-        result["vault_diagnostic_id"]
-        == f"{expected.vault_id}/providers/Microsoft.Insights/diagnosticSettings/application-key-audit",
+        _ids_equal(
+            result["vault_diagnostic_id"],
+            f"{expected.vault_id}/providers/Microsoft.Insights/diagnosticSettings/application-key-audit",
+        ),
         "wrong vault diagnostic ancestry",
     )
     identities = (bootstrap.foundation, bootstrap.workload, bootstrap.release)
@@ -409,7 +433,10 @@ def _prerequisites(payload: object, expected: ExpectedContext, bootstrap: Bootst
         ("encryption_client_id", {identity.client_id for identity in identities}),
     ):
         _text(result[field], field, UUID_PATTERN)
-        _require(result[field] not in forbidden, f"{field} must differ from deployment identities")
+        _require(
+            result[field].lower() not in {value.lower() for value in forbidden},
+            f"{field} must differ from deployment identities",
+        )
     return result
 
 
@@ -446,7 +473,7 @@ def _payload(
     else:
         wanted = _grant(stage, expected, previous)
     item = _object(payload, tuple(wanted), f"{stage} payload")
-    _require(item == wanted, f"{stage} payload does not match approved scope/principal/ancestry/role")
+    _require(_ids_equal(item, wanted), f"{stage} payload does not match approved scope/principal/ancestry/role")
     return wanted
 
 
@@ -483,7 +510,9 @@ def parse_chain(
             and type(vault["soft_delete_retention_days"]) is int,
             "vault protections have invalid types",
         )
-        _require({key: item[key] for key in wanted} == wanted, f"{stage} envelope/context/revision/digest mismatch")
+        _require(
+            _ids_equal({key: item[key] for key in wanted}, wanted), f"{stage} envelope/context/revision/digest mismatch"
+        )
         payload = _payload(stage, item["payload"], expected, bootstrap, result)
         result = (*result, ApplicationContract(stage, "declared-not-activated", digest(raw), tuple(payload.items())))
         prior = digest(raw)

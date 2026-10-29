@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import subprocess
 import sys
 from argparse import Namespace
@@ -438,3 +439,52 @@ def test_external_request_and_bundle_limits_remain_independently_bounded() -> No
     query = external_query("prerequisites", 1)
     with pytest.raises(ContractError, match="artifact bundle"):
         external_gate(encode({**query, "artifacts": " " * (MAX_ARTIFACT_BUNDLE_BYTES + 1)}))
+
+
+def alphabetic_uuid_bundle() -> tuple[ExpectedContext, bytes, tuple[bytes, ...]]:
+    query = external_query("storage", 5)
+    original = "11111111-1111-4111-8111-111111111111"
+    replacement = "abcdefab-cdef-4abc-8def-abcdefabcdef"
+    bootstrap = query["bootstrap"].replace(original, replacement).encode()
+    context = ExpectedContext.from_bytes(
+        encode(
+            {
+                **json.loads(query["context"].replace(original, replacement)),
+                "bootstrap_sha256": digest(bootstrap),
+            }
+        )
+    )
+    chain: tuple[bytes, ...] = ()
+    for stage, source in zip(STAGES, json.loads(query["artifacts"]), strict=True):
+        payload = (
+            json.loads(source.replace(original, replacement))["payload"] if stage in ("prerequisites", "key") else {}
+        )
+        chain = (*chain, create_artifact(stage, payload, bootstrap, chain, context))
+    return context, bootstrap, chain
+
+
+def test_manifest_uuid_case_matches_governance_without_rewriting_provenance() -> None:
+    from jsonschema import Draft202012Validator
+
+    from scripts.application_contract import UUID_PATTERN
+
+    context, bootstrap, chain = alphabetic_uuid_bundle()
+    original_bootstrap, original_chain = bootstrap, chain
+    candidate = encode(manifest_values("kmlsatdevappabc123", context, chain))
+    uppercase = re.sub(UUID_PATTERN.encode(), lambda match: match[0].upper(), candidate)
+    value = validate_manifest(uppercase, "kmlsatdevappabc123", bootstrap, chain, context)
+    assert value["bootstrap_sha256"] == digest(bootstrap)
+    assert value["encryption_grant_sha256"] == digest(chain[-1])
+    assert bootstrap == original_bootstrap and chain == original_chain
+    schema = json.loads(
+        (FIXTURES.parents[2] / "docs/schemas/foundation-persistent-blob-core-v1.schema.json").read_bytes()
+    )
+    Draft202012Validator(schema).validate(json.loads(uppercase))
+
+
+def test_manifest_case_folding_does_not_relax_non_uuid_fields() -> None:
+    context, bootstrap, chain = alphabetic_uuid_bundle()
+    value = manifest_values("kmlsatdevappabc123", context, chain)
+    value["namespace"]["name"] = str(value["namespace"]["name"]).upper()
+    with pytest.raises(ContractError):
+        validate_manifest(encode(value), "kmlsatdevappabc123", bootstrap, chain, context)

@@ -9,8 +9,8 @@ override_resource {
   target = azurerm_user_assigned_identity.storage_cmk
   values = {
     id           = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-kmlsat-dev-application-encryption"
-    client_id    = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-    principal_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    client_id    = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
+    principal_id = "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB"
   }
 }
 override_resource {
@@ -108,6 +108,10 @@ run "key" {
       timecmp(azurerm_key_vault_key.storage_cmk[0].expiration_date, timeadd(plantimestamp(), "4320h")) == 0
     )
     error_message = "Initial and rotated expiry must be 180 days, rotation 90 days, under governance custody."
+  }
+  assert {
+    condition     = lower(azurerm_user_assigned_identity.storage_cmk.principal_id) == local.payloads[1].encryption_principal_id && azurerm_user_assigned_identity.storage_cmk.principal_id != local.payloads[1].encryption_principal_id
+    error_message = "Native binding must accept the same approved UUID despite different letter case."
   }
 }
 

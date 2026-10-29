@@ -81,10 +81,10 @@
     "approved_browser_origins": { "type": "array", "maxItems": 0 }
   },
   "$defs": {
-    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$" },
+    "uuid": { "type": "string", "pattern": "^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$" },
     "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "arm": { "type": "string", "pattern": "^/subscriptions/[0-9a-f-]{36}/resourceGroups/[^/]+(/[^\\s|]+)*$" },
+    "arm": { "type": "string", "pattern": "^/subscriptions/[0-9a-fA-F-]{36}/resourceGroups/[^/]+(/[^\\s|]+)*$" },
     "container": {
       "type": "object",
       "additionalProperties": false,

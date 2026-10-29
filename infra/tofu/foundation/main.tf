@@ -114,10 +114,10 @@ resource "azurerm_key_vault_key" "storage_cmk" {
     ignore_changes = [expiration_date]
     precondition {
       condition = (
-        local.payloads[1].encryption_identity_id == azurerm_user_assigned_identity.storage_cmk.id &&
-        local.payloads[1].encryption_client_id == azurerm_user_assigned_identity.storage_cmk.client_id &&
-        local.payloads[1].encryption_principal_id == azurerm_user_assigned_identity.storage_cmk.principal_id &&
-        local.payloads[1].audit_workspace_id == azurerm_log_analytics_workspace.main.id
+        lower(local.payloads[1].encryption_identity_id) == lower(azurerm_user_assigned_identity.storage_cmk.id) &&
+        lower(local.payloads[1].encryption_client_id) == lower(azurerm_user_assigned_identity.storage_cmk.client_id) &&
+        lower(local.payloads[1].encryption_principal_id) == lower(azurerm_user_assigned_identity.storage_cmk.principal_id) &&
+        lower(local.payloads[1].audit_workspace_id) == lower(azurerm_log_analytics_workspace.main.id)
       )
       error_message = "Custody must bind this exact refreshed foundation prerequisite set."
     }
@@ -174,7 +174,7 @@ resource "azurerm_storage_account" "main" {
     }
     precondition {
       condition = (
-        local.payloads[3].key_id == azurerm_key_vault_key.storage_cmk[0].resource_versionless_id &&
+        lower(local.payloads[3].key_id) == lower(azurerm_key_vault_key.storage_cmk[0].resource_versionless_id) &&
         local.payloads[3].key_uri == azurerm_key_vault_key.storage_cmk[0].versionless_id
       )
       error_message = "The governance encryption grant must bind this exact refreshed application key."
