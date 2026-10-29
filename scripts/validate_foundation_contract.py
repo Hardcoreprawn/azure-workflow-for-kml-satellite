@@ -1,4 +1,4 @@
-"""Foundation's separate persistent-blob-core boundary."""
+"""Foundation's separate persistent-data-core boundary."""
 
 from __future__ import annotations
 
@@ -31,6 +31,8 @@ PHASE_PREDECESSORS: dict[str, Stage] = {
     "prerequisites": "namespace",
     "key": "custody",
     "storage": "encryption",
+    "cosmos-key": "encryption",
+    "cosmos": "cosmos-encryption",
 }
 CONTAINERS = {"kml_input": "kml-input", "kml_output": "kml-output", "pipeline_payloads": "pipeline-payloads"}
 
@@ -64,14 +66,14 @@ def manifest_values(storage_name: str, expected: ExpectedContext, artifacts: tup
     prefix = f"{expected.project_code}{expected.environment}app"
     if re.fullmatch(re.escape(prefix) + r"[a-z0-9]{6}", storage_name) is None or len(storage_name) > 24:
         raise ContractError("storage name must match the independently supplied foundation namespace")
-    if len(artifacts) != 5:
+    if len(artifacts) not in (5, 7):
         raise ContractError("final manifest requires the complete encryption grant prefix")
     prerequisites = cast(dict[str, dict[str, str]], decode(artifacts[1]))["payload"]
     key = cast(dict[str, dict[str, str]], decode(artifacts[3]))["payload"]
     storage_id = f"{expected.namespace_id}/providers/Microsoft.Storage/storageAccounts/{storage_name}"
     return {
-        "schema_version": 1,
-        "contract_scope": "persistent-blob-core",
+        "schema_version": 2,
+        "contract_scope": "persistent-data-core",
         "status": "not-activated",
         "environment": expected.environment,
         "tenant_id": expected.tenant_id,
@@ -80,7 +82,7 @@ def manifest_values(storage_name: str, expected: ExpectedContext, artifacts: tup
         "producer_revision": expected.foundation_revision,
         "policy_revision": expected.policy_revision,
         "bootstrap_sha256": expected.bootstrap_sha256,
-        "encryption_grant_sha256": digest(artifacts[-1]),
+        "encryption_grant_sha256": digest(artifacts[4]),
         "namespace": {"id": expected.namespace_id, "name": expected.namespace_name, "location": expected.location},
         "storage": _storage_values(storage_id, storage_name),
         "encryption": {
@@ -98,6 +100,43 @@ def manifest_values(storage_name: str, expected: ExpectedContext, artifacts: tup
             "blob_diagnostic_id": f"{storage_id}/blobServices/default/providers/Microsoft.Insights/diagnosticSettings/application-blob-audit",
         },
         "approved_browser_origins": [],
+        "cosmos": _cosmos_values(expected, artifacts) if len(artifacts) == 7 else None,
+    }
+
+
+def _cosmos_values(expected: ExpectedContext, artifacts: tuple[bytes, ...]) -> dict[str, object]:
+    key = cast(dict[str, dict[str, str]], decode(artifacts[5]))["payload"]
+    name = f"cosmos-{expected.project_code}-{expected.environment}-application"
+    account_id = f"{expected.namespace_id}/providers/Microsoft.DocumentDB/databaseAccounts/{name}"
+    database_id = f"{account_id}/sqlDatabases/treesight"
+    return {
+        "id": account_id,
+        "name": name,
+        "endpoint": f"https://{name}.documents.azure.com:443/",
+        "data_plane_available": False,
+        "database": {"id": database_id, "name": "treesight"},
+        "containers": {
+            name: {"id": f"{database_id}/containers/{name}", "name": name}
+            for name in (
+                "runs",
+                "subscriptions",
+                "users",
+                "monitors",
+                "catalogue",
+                "orgs",
+                "feature_flags",
+                "feature_flag_overrides",
+            )
+        },
+        "encryption": {
+            "key_id": key["key_id"],
+            "key_uri": key["key_uri"],
+            "identity_id": key["encryption_identity_id"],
+            "client_id": key["encryption_client_id"],
+            "principal_id": key["encryption_principal_id"],
+            "grant_sha256": digest(artifacts[6]),
+        },
+        "diagnostic_id": f"{account_id}/providers/Microsoft.Insights/diagnosticSettings/application-cosmos-control-plane",
     }
 
 
@@ -122,7 +161,8 @@ def validate_manifest(
     expected: ExpectedContext,
 ) -> dict[str, object]:
     """Enforce schema and semantics on raw input, before any typed projection."""
-    validate_inputs(bootstrap, artifacts, expected, "storage", require_write_ready=False)
+    phase = "cosmos" if len(artifacts) == 7 else "storage"
+    validate_inputs(bootstrap, artifacts, expected, phase, require_write_ready=False)
     wanted = manifest_values(storage_name, expected, artifacts)
     value = decode(raw)
     # Share governance's UUID-only comparison, without rewriting raw digest inputs.
@@ -183,7 +223,7 @@ def external_output(raw: bytes) -> bytes:
     query = _query(raw, {"context", "bootstrap", "artifacts", "phase", "candidate", "storage_name"})
     expected, bootstrap, artifacts = _bundle(query)
     validate_inputs(bootstrap, artifacts, expected, query["phase"], require_write_ready=True)
-    if query["phase"] == "storage":
+    if query["phase"] in ("storage", "cosmos"):
         artifact = create_manifest(query["candidate"].encode(), query["storage_name"], bootstrap, artifacts, expected)
     else:
         if query["storage_name"]:

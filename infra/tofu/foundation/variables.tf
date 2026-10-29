@@ -15,8 +15,8 @@ variable "phase" {
   type        = string
   default     = "prerequisites"
   validation {
-    condition     = contains(["prerequisites", "key", "storage"], var.phase)
-    error_message = "Foundation phase must be prerequisites, key, or storage."
+    condition     = contains(["prerequisites", "key", "storage", "cosmos-key", "cosmos"], var.phase)
+    error_message = "Foundation phase must be prerequisites, key, storage, cosmos-key or cosmos."
   }
 }
 variable "writes_enabled" {

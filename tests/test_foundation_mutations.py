@@ -72,14 +72,16 @@ def test_mutation_rejects_success_shaped_gates_and_accepts_inventory_failure(mon
     mutations.run_mutation("tofu", "unit-regression", "secure", "insecure")
 
 
-def test_all_eleven_mutations_are_executed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_all_blob_and_cosmos_mutations_are_executed(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(mutations, "run_mutation", lambda tofu, name, before, after, **kwargs: calls.append(name))
     monkeypatch.setattr(sys, "argv", ["test_foundation_mutations", "--tofu", "/pinned/tofu"])
     mutations.main()
-    assert len(calls) == 11
+    assert len(calls) == 25
     assert calls[-1] == "child-module-resource"
     assert "unsupported-storage-egress" in calls
+    assert "cosmos-forbidden-key-permission" in calls
+    assert {name for name, _, _ in mutations.COSMOS_MUTATIONS} <= set(calls)
 
 
 @pytest.mark.parametrize("extra_error", [False, True])

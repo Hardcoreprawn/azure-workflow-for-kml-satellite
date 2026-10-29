@@ -13,12 +13,12 @@ provider "azurerm" {
 }
 
 locals {
-  application_enabled        = contains(["namespace", "custody", "encryption"], var.application_phase) && var.bootstrap_phase == "state"
+  application_enabled        = contains(["namespace", "custody", "encryption", "cosmos-encryption"], var.application_phase) && var.bootstrap_phase == "state"
   application_namespace      = "rg-${local.name_suffix}-application"
   application_vault_name     = "a${var.project_code}${var.environment}v${random_string.storage_suffix.result}"
   application_actions        = jsondecode(file("${path.module}/../../contracts/application-governance/actions.json"))
   application_role_uuid      = uuidv5("url", "canopex/${lower(var.subscription_id)}/${var.environment}/foundation-application")
-  application_custody_phases = local.application_enabled && contains(["custody", "encryption"], var.application_phase)
+  application_custody_phases = local.application_enabled && contains(["custody", "encryption", "cosmos-encryption"], var.application_phase)
   application_context = local.application_enabled ? {
     environment                       = var.environment
     tenant_id                         = var.tenant_id
@@ -140,7 +140,16 @@ resource "azurerm_role_assignment" "application_custody" {
 }
 
 resource "azurerm_role_assignment" "application_encryption" {
-  count                            = local.application_enabled && var.application_phase == "encryption" ? 1 : 0
+  count                            = local.application_enabled && contains(["encryption", "cosmos-encryption"], var.application_phase) ? 1 : 0
+  scope                            = data.external.application_contract[0].result.blob_scope
+  role_definition_id               = "/subscriptions/${var.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/e147488a-f6f5-4113-8e2d-b22465e65bf6"
+  principal_id                     = data.external.application_contract[0].result.blob_principal_id
+  skip_service_principal_aad_check = true
+  depends_on                       = [azurerm_role_assignment.application_custody]
+}
+
+resource "azurerm_role_assignment" "application_cosmos_encryption" {
+  count                            = local.application_enabled && var.application_phase == "cosmos-encryption" ? 1 : 0
   scope                            = data.external.application_contract[0].result.scope
   role_definition_id               = data.external.application_contract[0].result.role_definition_id
   principal_id                     = data.external.application_contract[0].result.principal_id
@@ -156,6 +165,7 @@ output "application_contract" {
     azurerm_role_assignment.application_foundation,
     azurerm_role_assignment.application_custody,
     azurerm_role_assignment.application_encryption,
+    azurerm_role_assignment.application_cosmos_encryption,
   ]
 }
 
@@ -167,6 +177,7 @@ output "application_contract_json" {
     azurerm_role_assignment.application_foundation,
     azurerm_role_assignment.application_custody,
     azurerm_role_assignment.application_encryption,
+    azurerm_role_assignment.application_cosmos_encryption,
   ]
 }
 

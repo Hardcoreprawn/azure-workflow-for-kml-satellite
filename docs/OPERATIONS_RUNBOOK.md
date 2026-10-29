@@ -412,22 +412,47 @@ inability to evaluate the computed 180-day initial key expiry; they expire
 2026-11-27 and need review before any cloud authorization. Actual log delivery,
 cost/retention, key rotation/recovery and effective isolation remain trial gates.
 
-### Isolated persistent Blob core (not activated)
+### Isolated persistent data core (not activated)
 
-The [foundation root](../infra/tofu/foundation/README.md) (#1627) is a ten-resource
-offline slice, not a working environment. Governance owns application RG/vault
+The [foundation root](../infra/tofu/foundation/README.md) (#1627/#1636) is a 23-resource
+offline slice in one state/root, not a working environment. Governance owns application RG/vault
 lifecycle and all key grants; foundation owns the application key, encryption
 UAMI, private Blob account/three containers and dedicated audit resources.
 The sequence is namespace/vault → foundation prerequisites → governance custody
 → foundation key → governance encryption grant → foundation storage. Each stage
 requires the exact immutable raw prefix and independent expected context.
+Then foundation's `cosmos-key` creates a dedicated Cosmos key/UAMI while retaining
+Blob; governance issues `cosmos-encryption`, retaining all earlier grants; only
+then may the `cosmos` phase declare the account/database/eight existing containers.
+The application schema evolves directly to v2; bootstrap v1 remains unchanged.
 
 Run `make test-foundation` (OpenTofu 1.13.2; backend disabled, read-only lock,
 mocked plan only) and `make test-foundation-mutations`. The mandatory raw-input
 gate and generated-output validator use the shared governance parser; disabled
 OIDC or the default `writes_enabled=false` blocks writes. The final manifest
-always declares `persistent-blob-core`, `not-activated`, no browser origins and
-`storage.data_plane_available=false`. No runtime admission or Cosmos is implied.
+always declares v2 `persistent-data-core`, `not-activated`, no browser origins and
+`storage.data_plane_available=false`. Cosmos is null in the storage phase; its final
+references also declare `data_plane_available=false`. No runtime admission is implied.
+
+The Cosmos account is Entra-only, single-region serverless/Session, public access
+Disabled, bypass None, continuous seven-day backup and a dedicated versionless CMK.
+AzAPI 2.9.0 ARM CRUD avoids AzureRM 4.22.0's unconditional Cosmos credential reads;
+only the endpoint is exported. Explicit OIDC/identity and disabled registration,
+default output, CLI/MSI fallback remain mandatory. AzureRM SQL child resources
+retain serverless management-plane operations. Foundation's exact CRUD/async-poll
+actions exclude keys, connection strings, runtime data grants and restore.
+Only `ControlPlaneRequests` goes to the existing restricted 30-day workspace.
+No query/data-plane logging or new scanner exception is authorized.
+
+Continuous-backup CMK creation uses the pre-created dedicated encryption UAMI for
+both identity attachment and account `defaultIdentity`; no first-party fallback.
+Do not change the governance vault's approved deny-default/AzureServices bypass:
+Cosmos closed networking does not imply a private-only Key Vault. Preserve old key
+versions and identity/grant access for recovery; a versionless URI and rotation
+policy do not prove adoption or restore. Recovery needs separate privileged owner
+approval, explicit identity rebinding and live verification. Seven days is not legal
+retention or a contractual RPO/RTO. `prevent_destroy` cannot prevent deletion outside
+the retained configuration, privileged Azure deletion or cryptographic loss.
 
 `make scan-foundation` and the canonical CI Trivy action scan all actual evaluated
 phase plans, without global/bootstrap exceptions. The owner approved only
@@ -439,6 +464,9 @@ scanner proofs each return the two findings and exit 1. No key-expiry exception,
 static scanner-only expiry, extra Queue configuration or broader approval may be
 substituted. The provider explicitly disables storage data-plane availability;
 native inventory validation rejects both module calls and planned child modules.
+Trivy does not provide equivalent AzAPI Cosmos coverage; mandatory native plan
+policy assertions and source mutations enforce the exact account body and container
+schema. Scan the actual five phase plans, never invented AzureRM proxies.
 Key initial/rotated lifetimes are 180 days with 90-day
 rotation; refreshed effective expiry must remain future-dated while rotation
 owns expiry drift. Destroy guards, soft deletion and versioning do not replace
@@ -447,7 +475,7 @@ state/key recovery or legal retention.
 Cloud permissions, propagation, network/OIDC protection, actual audit delivery,
 rotation/recovery, state locking and a no-change second apply still need separate
 owner-authorized evidence. This slice does not lift pause/freeze or authorize
-spend; deferred Cosmos, browser bindings, workload, release and integration
+spend; deferred Cosmos runtime connectivity/grants, browser bindings, workload, release and integration
 families remain necessary before a trial.
 
 ### Application namespace and custody (offline declarations, not activated)

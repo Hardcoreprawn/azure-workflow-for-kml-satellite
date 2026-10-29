@@ -19,5 +19,18 @@
   "Microsoft.Storage/storageAccounts/fileServices/read",
   "Microsoft.Storage/storageAccounts/blobServices/containers/read",
   "Microsoft.Storage/storageAccounts/blobServices/containers/write",
-  "Microsoft.Storage/storageAccounts/blobServices/containers/delete"
+  "Microsoft.Storage/storageAccounts/blobServices/containers/delete",
+  "Microsoft.DocumentDB/databaseAccounts/read",
+  "Microsoft.DocumentDB/databaseAccounts/write",
+  "Microsoft.DocumentDB/databaseAccounts/delete",
+  "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/read",
+  "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/write",
+  "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/delete",
+  "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/read",
+  "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/write",
+  "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/delete",
+  "Microsoft.DocumentDB/databaseAccounts/operationResults/read",
+  "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/operationResults/read",
+  "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/operationResults/read",
+  "Microsoft.DocumentDB/locations/operationsStatus/read"
 ]

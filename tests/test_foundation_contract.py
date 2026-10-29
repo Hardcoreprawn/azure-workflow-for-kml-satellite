@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.application_contract import STAGES, ContractError, ExpectedContext, create_artifact, digest, encode
+from scripts.application_contract import ContractError, ExpectedContext, create_artifact, digest, encode
 from scripts.validate_foundation_contract import (
     create_manifest,
     external_gate,
@@ -25,6 +25,7 @@ from scripts.validate_foundation_contract import (
 )
 
 FIXTURES = Path(__file__).parent / "fixtures/application_governance"
+STAGES = ("namespace", "prerequisites", "custody", "key", "encryption")
 
 
 def test_rejects_workload_identity_for_foundation_backend() -> None:
@@ -84,7 +85,7 @@ def test_manifest_is_strict_not_activated_and_immutable() -> None:
     "path,value",
     [
         (("schema_version",), True),
-        (("schema_version",), 2),
+        (("schema_version",), 1),
         (("status",), "ready"),
         (("producer_revision",), "4" * 40),
         (("policy_revision",), "4" * 40),
@@ -199,7 +200,7 @@ def test_rejects_bootstrap_context_mutations(path: tuple[str, ...], value: objec
 def test_rejects_duplicate_json_fields_before_projection() -> None:
     context, bootstrap, chain = bundle()
     raw = encode(manifest_values("kmlsatdevappabc123", context, chain))
-    duplicate = raw.replace(b'"schema_version":1', b'"schema_version":2,"schema_version":1')
+    duplicate = raw.replace(b'"schema_version":2', b'"schema_version":1,"schema_version":2')
     with pytest.raises(ContractError, match="duplicate"):
         validate_manifest(duplicate, "kmlsatdevappabc123", bootstrap, chain, context)
 
@@ -222,7 +223,7 @@ def test_reproducible_fixtures_satisfy_schema_and_semantics(environment: str) ->
     for filename, raw in generated.items():
         assert (directory / filename).read_bytes() == raw
     schema = json.loads(
-        (FIXTURES.parents[2] / "docs/schemas/foundation-persistent-blob-core-v1.schema.json").read_bytes()
+        (FIXTURES.parents[2] / "docs/schemas/foundation-persistent-data-core-v2.schema.json").read_bytes()
     )
     Draft202012Validator.check_schema(schema)
     Draft202012Validator(schema).validate(json.loads(generated["manifest.json"]))
@@ -477,7 +478,7 @@ def test_manifest_uuid_case_matches_governance_without_rewriting_provenance() ->
     assert value["encryption_grant_sha256"] == digest(chain[-1])
     assert bootstrap == original_bootstrap and chain == original_chain
     schema = json.loads(
-        (FIXTURES.parents[2] / "docs/schemas/foundation-persistent-blob-core-v1.schema.json").read_bytes()
+        (FIXTURES.parents[2] / "docs/schemas/foundation-persistent-data-core-v2.schema.json").read_bytes()
     )
     Draft202012Validator(schema).validate(json.loads(uppercase))
 

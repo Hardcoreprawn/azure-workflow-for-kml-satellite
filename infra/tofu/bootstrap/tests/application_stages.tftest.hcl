@@ -238,6 +238,54 @@ run "reject_missing_custody_prerequisites" {
   expect_failures = [var.application_artifacts]
 }
 
+run "cosmos_grant_preserves_blob_and_custody" {
+  command = plan
+  variables {
+    application_phase = "cosmos-encryption"
+    application_artifacts = [
+      file("../../../tests/fixtures/application_governance/namespace.json"),
+      file("../../../tests/fixtures/application_governance/prerequisites.json"),
+      file("../../../tests/fixtures/application_governance/custody.json"),
+      file("../../../tests/fixtures/application_governance/key.json"),
+      file("../../../tests/fixtures/application_governance/encryption.json"),
+      file("../../../tests/fixtures/application_governance/cosmos-key.json"),
+    ]
+  }
+  assert {
+    condition = (
+      length(azurerm_role_assignment.application_foundation) == 1 &&
+      length(azurerm_role_assignment.application_custody) == 1 &&
+      azurerm_role_assignment.application_encryption[0].scope == "${azurerm_key_vault.application[0].id}/keys/application-cmk" &&
+      azurerm_role_assignment.application_encryption[0].principal_id == "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" &&
+      azurerm_role_assignment.application_cosmos_encryption[0].scope == "${azurerm_key_vault.application[0].id}/keys/cosmos-cmk" &&
+      azurerm_role_assignment.application_cosmos_encryption[0].principal_id == "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" &&
+      endswith(azurerm_role_assignment.application_cosmos_encryption[0].role_definition_id, "/e147488a-f6f5-4113-8e2d-b22465e65bf6") &&
+      output.application_contract.stage == "cosmos-encryption" &&
+      output.application_contract.schema_version == 2 &&
+      output.bootstrap_contract.schema_version == 1
+    )
+    error_message = "Cosmos grant must be key scoped and dedicated, preserving every earlier grant and bootstrap v1."
+  }
+  assert {
+    condition = alltrue([
+      for action in azurerm_role_definition.application_foundation[0].permissions[0].actions :
+      !strcontains(lower(action), "listkeys") &&
+      !strcontains(lower(action), "readonlykeys") &&
+      !strcontains(lower(action), "connectionstrings") &&
+      !strcontains(lower(action), "restore") &&
+      !strcontains(lower(action), "sqlrole") &&
+      !strcontains(action, "*")
+    ])
+    error_message = "Foundation must not gain credentials, restore, data grants or wildcard permissions."
+  }
+}
+
+run "reject_missing_cosmos_key_before_grant" {
+  command = plan
+  variables { application_phase = "cosmos-encryption" }
+  expect_failures = [var.application_artifacts]
+}
+
 run "reject_missing_key_before_encryption" {
   command = plan
   variables {

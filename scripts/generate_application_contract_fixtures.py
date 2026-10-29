@@ -43,7 +43,14 @@ def build_fixtures(bootstrap: bytes) -> tuple[tuple[str, bytes], ...]:
         "key_uri": f"{expected.vault_uri}keys/application-cmk",
     }
     chain: tuple[bytes, ...] = ()
-    for stage, payload in zip(STAGES, ({}, prerequisites, {}, key, {}), strict=True):
+    cosmos_key = {
+        "key_id": f"{expected.vault_id}/keys/cosmos-cmk",
+        "key_uri": f"{expected.vault_uri}keys/cosmos-cmk",
+        "encryption_identity_id": f"{expected.namespace_id}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-kmlsat-{environment}-application-cosmos-encryption",
+        "encryption_client_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        "encryption_principal_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    }
+    for stage, payload in zip(STAGES, ({}, prerequisites, {}, key, {}, cosmos_key, {}), strict=True):
         raw = create_artifact(stage, payload, bootstrap, chain, expected)
         artifacts = (*artifacts, (f"{stage}.json", raw))
         chain = (*chain, raw)
@@ -67,7 +74,7 @@ def scan_fixtures(bootstrap: bytes) -> tuple[tuple[str, bytes], ...]:
         "application_revisions": {"governance": "1" * 40, "foundation": "2" * 40, "policy": "3" * 40},
     }
     result: tuple[tuple[str, bytes], ...] = ()
-    for phase, count in (("namespace", 0), ("custody", 2), ("encryption", 4)):
+    for phase, count in (("namespace", 0), ("custody", 2), ("encryption", 4), ("cosmos-encryption", 6)):
         value = {
             **common,
             "application_phase": phase,

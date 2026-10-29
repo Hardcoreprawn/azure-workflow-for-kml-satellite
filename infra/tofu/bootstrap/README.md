@@ -113,6 +113,16 @@ The [shared API, stage fixtures and #1627 handoff](../../contracts/application-g
 define the exact consumer contract. Governance never creates, reads or stores
 application key material. Every artifact says `declared-not-activated`.
 
+Issue #1636 evolves the application contract directly to v2, appending foundation's
+`cosmos-key` and governance's `cosmos-encryption`; bootstrap v1 is unchanged.
+The new phase preserves all previous custody/Blob grants and adds only a
+Crypto Service Encryption User grant on `cosmos-cmk` to the validated dedicated
+Cosmos encryption UAMI. It is not a runtime identity. The foundation action
+allowlist adds exact Cosmos account/database/container CRUD and async poll reads,
+never account credentials, data grants or cross-account restore authority.
+The existing application vault deny-default/AzureServices policy remains approved
+and unchanged; Cosmos account networking is independently closed.
+
 Before a separately authorized trial, record a **five-minute maximum per gate**,
 at most **ten attempts**, and stop immediately on a wrong principal, scope, tenant,
 subscription, artifact digest, unexpected success of a forbidden operation, or

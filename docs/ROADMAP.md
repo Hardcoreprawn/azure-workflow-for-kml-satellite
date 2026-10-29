@@ -136,6 +136,12 @@ lifecycle ownership through the bounded Blob/CMK/audit slice. #1630 records the
 accepted decisions. These merges do not complete the whole foundation or prove
 effective Azure permissions. Remaining services, application/DTS migration, production
 SKU, cloud budget and authenticated wake-up proof remain unshipped.
+Issue #1636 extends that same offline foundation boundary with the existing eight-container
+Cosmos inventory, a dedicated Cosmos CMK/encryption UAMI, governance's key-scoped
+grant, closed-network Entra-only account and seven-day continuous recovery policy.
+It does not add runtime grants/connectivity or prove restore/audit delivery.
+Issues #1529 (`pipeline_stats`) and #1635 (separate documentation reconciliation) remain
+outside this slice; #1528 still needs explicit cloud authorization and later gates.
 **✅ #1526 via #1634** separates admission and worker registration, with verified
 local role surfaces, safe probes and authenticated artifact retrieval. Worker
 business routes and Event Grid ingress are removed; runtime-managed host endpoints

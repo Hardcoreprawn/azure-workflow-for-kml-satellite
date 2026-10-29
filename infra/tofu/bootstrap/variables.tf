@@ -1,12 +1,12 @@
 variable "application_phase" {
-  description = "Offline declarations: disabled -> namespace -> custody -> encryption. Owner-verified permission/network gates remain separate."
+  description = "Offline declarations: disabled -> namespace -> custody -> encryption -> cosmos-encryption. Owner-verified permission/network gates remain separate."
   type        = string
   default     = "disabled"
   nullable    = false
 
   validation {
-    condition     = contains(["disabled", "namespace", "custody", "encryption"], var.application_phase) && (var.application_phase == "disabled" || var.bootstrap_phase == "state")
-    error_message = "Use disabled, namespace, custody or encryption; application declarations require the completed bootstrap state phase."
+    condition     = contains(["disabled", "namespace", "custody", "encryption", "cosmos-encryption"], var.application_phase) && (var.application_phase == "disabled" || var.bootstrap_phase == "state")
+    error_message = "Use disabled, namespace, custody, encryption or cosmos-encryption; application declarations require the completed bootstrap state phase."
   }
 }
 
@@ -50,7 +50,7 @@ variable "application_artifacts" {
 
   validation {
     condition = length(var.application_artifacts) == lookup({
-      disabled = 0, namespace = 0, custody = 2, encryption = 4
+      disabled = 0, namespace = 0, custody = 2, encryption = 4, cosmos-encryption = 6
     }, var.application_phase, 0)
     error_message = "Application phase cannot skip or omit earlier artifacts."
   }

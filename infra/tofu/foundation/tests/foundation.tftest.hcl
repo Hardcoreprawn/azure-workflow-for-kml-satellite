@@ -1,5 +1,83 @@
 mock_provider "azurerm" {}
 mock_provider "random" {}
+mock_provider "azapi" {}
+
+override_resource {
+  target = azurerm_user_assigned_identity.cosmos_cmk[0]
+  values = {
+    id           = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-kmlsat-dev-application-cosmos-encryption"
+    client_id    = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+    principal_id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+  }
+}
+override_resource {
+  target = azurerm_key_vault_key.cosmos_cmk[0]
+  values = {
+    resource_versionless_id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.KeyVault/vaults/akmlsatdevvabc123/keys/cosmos-cmk"
+    versionless_id          = "https://akmlsatdevvabc123.vault.azure.net/keys/cosmos-cmk"
+  }
+}
+override_resource {
+  target = azapi_resource.cosmos[0]
+  values = {
+    id     = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-kmlsat-dev-application"
+    output = { properties = { documentEndpoint = "https://cosmos-kmlsat-dev-application.documents.azure.com:443/" } }
+  }
+}
+override_resource {
+  target = azurerm_cosmosdb_sql_database.main[0]
+  values = {
+    id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-kmlsat-dev-application/sqlDatabases/treesight"
+  }
+}
+override_resource {
+  target = azurerm_cosmosdb_sql_container.runs[0]
+  values = {
+    id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-kmlsat-dev-application/sqlDatabases/treesight/containers/runs"
+  }
+}
+override_resource {
+  target = azurerm_cosmosdb_sql_container.subscriptions[0]
+  values = {
+    id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-kmlsat-dev-application/sqlDatabases/treesight/containers/subscriptions"
+  }
+}
+override_resource {
+  target = azurerm_cosmosdb_sql_container.users[0]
+  values = {
+    id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-kmlsat-dev-application/sqlDatabases/treesight/containers/users"
+  }
+}
+override_resource {
+  target = azurerm_cosmosdb_sql_container.monitors[0]
+  values = {
+    id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-kmlsat-dev-application/sqlDatabases/treesight/containers/monitors"
+  }
+}
+override_resource {
+  target = azurerm_cosmosdb_sql_container.catalogue[0]
+  values = {
+    id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-kmlsat-dev-application/sqlDatabases/treesight/containers/catalogue"
+  }
+}
+override_resource {
+  target = azurerm_cosmosdb_sql_container.orgs[0]
+  values = {
+    id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-kmlsat-dev-application/sqlDatabases/treesight/containers/orgs"
+  }
+}
+override_resource {
+  target = azurerm_cosmosdb_sql_container.feature_flags[0]
+  values = {
+    id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-kmlsat-dev-application/sqlDatabases/treesight/containers/feature_flags"
+  }
+}
+override_resource {
+  target = azurerm_cosmosdb_sql_container.feature_flag_overrides[0]
+  values = {
+    id = "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-kmlsat-dev-application/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-kmlsat-dev-application/sqlDatabases/treesight/containers/feature_flag_overrides"
+  }
+}
 
 override_resource {
   target = random_string.storage_suffix
@@ -65,6 +143,58 @@ variables {
     "../../../tests/fixtures/foundation/dev/key.json",
     "../../../tests/fixtures/foundation/dev/encryption.json",
   ]
+}
+
+run "cosmos-key" {
+  command = plan
+  variables { phase = "cosmos-key" }
+  assert {
+    condition = (
+      length(azurerm_storage_account.main) == 1 &&
+      length(azurerm_key_vault_key.storage_cmk) == 1 &&
+      length(azurerm_key_vault_key.cosmos_cmk) == 1 &&
+      length(azapi_resource.cosmos) == 0 &&
+      timecmp(azurerm_key_vault_key.cosmos_cmk[0].expiration_date, timeadd(plantimestamp(), "4320h")) == 0 &&
+      jsondecode(data.external.artifact.query.candidate).key_uri == azurerm_key_vault_key.cosmos_cmk[0].versionless_id
+    )
+    error_message = "Cosmos key preparation must preserve Blob resources and cannot create an account before its grant."
+  }
+}
+
+run "cosmos" {
+  command = plan
+  variables {
+    phase = "cosmos"
+    artifacts = [
+      "../../../tests/fixtures/foundation/dev/namespace.json",
+      "../../../tests/fixtures/foundation/dev/prerequisites.json",
+      "../../../tests/fixtures/foundation/dev/custody.json",
+      "../../../tests/fixtures/foundation/dev/key.json",
+      "../../../tests/fixtures/foundation/dev/encryption.json",
+      "../../../tests/fixtures/foundation/dev/cosmos-key.json",
+      "../../../tests/fixtures/foundation/dev/cosmos-encryption.json",
+    ]
+  }
+  assert {
+    condition = (
+      length(azurerm_storage_account.main) == 1 &&
+      azapi_resource.cosmos[0].body.properties.disableLocalAuth &&
+      azapi_resource.cosmos[0].body.properties.disableKeyBasedMetadataWriteAccess &&
+      azapi_resource.cosmos[0].body.properties.publicNetworkAccess == "Disabled" &&
+      azapi_resource.cosmos[0].body.properties.networkAclBypass == "None" &&
+      azapi_resource.cosmos[0].body.properties.backupPolicy.continuousModeProperties.tier == "Continuous7Days" &&
+      azapi_resource.cosmos[0].body.properties.defaultIdentity == "UserAssignedIdentity=${azurerm_user_assigned_identity.cosmos_cmk[0].id}" &&
+      azapi_resource.cosmos[0].body.properties.keyVaultKeyUri == azurerm_key_vault_key.cosmos_cmk[0].versionless_id
+    )
+    error_message = "Cosmos must preserve Blob and require closed networking, Entra, continuous recovery and its dedicated CMK/UAMI."
+  }
+  assert {
+    condition = (
+      jsondecode(data.external.artifact.query.candidate).cosmos.data_plane_available == false &&
+      length(jsondecode(data.external.artifact.query.candidate).cosmos.containers) == 8
+    )
+    error_message = "Cosmos references must remain unavailable and contain exactly the existing eight containers."
+  }
 }
 
 run "prerequisites" {
@@ -157,7 +287,7 @@ run "storage" {
     error_message = "CMK and dedicated Entra-only auditing must be preserved."
   }
   assert {
-    condition     = jsondecode(data.external.artifact.query.candidate).status == "not-activated" && !jsondecode(data.external.artifact.query.candidate).storage.data_plane_available && jsondecode(data.external.artifact.query.candidate).contract_scope == "persistent-blob-core"
+    condition     = jsondecode(data.external.artifact.query.candidate).status == "not-activated" && !jsondecode(data.external.artifact.query.candidate).storage.data_plane_available && jsondecode(data.external.artifact.query.candidate).contract_scope == "persistent-data-core"
     error_message = "The manifest candidate must not claim readiness; the native runner executes its deferred semantic validation."
   }
 }
