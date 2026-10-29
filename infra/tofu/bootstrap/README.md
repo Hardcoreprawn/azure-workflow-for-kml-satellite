@@ -113,6 +113,20 @@ The [shared API, stage fixtures and #1627 handoff](../../contracts/application-g
 define the exact consumer contract. Governance never creates, reads or stores
 application key material. Every artifact says `declared-not-activated`.
 
+Issue #1636 evolves the application contract directly to v2, appending foundation's
+`cosmos-key` and governance's `cosmos-encryption`; bootstrap v1 is unchanged.
+The new phase preserves all previous custody/Blob grants and adds only a
+Crypto Service Encryption User grant on `cosmos-cmk` to the validated dedicated
+Cosmos encryption UAMI. It is not a runtime identity. The foundation action
+allowlist adds exact Cosmos account/database/container CRUD and async poll reads,
+never account credentials, data grants or cross-account restore authority.
+The existing application vault deny-default/AzureServices policy remains approved
+and unchanged; Cosmos account networking is independently closed.
+Both Blob and Cosmos key-scoped encryption grants have `prevent_destroy`.
+Returning to an earlier otherwise-valid application phase must fail instead of
+revoking a persisted encryption grant. Forward phase retention alone cannot prove
+this. These guards still cannot prevent out-of-band deletion or configuration removal.
+
 Before a separately authorized trial, record a **five-minute maximum per gate**,
 at most **ten attempts**, and stop immediately on a wrong principal, scope, tenant,
 subscription, artifact digest, unexpected success of a forbidden operation, or
@@ -199,8 +213,18 @@ The target checks formatting, initializes **without a backend**, verifies the
 committed provider lock, validates the configuration and executes plan-only
 mocked-provider tests. Provider installation needs registry access; Azure
 credentials, Azure CLI login and a remote state account are not required.
-It rejects leftover `errored_test.tfstate`, since a test cleanup failure must
-not masquerade as success.
+It rejects leftover `errored_test.tfstate` from the ordinary suite, since a
+test cleanup failure must not masquerade as success.
+
+The additional grant-retention
+regressions use isolated copies under `.validation/grant-retention/`: all Azure
+providers are mocked, a test-only apply persists synthetic grant state, then an
+earlier-phase plan must fail for that exact grant's `prevent_destroy`.
+The runner separately validates teardown diagnostics: native synthetic cleanup
+also encounters existing destroy guards. Only verified mock state is discarded
+after retaining the JSON evidence; the real configuration's guards are not disabled.
+No Azure operations are authorized or performed by these mock-only proofs.
+
 UUID letter case does not change the authenticated custodian or application
 role identifier. Custodian/deployment/encryption identity separation also compares
 UUIDs case-insensitively, so alternate spelling cannot bypass the exclusion.

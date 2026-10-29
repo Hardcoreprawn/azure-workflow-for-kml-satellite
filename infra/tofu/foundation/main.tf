@@ -17,16 +17,18 @@ data "external" "inputs" {
 }
 
 locals {
-  context       = jsondecode(data.external.inputs.result.context)
-  payloads      = jsondecode(data.external.inputs.result.payloads)
-  key_enabled   = contains(["key", "storage"], var.phase)
-  storage_ready = var.phase == "storage"
-  name_suffix   = "${local.context.project_code}-${local.context.environment}-application"
+  context            = jsondecode(data.external.inputs.result.context)
+  payloads           = jsondecode(data.external.inputs.result.payloads)
+  key_enabled        = contains(["key", "storage", "cosmos-key", "cosmos"], var.phase)
+  storage_ready      = contains(["storage", "cosmos-key", "cosmos"], var.phase)
+  cosmos_key_enabled = contains(["cosmos-key", "cosmos"], var.phase)
+  cosmos_ready       = var.phase == "cosmos"
+  name_suffix        = "${local.context.project_code}-${local.context.environment}-application"
   tags = {
     project     = local.context.project_code
     environment = local.context.environment
     managed-by  = "opentofu"
-    component   = "persistent-blob-core"
+    component   = "persistent-data-core"
   }
 }
 

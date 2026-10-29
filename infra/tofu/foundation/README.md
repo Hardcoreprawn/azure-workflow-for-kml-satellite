@@ -1,4 +1,4 @@
-# Persistent Blob foundation — not activated (#1627)
+# Persistent data foundation — not activated (#1627, #1636)
 
 This independent root serves the ESG/EUDR analyst's evidence-custody job: routine
 application releases must not control persistent inputs/evidence or their keys.
@@ -16,7 +16,7 @@ Encryption User grants. Foundation has no role/policy/access-policy administrati
 vault lifecycle permission, subscription/RG lifecycle permission or bootstrap key
 access. Declarations do not prove these effective boundaries.
 
-Exactly ten resource declarations:
+Exactly 23 resource declarations in the same root/state; the original ten:
 
 | Address | Lifecycle |
 | --- | --- |
@@ -31,14 +31,22 @@ Exactly ten resource declarations:
 | `azurerm_storage_container.pipeline_payloads` | Private pipeline payloads |
 | `azurerm_monitor_diagnostic_setting.storage_blob` | Blob Read/Write/Delete diagnostics |
 
+The Cosmos extension adds `azurerm_user_assigned_identity.cosmos_cmk`,
+`azurerm_key_vault_key.cosmos_cmk`, `azapi_resource.cosmos`,
+`azurerm_cosmosdb_sql_database.main`, `azurerm_monitor_diagnostic_setting.cosmos`
+and eight `azurerm_cosmosdb_sql_container` declarations: `runs`, `subscriptions`,
+`users`, `monitors`, `catalogue`, `orgs`, `feature_flags`, `feature_flag_overrides`.
+Existing partition keys, indexing policies and TTLs are unchanged; `pipeline_stats`
+remains #1529, not a ninth container.
+
 The names are new-root declarations, **not adoption/import instructions**.
-All ten have `prevent_destroy`. These guards reject planned destruction, replacement
+All 23 have `prevent_destroy`. These guards reject planned destruction, replacement
 and phase regression while configuration remains present; they do not protect against
 configuration removal, state tampering, privileged Azure deletion, account loss or
 cryptographic key loss. Soft deletion/versioning are recovery controls, not immutable
 legal holds or backups. Governance owns vault recovery/purge protection.
 
-Deferred: Cosmos/database containers, SWA/browser binding, CIAM, DTS/task hubs,
+Deferred: Cosmos connectivity/runtime grants, SWA/browser binding, CIAM, DTS/task hubs,
 hosts/environments, Event Grid, runtime identities/grants, image/config release,
 App Insights/general alerts/action groups/budgets, communication/AI services and
 subscription Defender policy. Browser origins remain empty. This does not complete
@@ -47,9 +55,9 @@ the #1620 umbrella or unblock #1528, #708, #1503, #1526 or #1327.
 ## Mandatory raw handoff gates
 
 The [shared governance API](../../contracts/application-governance/README.md)
-owns bootstrap v1 and the five application stages. Foundation extends it through
-`scripts.validate_foundation_contract`, not a parallel bootstrap parser or sixth
-governance stage. Raw received bytes are hashed without re-encoding. The caller
+owns unchanged bootstrap v1 and seven application-v2 stages. Foundation extends it through
+`scripts.validate_foundation_contract`, not a parallel parser or compatibility reader.
+Raw received bytes are hashed without re-encoding. The caller
 supplies an independently approved immutable expected context, including revisions,
 tenant/subscription/environment, foundation ARM/client/principal IDs, exact GitHub
 environment, selected backend, bootstrap SHA256 and bootstrap-principal exclusions.
@@ -86,7 +94,9 @@ Fixture IDs/revisions are synthetic and must never be supplied to Azure.
 | --- | --- | --- |
 | `prerequisites` | `namespace` | Four declarations: suffix/UAMI/workspace/vault diagnostic; validated `prerequisites` artifact, echoing governance vault |
 | `key` | `namespace → prerequisites → custody` | Five declarations including key; validated `key` artifact, no storage references |
-| `storage` | `namespace → prerequisites → custody → key → encryption` | All ten; separate `persistent-blob-core` / `not-activated` manifest |
+| `storage` | `namespace → prerequisites → custody → key → encryption` | Original ten; v2 `persistent-data-core` / `not-activated` manifest, `cosmos=null` |
+| `cosmos-key` | Same five-stage prefix | Twelve resources: retain all Blob resources and create dedicated Cosmos UAMI/key; actual `cosmos-key` artifact |
+| `cosmos` | Previous five → `cosmos-key` → `cosmos-encryption` | All 23; validated actual Cosmos references, unavailable data plane |
 
 Between phases, governance must consume the preceding actual foundation artifact
 and issue the next grant declaration. Separate owner-authorized bounded permission
@@ -98,12 +108,15 @@ reference or completed-foundation dependency at namespace creation.
 producer validates **actual generated references** with the same semantic validator
 used for fixtures. It deliberately fails rather than publishing a plausible but
 incorrect manifest. The JSON
-[schema](../../../docs/schemas/foundation-persistent-blob-core-v1.schema.json)
+[schema](../../../docs/schemas/foundation-persistent-data-core-v2.schema.json)
 documents structural fields; semantic validation additionally checks the complete
-five-stage prefix and exact context-bound values. It includes only resource/identity
+phase-specific five/seven-stage prefix and exact context-bound values. It includes only resource/identity
 references, versionless vault/key references, revisions/digests and empty origins:
 no secret values, keys/SAS, connection strings, runtime hosts or invented services.
 `storage.data_plane_available=false` is unconditional.
+So is `cosmos.data_plane_available=false` when Cosmos references are present.
+Both application envelopes and foundation manifests evolve directly to v2;
+bootstrap v1 remains byte-for-byte unchanged. No v1 application compatibility path.
 
 Inspect the synthetic DEV fixture (substitute `prd` consistently for PRD):
 
@@ -119,6 +132,11 @@ python3 -m scripts.validate_foundation_contract validate \
   --manifest tests/fixtures/foundation/dev/manifest.json \
   --storage-name kmlsatdevappabc123
 ```
+
+For the Cosmos manifest, add `--phase cosmos`, select `cosmos-manifest.json`
+instead of `manifest.json`, and append `--artifact` arguments for `cosmos-key.json`
+then `cosmos-encryption.json` after the five shown above. Both manifest phases
+require their exact ordered prefix; selecting Cosmos never relaxes lineage checks.
 
 ## Security and recovery defaults
 
@@ -142,7 +160,57 @@ python3 -m scripts.validate_foundation_contract validate \
 
 ## Offline validation and remaining gates
 
-OpenTofu **1.13.2**, AzureRM **4.22.0**, random **3.6.3**, and the stdlib adapter's
+### Cosmos account: credentials, custody and recovery
+
+The approved account is single-region NoSQL, serverless, Session consistency,
+Entra-only, TLS 1.2, with public networking **Disabled**, bypass **None**, no IP,
+VNet or bypass resource rules, and continuous **seven-day** backup. Metadata key
+writes are disabled too. There is deliberately no runtime connectivity or grant.
+The only Cosmos diagnostic category is `ControlPlaneRequests`, sent to the same
+restricted 30-day workspace. No query text/data-plane category or all-category
+selection is enabled; actual delivery and privacy/cost verification remain gates.
+
+AzureRM 4.22.0 account refresh unconditionally calls ListKeys, ListReadOnlyKeys and
+ListConnectionStrings and stores credentials. Therefore the account uses pinned
+AzAPI **2.9.0**, `Microsoft.DocumentDB/databaseAccounts@2024-11-15`, ARM-only CRUD,
+explicit approved OIDC identity, disabled CLI/MSI fallback, no registration or
+default output, and only `properties.documentEndpoint` exported. There are no
+action resources or secret outputs. AzureRM SQL database/container CRUD remains
+management-plane; its serverless capability check skips throughput reads.
+The role includes exact account/database/container CRUD and async-result/status
+reads, not key/connection-string retrieval, data actions, grants or restore.
+RG-scoped declarations do not establish effective async-poll authorization.
+
+Continuous-backup CMK creation requires a pre-existing user-assigned identity.
+Foundation creates a **dedicated** RSA-2048 Cosmos key and encryption UAMI;
+governance grants only Crypto Service Encryption User on that key. The account's
+attachment **and** `defaultIdentity` select that exact UAMI. Existing Blob grants
+and resources survive every later phase. Foundation has no self-grant authority.
+Governance's Blob/Cosmos encryption grants also have destroy guards: reverting to
+an earlier phase cannot revoke already-persisted CMK access. `make test-bootstrap`
+proves this with persisted mock state, not just forward plans from empty state.
+The application vault's already-approved deny-default plus **AzureServices**
+bypass is unchanged: Cosmos CMK needs public vault reachability or trusted-service
+bypass. Closed Cosmos networking must not be misrepresented as a private-only vault.
+
+The Cosmos key deliberately reuses guarded 180-day initial expiry, 180-day
+rotation expiry, 90-day rotation and 30-day notification, with versionless URI,
+`prevent_destroy`, and no moving expiry reset. Retain historical versions and the
+encryption identity/grant for the entire recovery window. Expiry, disabled/deleted
+versions, lost identity access or unsupported rebinding can prevent restore.
+Rotation policy alone proves neither successful adoption nor recoverability.
+Restore needs separate privileged authorization, explicit identity rebinding and
+real cloud verification. Seven days is operational recovery, **not legal retention
+or an RPO/RTO guarantee**; no restore invocation or cross-account restore grant.
+
+Sources: [pinned account refresh](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.22.0/internal/services/cosmos/cosmosdb_account_resource.go#L1518-L1571),
+[ARM API](https://learn.microsoft.com/en-us/azure/templates/microsoft.documentdb/2024-11-15/databaseaccounts),
+[CMK lifecycle](https://learn.microsoft.com/en-us/azure/cosmos-db/how-to-setup-customer-managed-keys),
+[async polling](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/async-operations).
+
+### Executable offline gates
+
+OpenTofu **1.13.2**, AzureRM **4.22.0**, AzAPI **2.9.0**, random **3.6.3**, and the stdlib adapter's
 external provider **2.3.5** are pinned in this root and its checked-in lock.
 No cloud authentication is needed. Initialization is backend-disabled and lockfile
 read-only; all native runs are `command = plan`.
@@ -164,11 +232,17 @@ per-phase inventory/provider feature and validates every generated artifact.
 Some data-source reads are deferred by OpenTofu because managed-resource
 preconditions depend on pending changes; the runner executes their fully evaluated
 candidate through the **same** producer/validator instead of mocking a success.
-`scan-foundation` scans all three actual evaluated plans with Trivy's
+`scan-foundation` scans all five actual evaluated plans with Trivy's
 `terraformplan-json` scanner, so computed expiry is real plan data, not a scanner-only
 dummy date. The canonical CI composite action invokes that same blocking target.
 Only the dedicated [foundation policy](.trivyignore.yaml) is used, never global or
 bootstrap exceptions.
+Trivy does **not** establish AzAPI Cosmos policy coverage. Mandatory
+`scripts.cosmos_foundation_policy` assertions over those actual native plans cover
+the exact account body, identities, output selection, provider boundaries,
+container partitions/indexes/TTLs, serverless defaults and control-plane-only audit.
+Source mutations prove those checks reject regressions; no fabricated scanner proxy
+or new suppression is used.
 
 **Owner-approved scanner disposition, 2026-10-29:**
 [approval](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/1633#issuecomment-6493579386)
@@ -186,12 +260,15 @@ exit 1. Missing/invalid/expired/broadened metadata fails even without findings.
 Evidence is retained in `.validation/foundation/exception-proofs/`.
 Each proof deletes its previous report before invoking Trivy and rejects missing
 or invalid fresh JSON, so a failed rerun cannot reuse earlier evidence.
-The 18 native runs include public standalone and /8–/30 acceptance, each RFC1918
+The native runs include public standalone and /8–/30 acceptance, each RFC1918
 range, unsupported /31–/32 rules, malformed/IPv6 input and the existing phase gates.
-`test-foundation-mutations` rejects eleven actual source regressions, including removal
+`test-foundation-mutations` rejects Blob and Cosmos actual source regressions, including removal
 of the provider data-plane setting, an extra resource hidden in a real local module,
 and restoration of the old permissive egress predicate. The egress mutation must
 fail specifically for missing variable validation, not an unrelated provider error.
+The standalone target depends on both `test-bootstrap` and `test-foundation`, so
+both roots initialize providers with their backends disabled before any mutation.
+It requires no preinitialized `.terraform` directories.
 
 Owner review and complete required hosted CI/security/integration/Pipeline checks
 remain mandatory. Before any future cloud work, separately authorize and prove

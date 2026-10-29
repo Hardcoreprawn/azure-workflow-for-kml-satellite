@@ -6,10 +6,11 @@ import argparse
 import json
 from pathlib import Path
 
-from scripts.application_contract import ContractError, encode, read_artifact
+from scripts.application_contract import ContractError, ExpectedContext, _ids_equal, encode, read_artifact
+from scripts.cosmos_foundation_policy import COSMOS_INVENTORY, validate_cosmos_provider, validate_cosmos_resources
 from scripts.validate_foundation_contract import external_output
 
-INVENTORY = {
+BLOB_INVENTORY = {
     "random_string.storage_suffix",
     "azurerm_storage_account.main",
     "azurerm_storage_container.kml_input",
@@ -21,7 +22,8 @@ INVENTORY = {
     "azurerm_monitor_diagnostic_setting.storage_blob",
     "azurerm_monitor_diagnostic_setting.vault",
 }
-PHASE_COUNTS = {"prerequisites": 4, "key": 5, "storage": 10}
+INVENTORY = BLOB_INVENTORY | COSMOS_INVENTORY
+PHASE_COUNTS = {"prerequisites": 4, "key": 5, "storage": 10, "cosmos-key": 12, "cosmos": 23}
 PREREQUISITES = {
     "random_string.storage_suffix",
     "azurerm_user_assigned_identity.storage_cmk",
@@ -31,7 +33,9 @@ PREREQUISITES = {
 PHASE_INVENTORY = {
     "prerequisites": PREREQUISITES,
     "key": PREREQUISITES | {"azurerm_key_vault_key.storage_cmk"},
-    "storage": INVENTORY,
+    "storage": BLOB_INVENTORY,
+    "cosmos-key": BLOB_INVENTORY | {"azurerm_user_assigned_identity.cosmos_cmk", "azurerm_key_vault_key.cosmos_cmk"},
+    "cosmos": INVENTORY,
 }
 
 
@@ -42,18 +46,31 @@ def validate_plan(plan: dict[str, object], phase: str) -> bytes:
     ):
         raise ContractError("foundation is module-free; child resources cannot bypass the root inventory")
     _validate_provider(plan["configuration"]["provider_config"])
+    validate_cosmos_provider(plan["configuration"]["provider_config"])
     declarations = plan["configuration"]["root_module"]["resources"]
     actual = {resource["address"] for resource in declarations if resource["mode"] == "managed"}
     if actual != INVENTORY:
         raise ContractError(f"foundation resource declaration inventory mismatch: {sorted(actual ^ INVENTORY)}")
+    for resource in declarations:
+        if (
+            resource.get("type") in ("azurerm_cosmosdb_sql_database", "azurerm_cosmosdb_sql_container")
+            and {"throughput", "autoscale_settings", "partition_key_version"} & resource.get("expressions", {}).keys()
+        ):
+            raise ContractError("Cosmos must preserve serverless capacity and existing partition version defaults")
     resources = plan["planned_values"]["root_module"]["resources"]
     managed = [resource for resource in resources if resource["mode"] == "managed"]
     instance_names = {resource["address"].split("[")[0] for resource in managed}
     if len(managed) != PHASE_COUNTS[phase] or instance_names != PHASE_INVENTORY[phase]:
         raise ContractError(f"{phase} must contain exactly {PHASE_COUNTS[phase]} approved resource instances")
+    validate_cosmos_resources(managed, phase)
     pending = [resource for resource in resources if resource["address"] == "data.external.artifact"]
     published = plan["planned_values"]["outputs"]["foundation_artifact"].get("value")
     query = pending[0]["values"]["query"] if pending else _published_query(plan, published, phase)
+    if phase == "cosmos":
+        expected = ExpectedContext.from_bytes(query["context"].encode())
+        account = next(resource["values"] for resource in managed if resource["address"] == "azapi_resource.cosmos[0]")
+        if not _ids_equal(account["parent_id"], expected.namespace_id) or account["location"] != expected.location:
+            raise ContractError("Cosmos account must use the independently approved namespace and location")
     result = json.loads(external_output(encode(query)))["contract"].encode()
     if published is not None and published.encode() != result:
         raise ContractError("native output differs from semantic-validator result")
@@ -82,8 +99,8 @@ def _published_query(plan: dict[str, object], published: str | None, phase: str)
         "bootstrap": read_artifact(root / variables["bootstrap_path"]["value"]).decode(),
         "artifacts": json.dumps([read_artifact(root / path).decode() for path in variables["artifacts"]["value"]]),
         "phase": phase,
-        "candidate": json.dumps(value if phase == "storage" else value["payload"]),
-        "storage_name": value["storage"]["name"] if phase == "storage" else "",
+        "candidate": json.dumps(value if phase in ("storage", "cosmos") else value["payload"]),
+        "storage_name": value["storage"]["name"] if phase in ("storage", "cosmos") else "",
     }
 
 
@@ -99,13 +116,13 @@ def export_plans(events: Path, destination: Path) -> None:
         if "test_plan" in message and message.get("@testrun") in PHASE_COUNTS
     }
     if set(selected) != set(PHASE_COUNTS):
-        raise ContractError("all three native foundation phase plans are required")
+        raise ContractError("all five native foundation phase plans are required")
     destination.mkdir(parents=True, exist_ok=True)
     for phase, plan in selected.items():
         artifact = validate_plan(plan, phase)
         (destination / f"{phase}.json").write_bytes(encode(plan))
         (destination / f"{phase}.artifact.json").write_bytes(artifact)
-    print("Validated exact 10-declaration inventory and generated prerequisites/key/storage contracts.")
+    print("Validated exact 23-declaration inventory and generated all five foundation phase contracts.")
 
 
 def main() -> None:

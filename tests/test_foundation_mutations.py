@@ -13,6 +13,23 @@ from scripts import test_foundation_mutations as mutations
 from scripts.application_contract import ContractError
 
 
+def test_standalone_target_initializes_both_roots_before_mutations() -> None:
+    result = subprocess.run(
+        ["make", "--dry-run", "test-foundation-mutations", "TOFU=/pinned/tofu"],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    commands = result.stdout.splitlines()
+    mutation = 'python3 -m scripts.test_foundation_mutations --tofu "/pinned/tofu"'
+    assert commands.count(mutation) == 1
+    for boundary in ("bootstrap", "foundation"):
+        initialize = f"/pinned/tofu -chdir=infra/tofu/{boundary} init -backend=false -input=false -lockfile=readonly"
+        assert initialize in commands, f"standalone mutations must initialize {boundary} providers"
+        assert commands.index(initialize) < commands.index(mutation)
+
+
 def fake_files(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     writes: dict[str, str] = {}
     monkeypatch.setattr(Path, "exists", lambda _: True)
@@ -72,14 +89,16 @@ def test_mutation_rejects_success_shaped_gates_and_accepts_inventory_failure(mon
     mutations.run_mutation("tofu", "unit-regression", "secure", "insecure")
 
 
-def test_all_eleven_mutations_are_executed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_all_blob_and_cosmos_mutations_are_executed(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(mutations, "run_mutation", lambda tofu, name, before, after, **kwargs: calls.append(name))
     monkeypatch.setattr(sys, "argv", ["test_foundation_mutations", "--tofu", "/pinned/tofu"])
     mutations.main()
-    assert len(calls) == 11
+    assert len(calls) == 25
     assert calls[-1] == "child-module-resource"
     assert "unsupported-storage-egress" in calls
+    assert "cosmos-forbidden-key-permission" in calls
+    assert {name for name, _, _ in mutations.COSMOS_MUTATIONS} <= set(calls)
 
 
 @pytest.mark.parametrize("extra_error", [False, True])

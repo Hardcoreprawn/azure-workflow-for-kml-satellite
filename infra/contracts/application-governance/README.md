@@ -1,10 +1,12 @@
-# Application-governance contract v1
+# Application-governance contract v2
 
 This is #1628's shared **offline declaration interface**, not permission readiness.
 The separately named `bootstrap_contract` **remains schema v1 unchanged**. This
 is a new application schema, not a second interpretation or compatibility reader
 for bootstrap v1. Governance owns the application RG **and vault lifecycle**;
-foundation owns application keys, encryption UAMI, audit and storage.
+foundation owns application keys, dedicated Blob/Cosmos encryption UAMIs, audit and
+data resources in one foundation state/root. This is direct pre-live evolution,
+not a v1 application compatibility path.
 
 ## Canonical implementation and raw-byte provenance
 
@@ -42,7 +44,7 @@ Exact APIs:
 - `decode_artifact_bundle(raw: bytes) -> object`
 - `ContractError(ValueError)` is the explicit boundary failure.
 
-`Stage` is the literal union of the five stages below. No parser contacts Azure.
+`Stage` is the literal union of the seven stages below. No parser contacts Azure.
 `parse_chain(..., expected_stage=None)` requires zero application artifacts while
 still validating bootstrap. Unknown/missing fields, duplicate JSON keys,
 non-finite numbers, wrong types, versions, principals, backend, ancestry,
@@ -58,7 +60,7 @@ An artifact (including context/bootstrap) is at most `MAX_BYTES=65,536` bytes.
 The JSON-encoded artifact array has a separate
 `MAX_ARTIFACT_BUNDLE_BYTES=2,097,152` byte transport limit; the complete external
 query has `MAX_EXTERNAL_REQUEST_BYTES=16,777,216`. These bounded envelopes allow
-all five individually valid artifacts plus nested JSON escaping without lowering
+all seven individually valid artifacts plus nested JSON escaping without lowering
 the individual limit or changing the wire schema.
 
 External consumers should read stdin with
@@ -89,7 +91,7 @@ includes its own client ID (never workload), container, key, account, namespace,
 tenant/subscription and Entra/OIDC enabled with CLI fallback disabled.
 
 Every stage repeats the allowlisted envelope:
-`schema="canopex.application-governance"`, integer `schema_version=1`, `stage`,
+`schema="canopex.application-governance"`, integer `schema_version=2`, `stage`,
 `status="declared-not-activated"`, environment/tenant/subscription,
 producer/revision, policy revision, bootstrap SHA256, prior-artifact SHA256,
 namespace `{id,name,location}`, vault `{id,uri,rbac_authorization,
@@ -109,6 +111,8 @@ validated; a plausible last-stage object alone is insufficient.
 | `custody` / governance | namespace, prerequisites | Generated: `scope` (application vault), `principal_id` (foundation), `role_definition_id` (Crypto Officer) |
 | `key` / foundation | namespace, prerequisites, custody | `key_id` (versionless ARM ID), `key_uri` (versionless HTTPS URI) |
 | `encryption` / governance | namespace, prerequisites, custody, key | Generated: `scope` (versionless application key), `principal_id` (encryption UAMI), `role_definition_id` (Crypto Service Encryption User) |
+| `cosmos-key` / foundation | All preceding five | `key_id`, `key_uri` (dedicated versionless Cosmos key), `encryption_identity_id`, `encryption_client_id`, `encryption_principal_id` (dedicated Cosmos UAMI) |
+| `cosmos-encryption` / governance | All preceding six | Generated: `scope` (Cosmos key), `principal_id` (Cosmos encryption UAMI), `role_definition_id` (Crypto Service Encryption User) |
 
 For generated governance payloads pass `{}` to `create_artifact`; callers cannot
 substitute a grant principal/scope. Foundation's namespace is
@@ -126,12 +130,22 @@ create/use a key. Separate owner-authorized bounded permission/network gates
 must pass between custody and key, then encryption and storage. No fixed sleep,
 credential fallback, auto-activation or raw-state reading is part of this API.
 
-**#1627 owns the final storage manifest**, including
-`persistent-blob-core`/`not-activated` status and storage/container references.
-That final manifest is not a sixth governance stage: validate this complete
-five-stage prefix first and bind its final raw SHA256 in the separate foundation
-manifest. The foundation resource allowlist is ten resources; no vault or grant
-declarations belong to it.
+**#1627/#1636 own the separate foundation v2 manifest**, including
+`persistent-data-core`/`not-activated` and actual storage/Cosmos references.
+The storage phase validates the first five stages and publishes `cosmos=null`;
+the Cosmos phase validates all seven and binds both raw grant SHA256 values.
+The twelve-resource `cosmos-key` phase retains Blob, creates
+`id-{project}-{environment}-application-cosmos-encryption` and `cosmos-cmk`, and
+publishes actual key/UAMI references. Cosmos creation requires the subsequent
+key-scoped governance grant. No future IDs are fabricated by a producer.
+Foundation's final allowlist is 23 resources; vault/grant ownership stays outside it.
+Entering `cosmos-encryption` preserves foundation custody and Blob encryption grants.
+
+The exact Cosmos action allowlist includes account/SQL database/container
+read/write/delete and their `operationResults/read`, plus
+`Microsoft.DocumentDB/locations/operationsStatus/read` for async polling.
+It excludes credentials, wildcard permissions, SQL data grants and restore.
+This RG-scoped role declaration is not proof of effective permissions.
 
 ## CLI and synthetic fixtures
 

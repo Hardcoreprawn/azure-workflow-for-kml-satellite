@@ -26,6 +26,25 @@ merged the proposal for #1622 under #1620:
 - Governance owns the application RG/vault and establishes scoped foundation authority
   through #1628. Foundation consumes that namespace, without subscription-wide
   authority or namespace lifecycle/role-administration permissions.
+- #1636's accepted offline extension retains the exact eight existing Cosmos
+  containers in the same foundation root/state: single-region NoSQL
+  serverless/Session, Entra-only, public access Disabled/bypass None, dedicated
+  Cosmos CMK/encryption UAMI, continuous seven-day backup and only control-plane
+  diagnostics to the existing restricted 30-day audit workspace. No runtime
+  identity/grant/connectivity or deployment cutover is approved.
+  Foundation creates the key/UAMI; governance alone grants key-scoped encryption
+  access. Later phases preserve all Blob resources/grants. Account attachment and
+  `defaultIdentity` must select that UAMI for continuous-backup CMK creation.
+  The vault's approved deny-default/AzureServices policy remains unchanged.
+  Historical key versions and identity access must survive the recovery window;
+  rotation policy and destroy guards are not proof of restore or absolute deletion
+  protection. Restore requires separate privilege, rebinding and cloud evidence.
+  Application envelopes/manifests evolve directly to v2; bootstrap stays v1.
+  Pinned AzAPI 2.9.0 ARM account CRUD avoids AzureRM 4.22.0's unconditional account
+  key/connection-string reads; exact management/async-poll actions do not authorize
+  credential retrieval, SQL data grants or cross-account restore.
+  See the [foundation boundary](../../infra/tofu/foundation/README.md) for executable
+  native-plan policy, provider evidence and remaining authorization/recovery gates.
 
 Neither this acceptance nor a PR merge authorizes cloud spend, changes the live
 hosting/state/permissions, or lifts `DEPLOY_PAUSED` or the production freeze.

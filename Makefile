@@ -86,6 +86,7 @@ test-bootstrap: ## Validate bootstrap schema and mocked contracts; no Azure cred
 	$(TOFU) -chdir=infra/tofu/bootstrap test -no-color
 	python3 -m unittest discover -s tests -p test_application_contracts.py
 	@test ! -f infra/tofu/bootstrap/errored_test.tfstate || { echo "ERROR: bootstrap tests left errored_test.tfstate; inspect it before cleanup." >&2; exit 1; }
+	python3 -m scripts.test_foundation_grant_retention --tofu "$(TOFU)"
 
 .PHONY: test-foundation test-foundation-mutations scan-foundation
 test-foundation: ## Validate isolated foundation raw contracts and mock plans; never Azure/backend access
@@ -97,7 +98,7 @@ test-foundation: ## Validate isolated foundation raw contracts and mock plans; n
 	python3 -m scripts.foundation_native_plans .validation/foundation/events.jsonl .validation/foundation/plans
 	@test ! -f infra/tofu/foundation/errored_test.tfstate || { echo "ERROR: foundation native test left state; investigate." >&2; exit 1; }
 
-test-foundation-mutations: test-foundation ## Prove native gates reject eleven real source mutations, offline
+test-foundation-mutations: test-bootstrap test-foundation ## Prove native gates reject Blob/Cosmos source mutations, offline
 	python3 -m scripts.test_foundation_mutations --tofu "$(TOFU)"
 
 test: ## Run unit tests (canonical — CI runs this exact command)
@@ -275,7 +276,7 @@ scan-iac: ## Trivy IaC/config scan (infra/tofu) — advisory
 scan-bootstrap: TRIVY_IGNOREFILE = infra/tofu/bootstrap/.trivyignore.yaml
 scan-bootstrap: ## Block bootstrap misconfigurations with only scoped, owner-approved exceptions
 	@$(_trivy); "$$T" config infra/tofu/bootstrap --tf-vars infra/tofu/bootstrap/tests/scan.tfvars --ignorefile "$(TRIVY_IGNOREFILE)" --severity CRITICAL,HIGH,MEDIUM --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
-	@$(_trivy); for phase in namespace custody encryption; do \
+	@$(_trivy); for phase in namespace custody encryption cosmos-encryption; do \
 		echo "Scanning application governance phase: $$phase"; \
 		"$$T" config infra/tofu/bootstrap --tf-vars "tests/fixtures/application_governance/scan-$$phase.tfvars.json" --ignorefile "$(TRIVY_IGNOREFILE)" --severity CRITICAL,HIGH,MEDIUM --exit-code 1 --format $(TRIVY_FORMAT) $(if $(TRIVY_OUTPUT),--output "$(TRIVY_OUTPUT).$$phase",) || exit $$?; \
 	done

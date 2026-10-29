@@ -19,8 +19,16 @@ from typing import Literal, cast
 from uuid import NAMESPACE_URL, uuid5
 
 SCHEMA = "canopex.application-governance"
-Stage = Literal["namespace", "prerequisites", "custody", "key", "encryption"]
-STAGES: tuple[Stage, ...] = ("namespace", "prerequisites", "custody", "key", "encryption")
+Stage = Literal["namespace", "prerequisites", "custody", "key", "encryption", "cosmos-key", "cosmos-encryption"]
+STAGES: tuple[Stage, ...] = (
+    "namespace",
+    "prerequisites",
+    "custody",
+    "key",
+    "encryption",
+    "cosmos-key",
+    "cosmos-encryption",
+)
 CRYPTO_OFFICER = "14b46e9e-c2b7-41b4-b07b-48a6ebf60603"
 CRYPTO_SERVICE = "e147488a-f6f5-4113-8e2d-b22465e65bf6"
 MAX_BYTES = 65536
@@ -30,6 +38,19 @@ MAX_EXTERNAL_REQUEST_BYTES = 16 * 1024 * 1024
 UUID_PATTERN = r"[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}"
 REVISION_PATTERN = r"[0-9a-f]{40}"
 DIGEST_PATTERN = r"[0-9a-f]{64}"
+COSMOS_ACTIONS = frozenset(
+    {
+        f"Microsoft.DocumentDB/databaseAccounts{suffix}/{verb}"
+        for suffix in ("", "/sqlDatabases", "/sqlDatabases/containers")
+        for verb in ("read", "write", "delete")
+    }
+    | {
+        "Microsoft.DocumentDB/databaseAccounts/operationResults/read",
+        "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/operationResults/read",
+        "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/operationResults/read",
+        "Microsoft.DocumentDB/locations/operationsStatus/read",
+    }
+)
 
 
 class ContractError(ValueError):
@@ -349,6 +370,9 @@ def actions() -> tuple[str, ...]:
     path = Path(__file__).resolve().parents[1] / "infra/contracts/application-governance/actions.json"
     value = decode(path.read_bytes())
     _require(isinstance(value, list) and all(isinstance(action, str) for action in value), "invalid action allowlist")
+    if isinstance(value, list):
+        cosmos = {action for action in value if action.lower().startswith("microsoft.documentdb/")}
+        _require(cosmos == COSMOS_ACTIONS and len(value) == len(set(value)), "Cosmos action allowlist must be exact")
     return tuple(value) if isinstance(value, list) else ()
 
 
@@ -366,11 +390,11 @@ def _namespace(expected: ExpectedContext) -> dict[str, str]:
 
 
 def _envelope(stage: str, expected: ExpectedContext, prior_sha256: str) -> dict[str, object]:
-    producer = "governance" if stage in ("namespace", "custody", "encryption") else "foundation"
+    producer = "governance" if stage in ("namespace", "custody", "encryption", "cosmos-encryption") else "foundation"
     revision = expected.governance_revision if producer == "governance" else expected.foundation_revision
     return {
         "schema": SCHEMA,
-        "schema_version": 1,
+        "schema_version": 2,
         "stage": stage,
         "status": "declared-not-activated",
         "environment": expected.environment,
@@ -430,6 +454,13 @@ def _prerequisites(payload: object, expected: ExpectedContext, bootstrap: Bootst
         ),
         "wrong vault diagnostic ancestry",
     )
+    _validate_encryption_identity_ids(result, bootstrap, expected)
+    return result
+
+
+def _validate_encryption_identity_ids(
+    result: dict[str, str], bootstrap: BootstrapContract, expected: ExpectedContext
+) -> None:
     identities = (bootstrap.foundation, bootstrap.workload, bootstrap.release)
     for field, forbidden in (
         (
@@ -444,7 +475,6 @@ def _prerequisites(payload: object, expected: ExpectedContext, bootstrap: Bootst
             result[field].lower() not in {value.lower() for value in forbidden},
             f"{field} must differ from deployment identities",
         )
-    return result
 
 
 def _grant(stage: str, expected: ExpectedContext, previous: tuple[ApplicationContract, ...]) -> dict[str, str]:
@@ -454,11 +484,37 @@ def _grant(stage: str, expected: ExpectedContext, previous: tuple[ApplicationCon
             "principal_id": expected.foundation.principal_id,
             "role_definition_id": expected.role_id(CRYPTO_OFFICER),
         }
+    key_index, identity_index = (5, 5) if stage == "cosmos-encryption" else (3, 1)
     return {
-        "scope": previous[3].values()["key_id"],
-        "principal_id": previous[1].values()["encryption_principal_id"],
+        "scope": previous[key_index].values()["key_id"],
+        "principal_id": previous[identity_index].values()["encryption_principal_id"],
         "role_definition_id": expected.role_id(CRYPTO_SERVICE),
     }
+
+
+def _cosmos_key(
+    payload: object,
+    expected: ExpectedContext,
+    bootstrap: BootstrapContract,
+    previous: tuple[ApplicationContract, ...],
+) -> dict[str, str]:
+    fields = ("key_id", "key_uri", "encryption_identity_id", "encryption_client_id", "encryption_principal_id")
+    item = _object(payload, fields, "cosmos-key payload")
+    result = {field: _text(item[field], field) for field in fields}
+    blob = previous[1].values()
+    identity_id = result["encryption_identity_id"]
+    suffix = f"id-{expected.project_code}-{expected.environment}-application-cosmos-encryption"
+    wanted_id = f"{expected.namespace_id}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{suffix}"
+    _require(_ids_equal(identity_id, wanted_id), "wrong Cosmos encryption identity ancestry")
+    _validate_encryption_identity_ids(result, bootstrap, expected)
+    for field in ("encryption_client_id", "encryption_principal_id"):
+        _require(not _ids_equal(result[field], blob[field]), "Cosmos encryption identity must differ from Blob")
+    _require(
+        _ids_equal(result["key_id"], f"{expected.vault_id}/keys/cosmos-cmk")
+        and result["key_uri"] == f"{expected.vault_uri}keys/cosmos-cmk",
+        "Cosmos key must be dedicated and versionless under approved custody",
+    )
+    return result
 
 
 def _payload(
@@ -470,6 +526,8 @@ def _payload(
 ) -> dict[str, str]:
     if stage == "prerequisites":
         return _prerequisites(payload, expected, bootstrap)
+    if stage == "cosmos-key":
+        return _cosmos_key(payload, expected, bootstrap, previous)
     if stage == "namespace":
         wanted = _namespace(expected)
     elif stage == "key":
@@ -542,7 +600,7 @@ def create_artifact(
     if stage == "namespace":
         _require(not payload, "namespace takes no caller-supplied resource references")
         supplied = _namespace(expected)
-    elif stage in ("custody", "encryption"):
+    elif stage in ("custody", "encryption", "cosmos-encryption"):
         _require(not payload, "grant references derive only from validated earlier artifacts")
         supplied = _grant(stage, expected, contracts)
     validated = _payload(stage, supplied, expected, parse_bootstrap(bootstrap_raw, expected), contracts)
@@ -563,7 +621,7 @@ def _external(raw: bytes) -> bytes:
     )
     previous = tuple(item.encode() for item in supplied) if isinstance(supplied, list) else ()
     phase = _text(query["phase"], "phase")
-    _require(phase in ("namespace", "custody", "encryption"), "unsupported governance phase")
+    _require(phase in ("namespace", "custody", "encryption", "cosmos-encryption"), "unsupported governance phase")
     artifact = create_artifact(cast(Stage, phase), {}, bootstrap, previous, expected)
     payload = json.loads(artifact)["payload"]
     return encode(
@@ -572,6 +630,10 @@ def _external(raw: bytes) -> bytes:
             "scope": payload.get("scope", ""),
             "principal_id": payload.get("principal_id", ""),
             "role_definition_id": payload.get("role_definition_id", ""),
+            "blob_scope": json.loads(previous[3])["payload"]["key_id"] if len(previous) >= 4 else "",
+            "blob_principal_id": json.loads(previous[1])["payload"]["encryption_principal_id"]
+            if len(previous) >= 4
+            else "",
         }
     )
 

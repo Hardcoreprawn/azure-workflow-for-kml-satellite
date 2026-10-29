@@ -38,6 +38,6 @@ def test_bootstrap_scan_emits_the_phase_report_paths_consumed_by_ci() -> None:
         capture_output=True,
         check=True,
     )
-    assert "for phase in namespace custody encryption;" in result.stdout
+    assert "for phase in namespace custody encryption cosmos-encryption;" in result.stdout
     assert '--output "trivy-bootstrap.sarif.$phase"' in result.stdout
     assert "--exit-code 1" in result.stdout

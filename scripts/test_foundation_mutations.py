@@ -21,14 +21,60 @@ MUTATIONS = (
     ("missing-read-audit", 'category = "StorageRead"', 'category = "StorageWrite"'),
     ("provider-data-plane-default", "data_plane_available = false", ""),
 )
+COSMOS_MUTATIONS = (
+    ("cosmos-local-keys", "disableLocalAuth                   = true", "disableLocalAuth                   = false"),
+    (
+        "cosmos-public",
+        'publicNetworkAccess                = "Disabled"',
+        'publicNetworkAccess                = "Enabled"',
+    ),
+    (
+        "cosmos-bypass",
+        'networkAclBypass                   = "None"',
+        'networkAclBypass                   = "AzureServices"',
+    ),
+    ("cosmos-periodic-backup", 'tier = "Continuous7Days"', 'tier = "Continuous30Days"'),
+    (
+        "cosmos-first-party-identity",
+        '"UserAssignedIdentity=${azurerm_user_assigned_identity.cosmos_cmk[0].id}"',
+        '"FirstPartyIdentity"',
+    ),
+    (
+        "cosmos-blob-identity",
+        "identity_ids = [azurerm_user_assigned_identity.cosmos_cmk[0].id]",
+        "identity_ids = [azurerm_user_assigned_identity.storage_cmk.id]",
+    ),
+    (
+        "cosmos-blob-key",
+        "keyVaultKeyUri                     = azurerm_key_vault_key.cosmos_cmk[0].versionless_id",
+        "keyVaultKeyUri                     = azurerm_key_vault_key.storage_cmk[0].versionless_id",
+    ),
+    ("cosmos-query-logging", 'category = "ControlPlaneRequests"', 'category = "QueryRuntimeStatistics"'),
+    ("cosmos-ttl", "default_ttl         = -1", "default_ttl         = 30"),
+    (
+        "cosmos-output-all",
+        'response_export_values    = ["properties.documentEndpoint"]',
+        'response_export_values    = ["*"]',
+    ),
+    ("cosmos-default-output", "disable_default_output     = true", "disable_default_output     = false"),
+    ("cosmos-provider-registration", "skip_provider_registration = true", "skip_provider_registration = false"),
+    ("cosmos-schema-validation", "schema_validation_enabled = true", "schema_validation_enabled = false"),
+)
 
 
 def run_mutation(
-    tofu: str, name: str, before: str, after: str, *, with_module: bool = False, source_file: str = "main.tf"
+    tofu: str,
+    name: str,
+    before: str,
+    after: str,
+    *,
+    with_module: bool = False,
+    source_file: str = "main.tf",
+    boundary: str = "foundation",
 ) -> None:
     root = Path(__file__).resolve().parents[1]
-    source = root / "infra/tofu/foundation"
-    destination = root / ".validation/foundation-mutations" / name
+    source = root / "infra/tofu" / boundary
+    destination = root / f".validation/{boundary}-mutations" / name
     if destination.exists():
         shutil.rmtree(destination)
     shutil.copytree(source, destination, ignore=shutil.ignore_patterns(".terraform", "*.tfstate*"))
@@ -36,6 +82,10 @@ def run_mutation(
         _prepare_module(source, destination)
     else:
         (destination / ".terraform").symlink_to(source / ".terraform", target_is_directory=True)
+    if boundary == "bootstrap":
+        contracts = root / ".validation/contracts"
+        if not contracts.exists():
+            contracts.symlink_to(root / "infra/contracts", target_is_directory=True)
     main = destination / source_file
     original = main.read_text()
     if before not in original:
@@ -50,13 +100,16 @@ def run_mutation(
         )
         if initialized.returncode:
             raise ContractError(f"module mutation initialization failed: {initialized.stderr}")
-    result = subprocess.run(
-        [tofu, f"-chdir={destination}", "test", "-json", "-verbose"], check=False, capture_output=True, text=True
-    )
+    arguments = [tofu, f"-chdir={destination}", "test", "-json", "-verbose"]
+    if boundary == "bootstrap":
+        arguments.append("-filter=tests/application_stages.tftest.hcl")
+    result = subprocess.run(arguments, check=False, capture_output=True, text=True)
     evidence = destination / "events.jsonl"
     evidence.write_text(result.stdout)
     (destination / "stderr.log").write_text(result.stderr)
     if result.returncode == 0:
+        if boundary == "bootstrap":
+            raise ContractError(f"{name}: native governance gates incorrectly accepted the regression")
         try:
             export_plans(evidence, destination / "plans")
         except ContractError as exc:
@@ -106,6 +159,16 @@ def main() -> None:
     args = parser.parse_args()
     for name, before, after in MUTATIONS:
         run_mutation(args.tofu, name, before, after)
+    for name, before, after in COSMOS_MUTATIONS:
+        run_mutation(args.tofu, name, before, after, source_file="cosmos.tf")
+    run_mutation(
+        args.tofu,
+        "cosmos-forbidden-key-permission",
+        "actions          = local.application_actions",
+        'actions          = concat(local.application_actions, ["Microsoft.DocumentDB/databaseAccounts/listKeys/action"])',
+        source_file="application.tf",
+        boundary="bootstrap",
+    )
     run_mutation(
         args.tofu,
         "unsupported-storage-egress",
@@ -131,7 +194,7 @@ def main() -> None:
         'module "forbidden" { source = "./mutation-child" }\n\ndata "external" "inputs" {',
         with_module=True,
     )
-    print("All 11 executable foundation mutations were rejected.")
+    print(f"All {len(MUTATIONS) + len(COSMOS_MUTATIONS) + 4} executable foundation/governance mutations were rejected.")
 
 
 if __name__ == "__main__":

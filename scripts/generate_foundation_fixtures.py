@@ -22,12 +22,15 @@ def fixtures(environment: str) -> dict[str, bytes]:
     chain: tuple[bytes, ...] = ()
     for stage in STAGES:
         source_value = json.loads((source / f"{stage}.json").read_bytes().replace(b"dev", environment.encode()))
-        payload = source_value["payload"] if stage in ("prerequisites", "key") else {}
+        payload = source_value["payload"] if stage in ("prerequisites", "key", "cosmos-key") else {}
         raw = create_artifact(stage, payload, bootstrap, chain, expected)
         result[f"{stage}.json"] = raw
         chain = (*chain, raw)
     name = f"kmlsat{environment}appabc123"
     result["manifest.json"] = create_manifest(
+        encode(manifest_values(name, expected, chain[:5])), name, bootstrap, chain[:5], expected
+    )
+    result["cosmos-manifest.json"] = create_manifest(
         encode(manifest_values(name, expected, chain)), name, bootstrap, chain, expected
     )
     return result
