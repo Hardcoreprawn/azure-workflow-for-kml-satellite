@@ -332,15 +332,14 @@ permissions and workflow cutover require separate review. Keep the pause/freeze
 intact and use the bootstrap README's disposable deny/recovery gates before
 claiming isolation.
 
-Application namespace/key-grant implementation #1628 is **blocked**, not an
-available bootstrap phase. `enable_application_governance` defaults false and
-rejects true in DEV and PRD. The selected provider permits inline vault
-access-policy writes; excluding the access-policy subresource action does not
-prove governance-exclusive grant control. An owner must select and review an
-enforceable control or revised vault ownership before implementation continues.
-See the [provider/API evidence and #1627 consumer stop](../infra/tofu/bootstrap/README.md#application-governance-blocked-before-authority-is-declared-1628).
-No application contract/parser is available yet; bootstrap v1 remains unchanged.
-Do not grant extra permissions or run Azure probes to bypass this decision gate.
+The application-governance contract/parser is separately versioned; bootstrap
+v1 remains unchanged. The owner assigned application RG **and vault lifecycle**
+to governance (#1628), resolving the inline access-policy authority problem.
+Foundation receives key/data lifecycle only, not vault control-plane or
+grant/access-policy rights. Consume the exact staged
+[shared interface](../infra/contracts/application-governance/README.md);
+declaration validation does not establish effective permissions or authorize
+extra grants, Azure probes, deployment dispatch or spend.
 
 The owner also selected a dedicated bootstrap Key Vault/key and separate storage
 encryption identity. Advance the explicit `identity` -> `key` -> `state` phases
@@ -356,6 +355,39 @@ substitute blob diagnostics for the scanner's queue-only check, and cover its
 inability to evaluate the computed 180-day initial key expiry; they expire
 2026-11-27 and need review before any cloud authorization. Actual log delivery,
 cost/retention, key rotation/recovery and effective isolation remain trial gates.
+
+### Isolated persistent Blob core (not activated)
+
+The [foundation root](../infra/tofu/foundation/README.md) (#1627) is a ten-resource
+offline slice, not a working environment. Governance owns application RG/vault
+lifecycle and all key grants; foundation owns the application key, encryption
+UAMI, private Blob account/three containers and dedicated audit resources.
+The sequence is namespace/vault → foundation prerequisites → governance custody
+→ foundation key → governance encryption grant → foundation storage. Each stage
+requires the exact immutable raw prefix and independent expected context.
+
+Run `make test-foundation` (OpenTofu 1.13.2; backend disabled, read-only lock,
+mocked plan only) and `make test-foundation-mutations`. The mandatory raw-input
+gate and generated-output validator use the shared governance parser; disabled
+OIDC or the default `writes_enabled=false` blocks writes. The final manifest
+always declares `persistent-blob-core`, `not-activated`, no browser origins and
+`storage.data_plane_available=false`. No runtime admission or Cosmos is implied.
+
+`make scan-foundation` and the canonical CI Trivy action scan all actual evaluated
+phase plans, without global/bootstrap exceptions. `AZU-0010` (trusted-services
+bypass) and `AZU-0057` (Queue logging) currently remain **blocking and unapproved**;
+retain the stricter firewall and Blob-only scope pending owner disposition.
+No static scanner-only expiry, extra Queue configuration or inferred approval
+may be substituted. Key initial/rotated lifetimes are 180 days with 90-day
+rotation; refreshed effective expiry must remain future-dated while rotation
+owns expiry drift. Destroy guards, soft deletion and versioning do not replace
+state/key recovery or legal retention.
+
+Cloud permissions, propagation, network/OIDC protection, actual audit delivery,
+rotation/recovery, state locking and a no-change second apply still need separate
+owner-authorized evidence. This slice does not lift pause/freeze or authorize
+spend; deferred Cosmos, browser bindings, workload, release and integration
+families remain necessary before a trial.
 
 ### Why Function App Updates Use the Deployment Workflow
 

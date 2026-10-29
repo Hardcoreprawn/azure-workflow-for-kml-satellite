@@ -16,6 +16,7 @@ See the [roadmap](docs/ROADMAP.md) for direction and delivery status.
 | Direction and audience | [Roadmap](docs/ROADMAP.md), [persona research](docs/PERSONA_DEEP_DIVE.md) |
 | Product requirements | [PID](docs/PID.md) |
 | Scientific interpretation | [EUDR methodology](website/docs/eudr-methodology.html) |
+| Isolated persistent Blob boundary (not activated) | [Foundation root and offline gates](infra/tofu/foundation/README.md) |
 
 The architecture, API reference and runbook describe checked-in behavior, not proof
 of live deployment. Requirements and design specifications are not a shipped-feature

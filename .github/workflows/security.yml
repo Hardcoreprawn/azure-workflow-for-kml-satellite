@@ -238,6 +238,26 @@ jobs:
           sarif_file: trivy-bootstrap.sarif
           category: trivy-bootstrap
 
+      - name: Set up credential-free foundation plans
+        uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: "1.13.2"
+          tofu_wrapper: false
+
+      - name: Enforce every foundation phase without exceptions
+        uses: ./.github/actions/trivy-scan
+        with:
+          scan: foundation
+          disable-ignore: "true"
+          output: trivy-foundation.sarif
+
+      - name: Upload foundation SARIF
+        if: always() && hashFiles('trivy-foundation.sarif') != ''
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: trivy-foundation.sarif
+          category: trivy-foundation
+
       - name: Upload Trivy IaC SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0

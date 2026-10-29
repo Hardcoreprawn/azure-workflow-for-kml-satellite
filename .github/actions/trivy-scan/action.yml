@@ -7,7 +7,7 @@ description: >-
 
 inputs:
   scan:
-    description: "Scan type: iac, bootstrap, fs, or image. Bootstrap requires its scoped ignorefile; use /dev/null for an unsuppressed bootstrap scan."
+    description: "Scan type: iac, bootstrap, foundation, fs, or image. Foundation scans evaluated offline plans with no suppressions; bootstrap uses its scoped ignorefile."
     required: true
   image:
     description: "Image reference to scan (required when scan=image)."

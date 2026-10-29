@@ -86,6 +86,19 @@ test-bootstrap: ## Validate bootstrap schema and mocked contracts; no Azure cred
 	$(TOFU) -chdir=infra/tofu/bootstrap test -no-color
 	@test ! -f infra/tofu/bootstrap/errored_test.tfstate || { echo "ERROR: bootstrap tests left errored_test.tfstate; inspect it before cleanup." >&2; exit 1; }
 
+.PHONY: test-foundation test-foundation-mutations scan-foundation
+test-foundation: ## Validate isolated foundation raw contracts and mock plans; never Azure/backend access
+	$(TOFU) -chdir=infra/tofu/foundation fmt -check -recursive
+	$(TOFU) -chdir=infra/tofu/foundation init -backend=false -input=false -lockfile=readonly
+	$(TOFU) -chdir=infra/tofu/foundation validate -no-color
+	@mkdir -p .validation/foundation
+	@$(TOFU) -chdir=infra/tofu/foundation test -json -verbose > .validation/foundation/events.jsonl || { cat .validation/foundation/events.jsonl; exit 1; }
+	python3 -m scripts.foundation_native_plans .validation/foundation/events.jsonl .validation/foundation/plans
+	@test ! -f infra/tofu/foundation/errored_test.tfstate || { echo "ERROR: foundation native test left state; investigate." >&2; exit 1; }
+
+test-foundation-mutations: test-foundation ## Prove native gates reject eight real source mutations, offline
+	python3 -m scripts.test_foundation_mutations --tofu "$(TOFU)"
+
 test: ## Run unit tests (canonical — CI runs this exact command)
 	uv run pytest tests/ -v -m "not integration" --tb=short --cov=. --cov-report=xml
 
@@ -261,6 +274,9 @@ scan-iac: ## Trivy IaC/config scan (infra/tofu) — advisory
 scan-bootstrap: TRIVY_IGNOREFILE = infra/tofu/bootstrap/.trivyignore.yaml
 scan-bootstrap: ## Block bootstrap misconfigurations with only scoped, owner-approved exceptions
 	@$(_trivy); "$$T" config infra/tofu/bootstrap --tf-vars infra/tofu/bootstrap/tests/scan.tfvars --ignorefile "$(TRIVY_IGNOREFILE)" --severity CRITICAL,HIGH,MEDIUM --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
+
+scan-foundation: test-foundation ## Scan actual evaluated mock plans for every phase, with no inherited exceptions
+	@$(_trivy); "$$T" config .validation/foundation/plans --misconfig-scanners terraformplan-json --ignorefile /dev/null --severity CRITICAL,HIGH,MEDIUM --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
 
 scan-fs: ## Trivy filesystem scan (deps + Dockerfiles, vulns only) — blocks on fixable CRITICAL/HIGH
 	@$(_trivy); "$$T" fs . $(_TRIVY_IGN) --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
