@@ -145,17 +145,13 @@ Never kill unrelated port owners to make startup succeed.
 
 - Open the checkout with **Dev Containers: Reopen in Container**. Before
    Compose starts, the host-side `initializeCommand` runs
-   `bash scripts/dev_stack.sh prepare`: it removes stopped app containers
-   (their bind-mount sources may have vanished after a Docker Desktop/WSL
-   restart), removes a stopped editor container whose image was pruned so
-   the Dev Containers CLI rebuilds it instead of pulling a local-only tag,
-   and builds the `event-grid-relay` image if missing (its build context is
-   a host path the editor cannot use). Running containers and data volumes
-   are never touched. Compose then starts the editor and app services in
-   dependency order; `postStartCommand` runs `bash scripts/dev_stack.sh up`
-   and waits for health. Startup logs remain available in the Dev Containers
-   output panel. A failed startup prints the last service logs, stops the app
-   services, and keeps its original exit code.
+   `bash scripts/dev_stack.sh prepare`: it removes a stopped editor container
+   whose image was pruned so the Dev Containers CLI rebuilds it instead of
+   pulling a local-only tag. Preparation never builds application images or
+   touches app containers or data volumes. `runServices: ["devcontainer"]`
+   starts only the editor; there is no app-starting `postStartCommand`.
+   An unhealthy app sibling cannot block opening the editor. Unit tests and
+   editing need no application containers.
 - The editor runs as `vscode`, with the host UID/GID and `HOME=/home/vscode`.
    The prebuilt Python environment is intended to be writable by that user. Creation synchronizes
    locked dependencies once, retaining the baked Rust extension; warm starts do
@@ -166,12 +162,23 @@ Never kill unrelated port owners to make startup succeed.
    reaches siblings through Compose DNS (`azurite`, `func`, `orch`, `web`). The
    DooD feature alone owns the socket mount; no second socket mount is needed.
 - `make dev-all` reuses running services and existing images, and waits for
-   readiness. `up`, `rebuild`, and `prepare` remove stopped app containers
+   readiness before returning; services then run detached from the terminal.
+   `up` and `rebuild` remove stopped app containers
    before starting, without removing data volumes; running container IDs are
    preserved. Storage-only startup refreshes only stopped storage containers.
    On first use, Compose builds missing application images. Use `make dev-rebuild`
    after dependency or root-level application configuration changes. Routine
    `treesight/`, `blueprints/`, and website edits use bind mounts.
+- Run `make dev-build` in a **host terminal** to build application images
+   independently, without starting, stopping, or recreating containers.
+   This also prepares the relay's host-only build context before the first
+   in-editor `make dev-all`; a missing relay image produces an actionable error
+   before touching the stack. Build failures leave running services alone.
+   Docker's persistent layer cache is used by both build commands; editor and
+   relay builds share `Dockerfile.dev` and the same uv version so their common
+   dependency/Rust layers can be reused. No cache purge or `--no-cache` is needed
+   for routine rebuilds. The editor's first image/features build still takes
+   time, but no application build or readiness wait runs during editor startup.
 - Azurite must be healthy and `init-storage` must succeed before Functions
    start. Cosmos must also be healthy; web and relay wait for Functions.
    `DEV_WAIT_TIMEOUT` defaults to 240 seconds; failed/interrupted starts return
@@ -183,8 +190,9 @@ Never kill unrelated port owners to make startup succeed.
 - `make dev-down` inside the editor removes app containers but keeps the
    editor and network alive. On the host it removes the whole project and network.
    Both preserve data volumes. Closing the VS Code devcontainer window uses
-   `shutdownAction: stopCompose`; the next open removes stopped containers before
-   recreating them from existing images. No service has an automatic restart
+   `shutdownAction: stopCompose`; the next open starts only the editor.
+   On-demand app startup removes stopped app containers before recreating them
+   from existing images. No service has an automatic restart
    policy, so restarting Docker does not resurrect a
    lone relay. A VS Code/host crash can bypass close handling: run the host
    `make dev-down` after recovery. `DEV_STOP_TIMEOUT` defaults to 20 seconds.

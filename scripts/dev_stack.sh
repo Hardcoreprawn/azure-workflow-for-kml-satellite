@@ -23,8 +23,8 @@ api_verifier_compose=("${compose[@]}" -f "$root/docker-compose.api-verifier.yml"
 
 action="${1:-status}"
 case "$action" in
-    prepare|up|rebuild|storage|down|clean|status|logs|config|api-verifier) ;;
-    *) echo "Usage: bash scripts/dev_stack.sh {prepare|up|rebuild|storage|down|clean|status|logs|config|api-verifier}" >&2; exit 2 ;;
+    prepare|up|build|rebuild|storage|down|clean|status|logs|config|api-verifier) ;;
+    *) echo "Usage: bash scripts/dev_stack.sh {prepare|up|build|rebuild|storage|down|clean|status|logs|config|api-verifier}" >&2; exit 2 ;;
 esac
 if [[ "$action" == "config" ]]; then
     exec "${compose[@]}" config --quiet
@@ -42,12 +42,21 @@ if [[ "$action" == "prepare" ]]; then
         echo "Devcontainer image $editor_image is missing; removing the stopped devcontainer so it is rebuilt."
         "${compose[@]}" rm --force devcontainer
     fi
-    # The relay's build context is a host path, so in-editor `up` cannot build it.
-    relay_image="$("${compose[@]}" config --images event-grid-relay 2>/dev/null || true)"
-    if [[ -n "$relay_image" ]] && ! docker image inspect "$relay_image" >/dev/null 2>&1; then
-        "${compose[@]}" build event-grid-relay
+    exit 0
+fi
+if [[ "$action" == "build" ]]; then
+    if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" ]]; then
+        echo "ERROR: Run make dev-build on the host; the relay build context is a host path." >&2
+        exit 1
     fi
-    exec "${compose[@]}" rm --force "${services[@]}"
+    exec "${compose[@]}" build "${services[@]}"
+fi
+if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" && ( "$action" == "up" || "$action" == "rebuild" ) ]]; then
+    relay_image="$("${compose[@]}" config --images event-grid-relay)"
+    if ! docker image inspect "$relay_image" >/dev/null 2>&1; then
+        echo "ERROR: Relay image $relay_image is missing. Run make dev-build on the host, then retry." >&2
+        exit 1
+    fi
 fi
 
 stop_stack() {
