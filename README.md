@@ -53,6 +53,13 @@ Use the repository's VS Code devcontainer with Docker and Compose available.
 Python 3.12 is the container/CI runtime; declarations live in
 [pyproject.toml](pyproject.toml) and [uv.lock](uv.lock).
 
+Opening the devcontainer starts only the editor, not the application stack.
+Unit tests need no app containers. Before the first in-editor `make dev-all`,
+run `make dev-build` from a host terminal. This is required because the relay
+image uses a host-only build context that the editor cannot build; Docker
+reuses cached layers, and no services are started. Start only storage with
+`make dev-up`, or the full app on demand:
+
 ```bash
 make dev-all
 make test-fast TESTS="tests/test_docs_route_drift.py"
@@ -65,6 +72,9 @@ admission (`orch`) at `http://localhost:7072`. Compute at
 For host/container differences, lifecycle hooks,
 credentials, rebuilds and shutdown, use the [runbook](docs/OPERATIONS_RUNBOOK.md).
 Starting the stack does not establish an authenticated browser session.
+`make dev-all` waits for health, then leaves services running in the background;
+`make dev-down` stops them. Use `make dev-rebuild` after dependency or root
+configuration changes, or host-side `make dev-build` to rebuild without starting.
 
 `make test-fast` accepts paths/node IDs only, not pytest flags. `make check` runs
 lint, format, types, unit tests, JavaScript tests and changed-lines coverage. It
