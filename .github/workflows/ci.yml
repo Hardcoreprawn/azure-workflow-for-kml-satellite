@@ -256,7 +256,9 @@ jobs:
   # that a fast lint/unit-test failure would already have caught.
   pipeline-e2e:
     name: Pipeline e2e (local gate)
-    runs-on: ubuntu-latest
+    # Core Tools' Microsoft apt feed is not yet usable on the Ubuntu 26.04
+    # image currently selected by ubuntu-latest.
+    runs-on: ubuntu-24.04
     needs: [lint, test]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6

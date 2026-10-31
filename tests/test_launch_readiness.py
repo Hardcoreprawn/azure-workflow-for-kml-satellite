@@ -3431,6 +3431,10 @@ class TestCiamTofuOwnership:
 class TestCanonicalCIContexts:
     """Required Lint/Test contexts must have one authoritative workflow."""
 
+    def test_pipeline_e2e_uses_core_tools_supported_runner(self):
+        workflow = yaml.safe_load(CI_YML.read_text())
+        assert workflow["jobs"]["pipeline-e2e"]["runs-on"] == "ubuntu-24.04"
+
     def test_required_pipeline_gate_is_not_path_gated(self):
         workflow = yaml.safe_load(CI_YML.read_text())
         pipeline = workflow["jobs"]["pipeline-e2e"]
