@@ -54,9 +54,11 @@ Python 3.12 is the container/CI runtime; declarations live in
 [pyproject.toml](pyproject.toml) and [uv.lock](uv.lock).
 
 Opening the devcontainer starts only the editor, not the application stack.
-Unit tests need no app containers. To prepare images independently, run
-`make dev-build` in a host terminal (Docker reuses cached layers; no services
-are started). Start only storage with `make dev-up`, or the full app on demand:
+Unit tests need no app containers. Before the first in-editor `make dev-all`,
+run `make dev-build` from a host terminal. This is required because the relay
+image uses a host-only build context that the editor cannot build; Docker
+reuses cached layers, and no services are started. Start only storage with
+`make dev-up`, or the full app on demand:
 
 ```bash
 make dev-all

@@ -51,7 +51,7 @@ if [[ "$action" == "build" ]]; then
     fi
     exec "${compose[@]}" build "${services[@]}"
 fi
-if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" && ( "$action" == "up" || "$action" == "rebuild" ) ]]; then
+if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" && ( "$action" == "up" || "$action" == "rebuild" || "$action" == "api-verifier" ) ]]; then
     relay_image="$("${compose[@]}" config --images event-grid-relay)"
     if ! docker image inspect "$relay_image" >/dev/null 2>&1; then
         echo "ERROR: Relay image $relay_image is missing. Run make dev-build on the host, then retry." >&2

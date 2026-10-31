@@ -245,6 +245,24 @@ def test_editor_missing_relay_image_fails_before_mutating_stack(
     )
 
 
+def test_editor_api_verifier_missing_relay_image_fails_before_mutating_stack(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CANOPEX_DEVCONTAINER", "1")
+    monkeypatch.setenv("DEV_WORKSPACE", "/host/workspace")
+    monkeypatch.setenv("DOCKER_MISSING_IMAGES", "treesight-dev:lifecycle-test")
+
+    result = run_stack("api-verifier")
+
+    assert result.returncode != 0
+    assert "make dev-build" in result.stderr
+    assert not any(
+        argument in call
+        for call in docker_calls(docker_environment)
+        for argument in ("up", "build", "rm", "stop", "down")
+    )
+
+
 @pytest.mark.parametrize("action", ["up", "rebuild", "storage"])
 def test_start_removes_stopped_runtime_containers_before_starting(docker_environment: Path, action: str) -> None:
     result = run_stack(action)
