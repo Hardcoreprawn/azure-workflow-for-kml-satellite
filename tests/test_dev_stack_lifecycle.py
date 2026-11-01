@@ -14,17 +14,19 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_editor_owns_compose_shutdown() -> None:
+def test_editor_starts_without_application_services_and_owns_shutdown() -> None:
     config = json.loads((ROOT / ".devcontainer/devcontainer.json").read_text())
     assert config["shutdownAction"] == "stopCompose"
     assert config["service"] == "devcontainer"
-    assert "runServices" not in config
+    assert config["runServices"] == ["devcontainer"]
     assert config["remoteUser"] != "root"
     assert config["remoteEnv"]["HOME"] == "/home/vscode"
     assert config["remoteEnv"]["DEV_WORKSPACE"] == "${localWorkspaceFolder}"
     assert config["initializeCommand"] == ["bash", "scripts/dev_stack.sh", "prepare"]
-    assert config["postStartCommand"] == "bash scripts/dev_stack.sh up"
+    assert "postStartCommand" not in config
     assert "mounts" not in config
+    compose = yaml.safe_load((ROOT / ".devcontainer/docker-compose.yml").read_text())
+    assert not compose["services"]["devcontainer"].get("depends_on")
 
 
 def test_dev_image_runtime_contract_is_uid_remap_safe() -> None:
@@ -37,10 +39,15 @@ def test_dev_image_runtime_contract_is_uid_remap_safe() -> None:
     assert "USER vscode\nWORKDIR /workspace" in dockerfile
 
 
-def test_host_relay_build_forwards_shared_uv_version() -> None:
+def test_editor_and_relay_builds_share_uv_version_and_cache_layers() -> None:
     config = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
-    relay = config["services"]["event-grid-relay"]
-    assert relay["build"]["args"]["UV_VERSION"] == "${UV_VERSION:-0.11.28}"
+    editor_config = yaml.safe_load((ROOT / ".devcontainer/docker-compose.yml").read_text())
+    image_config = (ROOT / ".github/image-config.env").read_text()
+    version = next(
+        line.split("=", 1)[1].strip('"') for line in image_config.splitlines() if line.startswith("UV_VERSION=")
+    )
+    for service in (config["services"]["event-grid-relay"], editor_config["services"]["devcontainer"]):
+        assert service["build"]["args"]["UV_VERSION"] == f"${{UV_VERSION:-{version}}}"
 
 
 def test_dev_images_are_scoped_to_the_compose_project() -> None:
@@ -106,13 +113,19 @@ def docker_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "    sys.exit(int(os.environ.get('DOCKER_INFO_EXIT', '0')))\n"
         "if args[-2:] == ['config', '--services']:\n"
         "    print('azurite\\ninit-storage\\ncosmos\\nfunc\\norch\\nevent-grid-relay\\nweb\\nollama\\ndevcontainer')\n"
-        "if args[-2:] == ['--images', 'devcontainer']:\n"
+        "if args[-3:] == ['config', '--images', 'devcontainer']:\n"
         "    print('lifecycle-test-devcontainer')\n"
-        "if args[-2:] == ['--images', 'event-grid-relay']:\n"
-        "    print('treesight-dev:lifecycle-test')\n"
+        "if args[-3:] == ['config', '--images', 'event-grid-relay']:\n"
+        "    print('treesight-dev:lifecycle-test\\ndependency-image')\n"
+        "if args[-3:] == ['config', '--format', 'json']:\n"
+        "    print(json.dumps({'services': {\n"
+        "        'event-grid-relay': {'image': 'treesight-dev:lifecycle-test'},\n"
+        "        'azurite': {'image': 'dependency-image'},\n"
+        "    }}))\n"
         "if args[:2] == ['image', 'inspect']:\n"
         "    missing = os.environ.get('DOCKER_MISSING_IMAGES', '').split(',')\n"
-        "    sys.exit(1 if args[2] in missing else 0)\n"
+        "    images = [image for argument in args[2:] for image in argument.splitlines()]\n"
+        "    sys.exit(1 if any(image in missing for image in images) else 0)\n"
         "if 'ps' in args:\n"
         "    print(f\"init-storage exited {os.environ.get('DOCKER_INIT_STORAGE_EXIT', '17')}\")\n"
         "if 'build' in args and 'event-grid-relay' in args:\n"
@@ -162,19 +175,13 @@ def docker_calls(log: Path) -> list[list[str]]:
     return [json.loads(line) for line in log.read_text().splitlines()]
 
 
-def test_prepare_removes_stopped_containers_without_stopping_running_services(docker_environment: Path) -> None:
+def test_prepare_leaves_application_containers_untouched(docker_environment: Path) -> None:
     for _attempt in range(2):
         result = run_stack("prepare")
         assert result.returncode == 0, result.stderr
     calls = docker_calls(docker_environment)
-    removals = [call for call in calls if "rm" in call]
-    assert len(removals) == 2
-    for removal in removals:
-        assert "rm" in removal and "--force" in removal
-        assert "lifecycle-test" in removal
-        assert "devcontainer" not in removal
     assert not any(
-        argument in call for call in calls for argument in ("stop", "down", "up", "--stop", "--volumes", "-v")
+        argument in call for call in calls for argument in ("build", "rm", "stop", "down", "up", "--volumes")
     )
 
 
@@ -193,18 +200,88 @@ def test_prepare_removes_stopped_devcontainer_when_its_image_is_missing(
     assert not any(argument in call for call in calls for argument in ("stop", "down", "up", "--volumes"))
 
 
-def test_prepare_builds_relay_image_on_host_only_when_missing(
+def test_prepare_never_builds_missing_application_images(
     docker_environment: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert run_stack("prepare").returncode == 0
-    assert not any("build" in call for call in docker_calls(docker_environment))
     monkeypatch.setenv("DOCKER_MISSING_IMAGES", "treesight-dev:lifecycle-test")
     result = run_stack("prepare")
     assert result.returncode == 0, result.stderr
     calls = docker_calls(docker_environment)
+    assert not any("build" in call or "rm" in call or "up" in call for call in calls)
+
+
+@pytest.mark.parametrize("build_exit", [0, 23])
+def test_build_warms_application_cache_without_changing_container_state(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch, build_exit: int
+) -> None:
+    monkeypatch.setenv("DOCKER_BUILD_EXIT", str(build_exit))
+    result = run_stack("build")
+    assert result.returncode == build_exit, result.stderr
+    calls = docker_calls(docker_environment)
     build = next(call for call in calls if "build" in call)
-    assert build[-1] == "event-grid-relay"
-    assert calls.index(build) < max(index for index, call in enumerate(calls) if "rm" in call)
+    assert all(service in build for service in ("func", "orch", "event-grid-relay"))
+    assert "devcontainer" not in build
+    assert "--no-cache" not in build
+    assert not any(argument in call for call in calls for argument in ("up", "run", "rm", "stop", "down", "logs"))
+
+
+def test_build_only_requires_host_context(docker_environment: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CANOPEX_DEVCONTAINER", "1")
+    monkeypatch.setenv("DEV_WORKSPACE", "/host/workspace")
+    result = run_stack("build")
+    assert result.returncode != 0
+    assert "host" in result.stderr
+    assert not any("build" in call or "up" in call for call in docker_calls(docker_environment))
+
+
+@pytest.mark.parametrize("action", ["up", "rebuild"])
+def test_editor_missing_relay_image_fails_before_mutating_stack(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch, action: str
+) -> None:
+    monkeypatch.setenv("CANOPEX_DEVCONTAINER", "1")
+    monkeypatch.setenv("DEV_WORKSPACE", "/host/workspace")
+    monkeypatch.setenv("DOCKER_MISSING_IMAGES", "treesight-dev:lifecycle-test")
+    result = run_stack(action)
+    assert result.returncode != 0
+    assert "make dev-build" in result.stderr
+    assert not any(
+        argument in call
+        for call in docker_calls(docker_environment)
+        for argument in ("up", "build", "rm", "stop", "down")
+    )
+
+
+def test_editor_api_verifier_missing_relay_image_fails_before_mutating_stack(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CANOPEX_DEVCONTAINER", "1")
+    monkeypatch.setenv("DEV_WORKSPACE", "/host/workspace")
+    monkeypatch.setenv("DOCKER_MISSING_IMAGES", "treesight-dev:lifecycle-test")
+
+    result = run_stack("api-verifier")
+
+    assert result.returncode != 0
+    assert "make dev-build" in result.stderr
+    assert not any(
+        argument in call
+        for call in docker_calls(docker_environment)
+        for argument in ("up", "build", "rm", "stop", "down")
+    )
+
+
+@pytest.mark.parametrize("action", ["up", "rebuild", "api-verifier"])
+def test_editor_preflight_inspects_only_the_relay_image(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch, action: str
+) -> None:
+    monkeypatch.setenv("CANOPEX_DEVCONTAINER", "1")
+    monkeypatch.setenv("DEV_WORKSPACE", "/host/workspace")
+    monkeypatch.setenv("DOCKER_MISSING_IMAGES", "dependency-image")
+
+    result = run_stack(action)
+
+    assert result.returncode == 0, result.stderr
+    inspect_calls = [call for call in docker_calls(docker_environment) if call[:2] == ["image", "inspect"]]
+    assert inspect_calls == [["image", "inspect", "treesight-dev:lifecycle-test"]]
 
 
 @pytest.mark.parametrize("action", ["up", "rebuild", "storage"])

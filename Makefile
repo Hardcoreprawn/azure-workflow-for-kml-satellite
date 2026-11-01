@@ -1,5 +1,5 @@
 .PHONY: help setup dev-up dev-down dev-init \
-       dev-all dev-all-stub dev-logs dev-status dev-rebuild \
+       dev-all dev-all-stub dev-logs dev-status dev-build dev-rebuild \
 	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check verify-local verify-local-api lint fmt check smoke clean prune-branches \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
@@ -57,6 +57,9 @@ dev-logs: ## Tail logs from all docker-compose services
 
 dev-status: ## Show running, stopped, and initialization service state
 	bash scripts/dev_stack.sh status
+
+dev-build: ## Build/cache application images on the host without starting services
+	bash scripts/dev_stack.sh build
 
 dev-rebuild: ## Explicitly rebuild application images and wait for healthy services
 	bash scripts/dev_stack.sh rebuild
