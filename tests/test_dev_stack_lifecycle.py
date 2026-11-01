@@ -113,13 +113,19 @@ def docker_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "    sys.exit(int(os.environ.get('DOCKER_INFO_EXIT', '0')))\n"
         "if args[-2:] == ['config', '--services']:\n"
         "    print('azurite\\ninit-storage\\ncosmos\\nfunc\\norch\\nevent-grid-relay\\nweb\\nollama\\ndevcontainer')\n"
-        "if args[-2:] == ['--images', 'devcontainer']:\n"
+        "if args[-3:] == ['config', '--images', 'devcontainer']:\n"
         "    print('lifecycle-test-devcontainer')\n"
-        "if args[-2:] == ['--images', 'event-grid-relay']:\n"
-        "    print('treesight-dev:lifecycle-test')\n"
+        "if args[-3:] == ['config', '--images', 'event-grid-relay']:\n"
+        "    print('treesight-dev:lifecycle-test\\ndependency-image')\n"
+        "if args[-3:] == ['config', '--format', 'json']:\n"
+        "    print(json.dumps({'services': {\n"
+        "        'event-grid-relay': {'image': 'treesight-dev:lifecycle-test'},\n"
+        "        'azurite': {'image': 'dependency-image'},\n"
+        "    }}))\n"
         "if args[:2] == ['image', 'inspect']:\n"
         "    missing = os.environ.get('DOCKER_MISSING_IMAGES', '').split(',')\n"
-        "    sys.exit(1 if args[2] in missing else 0)\n"
+        "    images = [image for argument in args[2:] for image in argument.splitlines()]\n"
+        "    sys.exit(1 if any(image in missing for image in images) else 0)\n"
         "if 'ps' in args:\n"
         "    print(f\"init-storage exited {os.environ.get('DOCKER_INIT_STORAGE_EXIT', '17')}\")\n"
         "if 'build' in args and 'event-grid-relay' in args:\n"
@@ -261,6 +267,21 @@ def test_editor_api_verifier_missing_relay_image_fails_before_mutating_stack(
         for call in docker_calls(docker_environment)
         for argument in ("up", "build", "rm", "stop", "down")
     )
+
+
+@pytest.mark.parametrize("action", ["up", "rebuild", "api-verifier"])
+def test_editor_preflight_inspects_only_the_relay_image(
+    docker_environment: Path, monkeypatch: pytest.MonkeyPatch, action: str
+) -> None:
+    monkeypatch.setenv("CANOPEX_DEVCONTAINER", "1")
+    monkeypatch.setenv("DEV_WORKSPACE", "/host/workspace")
+    monkeypatch.setenv("DOCKER_MISSING_IMAGES", "dependency-image")
+
+    result = run_stack(action)
+
+    assert result.returncode == 0, result.stderr
+    inspect_calls = [call for call in docker_calls(docker_environment) if call[:2] == ["image", "inspect"]]
+    assert inspect_calls == [["image", "inspect", "treesight-dev:lifecycle-test"]]
 
 
 @pytest.mark.parametrize("action", ["up", "rebuild", "storage"])

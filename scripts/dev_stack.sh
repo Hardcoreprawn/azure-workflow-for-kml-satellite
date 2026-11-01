@@ -52,7 +52,10 @@ if [[ "$action" == "build" ]]; then
     exec "${compose[@]}" build "${services[@]}"
 fi
 if [[ "${CANOPEX_DEVCONTAINER:-}" == "1" && ( "$action" == "up" || "$action" == "rebuild" || "$action" == "api-verifier" ) ]]; then
-    relay_image="$("${compose[@]}" config --images event-grid-relay)"
+    relay_image="$(
+        "${compose[@]}" config --format json |
+            python3 -c 'import json, sys; print(json.load(sys.stdin)["services"]["event-grid-relay"]["image"])'
+    )"
     if ! docker image inspect "$relay_image" >/dev/null 2>&1; then
         echo "ERROR: Relay image $relay_image is missing. Run make dev-build on the host, then retry." >&2
         exit 1
