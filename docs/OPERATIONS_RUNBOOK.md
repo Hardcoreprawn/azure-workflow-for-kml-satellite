@@ -167,8 +167,12 @@ Never kill unrelated port owners to make startup succeed.
    before starting, without removing data volumes; running container IDs are
    preserved. Storage-only startup refreshes only stopped storage containers.
    On first use, Compose builds missing application images. Use `make dev-rebuild`
-   after dependency or root-level application configuration changes. Routine
-   `treesight/`, `blueprints/`, and website edits use bind mounts.
+   after dependency or root-level application configuration changes. When run
+   inside the editor, this rebuild deliberately skips `event-grid-relay` because
+   its build context is host-only. Run `make dev-rebuild` from a host terminal
+   when changes affect the relay or its shared `Dockerfile.dev` layers; this
+   rebuilds and restarts the full stack. Routine `treesight/`, `blueprints/`,
+   and website edits use bind mounts.
 - Run `make dev-build` in a **host terminal** to build application images
    independently, without starting, stopping, or recreating containers.
    This also prepares the relay's host-only build context before the first

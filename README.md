@@ -73,8 +73,10 @@ For host/container differences, lifecycle hooks,
 credentials, rebuilds and shutdown, use the [runbook](docs/OPERATIONS_RUNBOOK.md).
 Starting the stack does not establish an authenticated browser session.
 `make dev-all` waits for health, then leaves services running in the background;
-`make dev-down` stops them. Use `make dev-rebuild` after dependency or root
-configuration changes, or host-side `make dev-build` to rebuild without starting.
+`make dev-down` stops them. `make dev-rebuild` in the editor rebuilds the app
+services but cannot rebuild the host-context relay. When dependency or root
+configuration changes affect the relay, run `make dev-rebuild` from a host
+terminal; use host-side `make dev-build` to warm images without starting services.
 
 `make test-fast` accepts paths/node IDs only, not pytest flags. `make check` runs
 lint, format, types, unit tests, JavaScript tests and changed-lines coverage. It
