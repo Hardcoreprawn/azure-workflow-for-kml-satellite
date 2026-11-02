@@ -75,6 +75,21 @@ def updated_dependencies(commits: list[dict[str, Any]]) -> dict[str, str]:
     return result
 
 
+def github_signed_commit(token: str, repository: str, sha: str) -> bool:
+    owner, repo = repository.split("/")
+    commit = _github_graphql(
+        token=token,
+        query="""query($owner: String!, $repo: String!, $sha: GitObjectID!) {
+          repository(owner: $owner, name: $repo) { object(oid: $sha) {
+            ... on Commit { signature { isValid wasSignedByGitHub } }
+          } }
+        }""",
+        variables={"owner": owner, "repo": repo, "sha": sha},
+    )["data"]["repository"]["object"]
+    signature = commit["signature"] if commit else None
+    return signature is not None and signature["isValid"] is True and signature["wasSignedByGitHub"] is True
+
+
 def action_pins(files: list[dict[str, Any]]) -> dict[str, str]:
     result: dict[str, str] = {}
     for file in files:
@@ -196,8 +211,11 @@ def process_pr(token: str, repository: str, number: int, *, apply: bool, now: da
     pins = action_pins(_fetch_paginated(token, f"{path}/files"))
     if not dependencies or dependencies.keys() != pins.keys() or commits[0]["sha"] != pr["head"]["sha"]:
         return "unsigned, major, mixed or non-pin update"
+    if not github_signed_commit(token, repository, pr["head"]["sha"]):
+        return "commit lacks a valid GitHub-generated signature"
     alerts = _fetch_paginated(token, f"/repos/{repository}/dependabot/alerts?state=open")
-    if any(alert["dependency"]["package"]["name"] in dependencies for alert in alerts):
+    upstreams = {"/".join(action.split("/")[:2]).lower() for action in dependencies}
+    if any("/".join(alert["dependency"]["package"]["name"].split("/")[:2]).lower() in upstreams for alert in alerts):
         return "dependency has an open security alert; manual expedited review required"
     if blocker := release_blocker(token, dependencies, pins, now):
         return blocker

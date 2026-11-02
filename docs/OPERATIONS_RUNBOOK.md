@@ -63,9 +63,11 @@ disable or a security-update delay bypass.
 
 `Dependabot Actions Auto-merge` evaluates open PRs after CI/security workflow
 completion and hourly, using **only code checked out from main**, never PR code or
-downloaded workflow artifacts. It does not deploy to dev or prod. Only a single,
-GitHub-verified Dependabot commit containing patch/minor metadata and exclusively
-immutable action-pin replacements qualifies. The complete current-head check set
+downloaded workflow artifacts. The job also requires the workflow run's ref to be
+main, so manual dispatch cannot select branch-defined action pins. It does not
+deploy to dev or prod. Only a single,
+GitHub-signed and verified Dependabot commit containing patch/minor metadata and
+exclusively immutable action-pin replacements qualifies. The complete current-head check set
 (including Actionlint, unit tests, Azurite integration, Pipeline e2e and security
 scans) must succeed. Missing, stale, pending, skipped required or failing checks,
 outstanding review requirements, unresolved threads and changes requested block
@@ -77,8 +79,9 @@ It never approves reviews or bypasses repository rules. An owner can stop any
 individual update with a `hold` or `do-not-merge` label.
 
 Security-labelled/advisory-linked updates and dependencies with an open
-Dependabot security alert remain on the **expedited manual-review** path:
-run checks immediately and obtain owner approval rather than waiting for this
+Dependabot security alert remain on the **expedited manual-review** path.
+Action subpaths are matched to alerts by their owning repository.
+Run checks immediately and obtain owner approval rather than waiting for this
 routine merge gate. Dependabot security updates are not delayed by its version
 update cooldown; do not reduce scanner severity or add exceptions to accelerate
 merging.

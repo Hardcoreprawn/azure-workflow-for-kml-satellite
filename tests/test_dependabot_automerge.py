@@ -220,6 +220,7 @@ def github(monkeypatch: pytest.MonkeyPatch) -> dict:
         "pr": candidate(),
         "fresh": candidate(),
         "commits": [commit()],
+        "signature": {"isValid": True, "wasSignedByGitHub": True},
         "files": [changed_file()],
         "alerts": [],
         "checks": checks(),
@@ -263,6 +264,8 @@ def github(monkeypatch: pytest.MonkeyPatch) -> dict:
         return data[resource]
 
     def graphql(**kwargs: object) -> dict:
+        if "object(oid:" in str(kwargs["query"]):
+            return {"data": {"repository": {"object": {"signature": data["signature"]}}}}
         if "release(tagName:" in str(kwargs["query"]):
             return {"data": {"repository": {"release": data["release"]}}}
         return {
@@ -293,6 +296,47 @@ def test_dry_run_never_merges(github: dict) -> None:
 def test_apply_merges_only_the_verified_sha(github: dict) -> None:
     assert merge.process_pr("token", "owner/repo", 1, apply=True, now=NOW).startswith("MERGED:")
     assert github["merge_calls"] == [{"sha": NEW_SHA, "merge_method": "squash"}]
+
+
+def test_verified_human_signed_amendment_cannot_supply_metadata(github: dict) -> None:
+    github["signature"] = {"isValid": True, "wasSignedByGitHub": False}
+    assert "sign" in merge.process_pr("token", "owner/repo", 1, apply=True, now=NOW).lower()
+    assert github["merge_calls"] == []
+
+
+@pytest.mark.parametrize("signature", [None, {"isValid": False, "wasSignedByGitHub": True}])
+def test_missing_or_invalid_github_signature_blocks_merge(github: dict, signature: object) -> None:
+    github["signature"] = signature
+    assert "sign" in merge.process_pr("token", "owner/repo", 1, apply=True, now=NOW).lower()
+    assert github["merge_calls"] == []
+
+
+@pytest.mark.parametrize("has_alert", [True, False])
+def test_repository_security_alert_blocks_grouped_subaction_updates(github: dict, has_alert: bool) -> None:
+    github["commits"][0]["commit"]["message"] = (
+        MESSAGE.replace("actions/setup-python", "github/codeql-action/init")
+        .replace("7.1.0", "4.39.1")
+        .replace(
+            "...\n",
+            "- dependency-name: github/codeql-action/upload-sarif\n"
+            "  dependency-version: 4.39.1\n"
+            "  update-type: version-update:semver-patch\n...\n",
+        )
+    )
+    file = github["files"][0]
+    file["patch"] = file["patch"].replace("actions/setup-python", "github/codeql-action/init")
+    file["patch"] += (
+        f"\n-      - uses: github/codeql-action/upload-sarif@{OLD_SHA}"
+        f"\n+      - uses: github/codeql-action/upload-sarif@{NEW_SHA}"
+    )
+    file["additions"] = file["deletions"] = 2
+    github["alerts"] = [{"dependency": {"package": {"name": "github/codeql-action"}}}] if has_alert else []
+    result = merge.process_pr("token", "owner/repo", 1, apply=True, now=NOW)
+    if has_alert:
+        assert "security alert" in result
+        assert github["merge_calls"] == []
+    else:
+        assert result.startswith("MERGED:")
 
 
 @pytest.mark.parametrize(
@@ -333,7 +377,14 @@ def test_release_tag_must_match_the_pin(github: dict) -> None:
 
 
 def test_release_api_permission_errors_remain_explicit(github: dict, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(merge, "_github_graphql", Mock(side_effect=RuntimeError("GraphQL forbidden")))
+    graphql = merge._github_graphql
+
+    def forbidden_release(*, token: str, query: str, variables: dict) -> dict:
+        if "release(tagName:" in query:
+            raise RuntimeError("GraphQL forbidden")
+        return graphql(token=token, query=query, variables=variables)
+
+    monkeypatch.setattr(merge, "_github_graphql", forbidden_release)
     with pytest.raises(RuntimeError, match="GraphQL forbidden"):
         merge.process_pr("token", "owner/repo", 1, apply=True, now=NOW)
     assert github["merge_calls"] == []
@@ -415,6 +466,7 @@ def test_workflow_uses_only_trusted_default_branch_code() -> None:
     assert steps[0]["with"]["ref"] == "main"
     assert steps[0]["with"]["persist-credentials"] is False
     assert workflow["permissions"] == {"contents": "read"}
+    assert "github.ref == 'refs/heads/main'" in workflow["jobs"]["merge"]["if"]
     run = next(step for step in steps if "run" in step)
     assert "AUTOPILOT_USER_TOKEN" in run["env"]["GITHUB_TOKEN"]
     assert "--apply" in run["run"]
