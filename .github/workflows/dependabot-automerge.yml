@@ -1,0 +1,49 @@
+name: Dependabot Actions Auto-merge
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report eligibility without merging"
+        type: boolean
+        default: true
+  workflow_run:
+    workflows: [CI, Security, CodeQL, Actionlint, Require Linked Issue]
+    types: [completed]
+  schedule:
+    - cron: "25 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependabot-actions-automerge
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    if: vars.DEPENDABOT_AUTOMERGE_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+      - name: Evaluate verified Dependabot action updates
+        env:
+          GITHUB_TOKEN: ${{ secrets.AUTOPILOT_USER_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          if [ -z "$GITHUB_TOKEN" ]; then
+            echo "::error::AUTOPILOT_USER_TOKEN is required; no default-token merge fallback."
+            exit 1
+          fi
+          ARGS=()
+          if [ "$DRY_RUN" != "true" ]; then
+            ARGS+=(--apply)
+          fi
+          uv run --locked python -m scripts.dependabot_automerge "${ARGS[@]}"

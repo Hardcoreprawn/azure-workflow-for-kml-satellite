@@ -42,6 +42,65 @@ Missing keys produce an actionable diagnostic without printing their values.
 The live-usage collector remains available separately for deliberately refreshing
 the committed baseline; live Azure access is not a prerequisite for PR estimates.
 
+## Routine GitHub Actions Dependency Updates
+
+The owner-authorized automatic-merge scope is **verified Dependabot GitHub Actions
+patch/minor pin updates only** (#1650). Dependabot waits three days after a
+release before proposing these updates; the weekly scan schedule is unchanged.
+The merge gate independently checks the upstream release's publication time and
+tag SHA. This cooling-off period reduces exposure to newly compromised releases;
+it is not a malware guarantee. Python, Docker and OpenTofu cooldowns remain seven
+days and their updates remain manual, as do major and prerelease action updates.
+
+An action without a published GitHub Release cannot satisfy release-age
+verification: that PR is reported for manual review while other candidates can
+still be evaluated. Authentication or other API errors fail the run visibly.
+
+The upstream Semgrep cooldown rule requires seven days. The owner approved a
+single inline exception on the Actions three-day setting (#1650); tests enforce
+its scope and the unchanged seven-day settings elsewhere. This is not a scanner
+disable or a security-update delay bypass.
+
+`Dependabot Actions Auto-merge` evaluates open PRs after CI/security workflow
+completion and hourly, using **only code checked out from main**, never PR code or
+downloaded workflow artifacts. The job also requires the workflow run's ref to be
+main, so manual dispatch cannot select branch-defined action pins. It does not
+deploy to dev or prod. Only a single,
+GitHub-signed and verified Dependabot commit containing patch/minor metadata and
+exclusively immutable action-pin replacements qualifies. The complete current-head check set
+(including Actionlint, unit tests, Azurite integration, Pipeline e2e and security
+scans) must succeed. Missing, stale, pending, skipped required or failing checks,
+outstanding review requirements, unresolved threads and changes requested block
+merging. Only the existing optional Docker build and Trivy summary may be skipped.
+
+PRs behind main wait for Dependabot to rebase and rerun checks. The gate merges
+one PR per run, rechecks PR state and pins the merge to the verified head SHA.
+It never approves reviews or bypasses repository rules. An owner can stop any
+individual update with a `hold` or `do-not-merge` label.
+The merge-control script is itself covered by CODEOWNERS and the PR Watchdog's
+sensitive-path classifier, so policy-only changes are routed to owner review.
+
+Security-labelled/advisory-linked updates and dependencies with an open
+Dependabot security alert remain on the **expedited manual-review** path.
+Action subpaths are matched to alerts by their owning repository.
+Run checks immediately and obtain owner approval rather than waiting for this
+routine merge gate. Dependabot security updates are not delayed by its version
+update cooldown; do not reduce scanner severity or add exceptions to accelerate
+merging.
+
+Enable the workflow with repository variable `DEPENDABOT_AUTOMERGE_ENABLED=true`.
+It requires the existing `AUTOPILOT_USER_TOKEN` Actions secret with repository
+read/write (including pull-request merge, workflow changes and Dependabot alert
+read) access. Using that user token preserves main-branch CI triggers after a
+merge; there is deliberately no `GITHUB_TOKEN` fallback. API/authentication errors
+fail the run visibly. Review workflow logs for each PR's eligibility/blocker.
+For a non-mutating check, dispatch the workflow with `dry_run=true`.
+
+**Rollback/stop:** set `DEPENDABOT_AUTOMERGE_ENABLED=false` and cancel any in-flight
+run before revoking its token. Revert an individual bad dependency update through
+a reviewed PR. Merging this workflow does not itself constitute owner approval
+for broader dependency or deployment automation.
+
 ## Deploy
 
 ### Local Container Lifecycle

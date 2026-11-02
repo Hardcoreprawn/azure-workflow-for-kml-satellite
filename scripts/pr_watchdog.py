@@ -85,6 +85,7 @@ SENSITIVE_PATHS: frozenset[str] = frozenset(
         "blueprints/pipeline/submission.py",
         "blueprints/upload.py",
         ".github/CODEOWNERS",
+        "scripts/dependabot_automerge.py",
         "scripts/pr_watchdog.py",
         "treesight/config.py",
         "treesight/pipeline/eudr.py",
