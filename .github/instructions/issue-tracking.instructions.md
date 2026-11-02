@@ -36,11 +36,11 @@ If you encounter any of the following while working on an unrelated task, **do n
 
 ## When a PR merges
 
-After any PR merges:
+If the PR closes an issue, verify the issue auto-closed on GitHub.
 
-1. Update `docs/ROADMAP.md` → "Recently Landed" table (add your PR, remove oldest if >6 entries).
-2. Mark the corresponding stage item as ✅ with the PR number.
-3. If the PR closes an issue, verify the issue auto-closed on GitHub.
+Roadmap entries, stage status and GitHub Project board updates are
+explicit-request-only work, not per-merge requirements. Do not add them to an
+implementation PR or make delivery wait for Project access.
 
 ## Context management
 

@@ -48,10 +48,8 @@ is never sufficient on its own.
 - Verify the merge commit is clean (`git log --oneline -1`).
 - If the change affects deployed behavior, check the deployment
   (health endpoint, smoke test, or manual verification as appropriate).
-- Finalize `docs/ROADMAP.md` at merge-time / immediately after merge:
-  update "Recently Landed", mark the shipped stage items, and close the
-  loop. If the PR included roadmap edits, treat them as candidate updates
-  to be confirmed or adjusted once the merge is complete.
+- Update roadmap entries, stage status or the GitHub Project board only when
+  explicitly requested by the user. These are not merge-verification gates.
 
 ## Regression prevention principles
 
@@ -64,9 +62,10 @@ is never sufficient on its own.
   to these areas need extra scrutiny. Run the specific test suites
   (`test_auth.py`, `test_billing.py`, `test_hmac_auth.py`) and confirm
   no gate was weakened.
-- **Snapshot the working state.** When the app reaches a known-good
-  milestone (e.g. "pipeline works end-to-end"), note it in the roadmap.
-  Future changes that break that milestone are regressions.
+- **Snapshot the working state.** Record evidence of a known-good milestone
+  (e.g. "pipeline works end-to-end") in the PR or validation report.
+  Update the roadmap only when explicitly requested. Future changes that
+  break that milestone are regressions.
 - **Prefer additive changes.** Add new behavior; deprecate old behavior
   with a migration path. Avoid big-bang rewrites that invalidate the
   existing test suite.

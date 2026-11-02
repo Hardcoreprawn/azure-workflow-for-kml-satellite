@@ -40,7 +40,7 @@ For every substantial task, identify the primary persona, the job-to-be-done bei
 - Start planned work from a GitHub issue whenever practical. Apply the appropriate `priority:*` label to new issues.
 - Keep pull requests narrow, stage-aligned, and traceable to a roadmap item or issue.
 - **If unrelated CI flakiness blocks your PR, don't fix it inline.** File a `[discovered]` issue for the flaky/unrelated failure (per `issue-tracking.instructions.md`) and open a separate PR closing it. A PR fixing scope-A must not silently absorb a scope-B fix just because scope-B's CI job happened to be red at the time — this breaks single-issue traceability and couples an unrelated fix's revert surface to the original change (see #1394 for a case where this happened).
-- Update `docs/ROADMAP.md` "Recently Landed" table and the GitHub Project board when PRs merge or stage status changes.
+- Update `docs/ROADMAP.md` (including "Recently Landed" and stage status) or the GitHub Project board only when the user explicitly requests those updates. PR merges, stage changes and dependency discoveries do not implicitly authorize planning bookkeeping. Do not add these edits to implementation PRs or request Project permissions as a delivery prerequisite.
 - When behavior, contracts, or rollout expectations change, update the relevant tests and docs in the same change.
 
 ## Required Issue Brief
@@ -65,7 +65,7 @@ Simple docs/typo issues use the **Docs / typo / maintenance** template and are e
 
 - When manipulating GitHub Issues or Projects, always fetch the full dataset explicitly. For CLI operations, pass a `--limit` large enough to cover the whole board; never rely on defaults.
 - When reordering a GitHub Project, verify the exact final order against the intended full ordered set and report the mismatch count. Do not stop at checking only the top items.
-- If a dependency is discovered (`blocked by`, `depends on`, stage ordering, prerequisite architecture work), link the issues in GitHub and reorder the board in the same task.
+- If a dependency is discovered (`blocked by`, `depends on`, stage ordering, prerequisite architecture work), link the issues in GitHub. Reorder the Project board only when explicitly requested.
 - Record every dependency in the **issue body** as `Blocked by #N` / `Depends on #N` (and/or apply the `blocked` label). The backlog autopilot reads issue **bodies and labels, not comments** — a dependency noted only in a comment will NOT hold the dependent issue back, so it can be auto-assigned out of order (see `scripts/backlog_autopilot.py`). This applies to agent/CLI-created issues too, which bypass the UI issue template.
 - For staged issues with numbered prefixes (for example `2E.5.1`, `2E.5.2`), preserve ascending execution order unless an issue body or roadmap note explicitly states a different dependency.
 - Never mark issues as duplicate or superseded from title similarity or keyword overlap alone. Require explicit scope containment, linked acceptance criteria, or a clear umbrella/child relationship.

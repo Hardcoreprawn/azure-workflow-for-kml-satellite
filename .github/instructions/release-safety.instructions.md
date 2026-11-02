@@ -15,7 +15,7 @@ applyTo:
 - Do not introduce shared-environment deploy paths for PR branches unless the user explicitly wants a break-glass path.
 - Every rollout change should answer four questions: what is deployed, how it is validated, how it is rolled back, and who owns the decision to proceed.
 - Keep deploy evidence trustworthy: structured logs, runtime smoke checks, and explicit failure messages matter as much as the happy path.
-- When changing deploy or infra behavior, update the matching runbook or roadmap note in the same change.
+- When changing deploy or infra behavior, update the matching operational documentation in the same change. Update the roadmap only when explicitly requested.
 
 ## Required Checks
 

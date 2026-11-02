@@ -29,7 +29,7 @@ Use this skill when you need one repeatable workflow for turning a roadmap item 
 5. If the work touches deployment, runtime config, auth, billing, or rollout, run the `Release Safety Guard` agent or `/Release Gate Audit` prompt.
 6. If the work changes public behavior, contracts, operations, or status, run the `Contract and Docs Keeper` agent or `/Docs Drift Audit` prompt.
 7. Only then implement the smallest slice that can be validated narrowly.
-8. Before PR merge, ensure the roadmap, docs, and tests are updated and request Copilot review.
+8. Before PR merge, ensure the affected contract/operational docs and tests are updated and request Copilot review. Update the roadmap or GitHub Project board only when explicitly requested; neither is a per-merge requirement.
 
 ## Stage Gates
 

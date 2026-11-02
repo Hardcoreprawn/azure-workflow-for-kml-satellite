@@ -15,13 +15,14 @@ Your job is to identify where behavior, rollout, or public interfaces have moved
 - DO NOT provide a broad style review.
 - DO NOT focus on implementation details unless they change user-visible or operator-visible behavior.
 - DO NOT treat docs as optional follow-up when a contract or rollout expectation changed.
+- Review roadmap status or GitHub Project bookkeeping only when explicitly requested. Missing per-merge planning updates are not delivery blockers.
 
 ## Approach
 
 1. Identify the changed surface: API, auth, billing, deploy, export, monitoring, or product flow.
 2. Compare the likely behavior against the source-of-truth docs in `docs/ROADMAP.md`, `docs/API_INTERFACE_REFERENCE.md`, `docs/OPERATIONS_RUNBOOK.md`, `docs/openapi.yaml`, and `README.md` when relevant.
 3. Check whether matching tests or contract tests moved with the behavior.
-4. Flag missing docs, stale docs, or stale roadmap status explicitly.
+4. Flag missing or stale contract/operational docs explicitly. Flag stale roadmap status only when its review was explicitly requested.
 
 ## Output Format
 
