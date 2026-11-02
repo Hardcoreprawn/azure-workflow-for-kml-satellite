@@ -7,6 +7,7 @@ agent: "Contract and Docs Keeper"
 Audit the supplied change for docs and contract drift.
 
 - Identify which source-of-truth docs should have moved.
-- Flag missing updates to roadmap status, API reference, runbook, OpenAPI, README, or tests.
+- Flag missing updates to API reference, runbook, OpenAPI, README, or tests.
+- Review roadmap status or GitHub Project bookkeeping only when explicitly requested; missing per-merge updates are not delivery blockers.
 - Separate hard blockers from acceptable follow-up work.
 - End with the exact files that should be updated before merge.
