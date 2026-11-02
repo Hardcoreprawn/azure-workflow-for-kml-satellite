@@ -44,7 +44,7 @@ updates:
       interval: "weekly"
       day: "monday"
     cooldown:
-      default-days: 7
+      default-days: 3
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
