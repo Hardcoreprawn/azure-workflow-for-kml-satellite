@@ -44,7 +44,9 @@ updates:
       interval: "weekly"
       day: "monday"
     cooldown:
-      default-days: 3
+      # Owner-approved three-day Actions policy (#1650); merge gate rechecks release age.
+      # The upstream Semgrep rule requires seven days; other ecosystems retain seven.
+      default-days: 3  # nosemgrep: package_managers.dependabot.dependabot-missing-cooldown.dependabot-missing-cooldown
     open-pull-requests-limit: 5
     labels:
       - "dependencies"

@@ -421,3 +421,11 @@ def test_workflow_uses_only_trusted_default_branch_code() -> None:
     config = yaml.safe_load((root / ".github/dependabot.yml").read_text())
     cooldowns = {entry["package-ecosystem"]: entry["cooldown"]["default-days"] for entry in config["updates"]}
     assert cooldowns == {"github-actions": 3, "pip": 7, "docker": 7, "terraform": 7}
+
+
+def test_owner_approved_cooldown_exception_is_actions_only() -> None:
+    config = (Path(__file__).resolve().parents[1] / ".github/dependabot.yml").read_text()
+    rule = "package_managers.dependabot.dependabot-missing-cooldown.dependabot-missing-cooldown"
+    assert config.count(f"nosemgrep: {rule}") == 1
+    actions = config.split('package-ecosystem: "github-actions"', 1)[1].split('package-ecosystem: "docker"', 1)[0]
+    assert f"default-days: 3  # nosemgrep: {rule}" in actions

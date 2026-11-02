@@ -56,6 +56,11 @@ An action without a published GitHub Release cannot satisfy release-age
 verification: that PR is reported for manual review while other candidates can
 still be evaluated. Authentication or other API errors fail the run visibly.
 
+The upstream Semgrep cooldown rule requires seven days. The owner approved a
+single inline exception on the Actions three-day setting (#1650); tests enforce
+its scope and the unchanged seven-day settings elsewhere. This is not a scanner
+disable or a security-update delay bypass.
+
 `Dependabot Actions Auto-merge` evaluates open PRs after CI/security workflow
 completion and hourly, using **only code checked out from main**, never PR code or
 downloaded workflow artifacts. It does not deploy to dev or prod. Only a single,
