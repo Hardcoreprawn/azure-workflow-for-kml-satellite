@@ -16,6 +16,7 @@
 /.github/workflows/ @Hardcoreprawn
 /infra/tofu/ @Hardcoreprawn
 /scripts/pr_watchdog.py @Hardcoreprawn
+/scripts/dependabot_automerge.py @Hardcoreprawn
 /treesight/config.py @Hardcoreprawn
 /treesight/pipeline/enrichment/ @Hardcoreprawn
 /treesight/pipeline/eudr.py @Hardcoreprawn

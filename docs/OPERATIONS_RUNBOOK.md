@@ -77,6 +77,8 @@ PRs behind main wait for Dependabot to rebase and rerun checks. The gate merges
 one PR per run, rechecks PR state and pins the merge to the verified head SHA.
 It never approves reviews or bypasses repository rules. An owner can stop any
 individual update with a `hold` or `do-not-merge` label.
+The merge-control script is itself covered by CODEOWNERS and the PR Watchdog's
+sensitive-path classifier, so policy-only changes are routed to owner review.
 
 Security-labelled/advisory-linked updates and dependencies with an open
 Dependabot security alert remain on the **expedited manual-review** path.

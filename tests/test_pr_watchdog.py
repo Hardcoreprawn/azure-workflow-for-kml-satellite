@@ -297,6 +297,7 @@ def test_security_sensitive_paths_have_codeowners() -> None:
         "/.github/workflows/",
         "/infra/tofu/",
         "/scripts/pr_watchdog.py",
+        "/scripts/dependabot_automerge.py",
         "/treesight/billing/",
         "/treesight/config.py",
         "/treesight/pipeline/enrichment/",
@@ -324,6 +325,7 @@ def test_codeowner_patterns_match_sensitive_classifier() -> None:
         "/.github/workflows/": ".github/workflows/ci.yml",
         "/infra/tofu/": "infra/tofu/main.tf",
         "/scripts/pr_watchdog.py": "scripts/pr_watchdog.py",
+        "/scripts/dependabot_automerge.py": "scripts/dependabot_automerge.py",
     }
 
     for pattern, example in examples.items():
