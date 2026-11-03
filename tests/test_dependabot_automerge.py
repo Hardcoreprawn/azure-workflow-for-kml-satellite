@@ -264,6 +264,20 @@ def github(monkeypatch: pytest.MonkeyPatch) -> dict:
         return data[resource]
 
     def graphql(**kwargs: object) -> dict:
+        if "vulnerabilityAlerts(" in str(kwargs["query"]):
+            return {
+                "data": {
+                    "repository": {
+                        "vulnerabilityAlerts": {
+                            "nodes": [
+                                {"securityVulnerability": {"package": alert["dependency"]["package"]}}
+                                for alert in data["alerts"]
+                            ],
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        }
+                    }
+                }
+            }
         if "object(oid:" in str(kwargs["query"]):
             return {"data": {"repository": {"object": {"signature": data["signature"]}}}}
         if "release(tagName:" in str(kwargs["query"]):
@@ -426,6 +440,79 @@ def test_check_run_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
     assert merge.fetch_checks("token", "owner/repo", NEW_SHA) == [*checks(), checks()[0]]
     assert rest.call_count == 2
     assert "page=2" in rest.call_args.kwargs["path"]
+
+
+def alert_page(names: list[str], cursor: str | None = None, *, more: bool = False) -> dict:
+    return {
+        "data": {
+            "repository": {
+                "vulnerabilityAlerts": {
+                    "nodes": [{"securityVulnerability": {"package": {"name": name}}} for name in names],
+                    "pageInfo": {"hasNextPage": more, "endCursor": cursor},
+                }
+            }
+        }
+    }
+
+
+def test_open_security_alerts_follow_cursor_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    graphql = Mock(
+        side_effect=[
+            alert_page(["github/codeql-action"], "opaque-cursor", more=True),
+            alert_page(["astral-sh/setup-uv"]),
+        ]
+    )
+    monkeypatch.setattr(merge, "_github_graphql", graphql)
+    assert merge.open_alert_packages("token", "owner/repo") == {"github/codeql-action", "astral-sh/setup-uv"}
+    assert [call.kwargs["variables"]["cursor"] for call in graphql.call_args_list] == [None, "opaque-cursor"]
+    assert all("states: [OPEN]" in call.kwargs["query"] for call in graphql.call_args_list)
+
+
+def test_empty_open_alerts_are_a_successful_empty_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(merge, "_github_graphql", Mock(return_value=alert_page([])))
+    assert merge.open_alert_packages("token", "owner/repo") == set()
+
+
+def test_alert_permission_errors_are_not_treated_as_no_alerts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(merge, "_github_graphql", Mock(side_effect=RuntimeError("Forbidden")))
+    with pytest.raises(RuntimeError, match="Forbidden"):
+        merge.open_alert_packages("token", "owner/repo")
+
+
+def test_alert_lookup_failure_prevents_merge(github: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(merge, "open_alert_packages", Mock(side_effect=RuntimeError("Forbidden alerts")))
+    with pytest.raises(RuntimeError, match="Forbidden alerts"):
+        merge.process_pr("token", "owner/repo", 1, apply=True, now=NOW)
+    assert github["merge_calls"] == []
+
+
+@pytest.mark.parametrize("cursor", [None, "repeated"])
+def test_alert_pagination_requires_an_advancing_cursor(monkeypatch: pytest.MonkeyPatch, cursor: str | None) -> None:
+    monkeypatch.setattr(merge, "_github_graphql", Mock(return_value=alert_page([], cursor, more=True)))
+    with pytest.raises(RuntimeError, match="cursor"):
+        merge.open_alert_packages("token", "owner/repo")
+
+
+def test_alert_page_limit_fails_instead_of_truncating(monkeypatch: pytest.MonkeyPatch) -> None:
+    graphql = Mock(side_effect=[alert_page([], str(index), more=True) for index in range(100)])
+    monkeypatch.setattr(merge, "_github_graphql", graphql)
+    with pytest.raises(RuntimeError, match="100 pages"):
+        merge.open_alert_packages("token", "owner/repo")
+    assert graphql.call_count == 100
+
+
+@pytest.mark.parametrize("more", [True, False])
+def test_alert_cursor_cycles_fail_even_on_the_final_page(monkeypatch: pytest.MonkeyPatch, more: bool) -> None:
+    graphql = Mock(
+        side_effect=[
+            alert_page([], "first", more=True),
+            alert_page([], "second", more=True),
+            alert_page([], "first", more=more),
+        ]
+    )
+    monkeypatch.setattr(merge, "_github_graphql", graphql)
+    with pytest.raises(RuntimeError, match="cursor"):
+        merge.open_alert_packages("token", "owner/repo")
 
 
 def test_main_reports_candidates_and_stops_after_merge(

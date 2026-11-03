@@ -95,6 +95,11 @@ read) access. Using that user token preserves main-branch CI triggers after a
 merge; there is deliberately no `GITHUB_TOKEN` fallback. API/authentication errors
 fail the run visibly. Review workflow logs for each PR's eligibility/blocker.
 For a non-mutating check, dispatch the workflow with `dry_run=true`.
+The open-alert gate uses GraphQL cursor pagination (the REST alerts endpoint
+does not support page numbers). Every page is inspected; missing/repeated cursors,
+the 100-page safety limit and API/permission errors stop the run, never imply an
+empty alert set. If activation validation fails, disable the variable again
+until the blocker is fixed and a hosted dry run succeeds.
 
 **Rollback/stop:** set `DEPENDABOT_AUTOMERGE_ENABLED=false` and cancel any in-flight
 run before revoking its token. Revert an individual bad dependency update through
