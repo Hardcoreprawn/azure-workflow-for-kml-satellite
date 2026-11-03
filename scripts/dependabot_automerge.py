@@ -201,6 +201,38 @@ def release_blocker(token: str, dependencies: dict[str, str], pins: dict[str, st
     return ""
 
 
+def open_alert_packages(token: str, repository: str) -> set[str]:
+    owner, repo = repository.split("/")
+    packages: set[str] = set()
+    cursor: str | None = None
+    seen_cursors: set[str] = set()
+    for _ in range(100):
+        alerts = _github_graphql(
+            token=token,
+            query="""query($owner: String!, $repo: String!, $cursor: String) {
+              repository(owner: $owner, name: $repo) {
+                vulnerabilityAlerts(first: 100, after: $cursor, states: [OPEN]) {
+                  nodes { securityVulnerability { package { name } } }
+                  pageInfo { hasNextPage endCursor }
+                }
+              }
+            }""",
+            variables={"owner": owner, "repo": repo, "cursor": cursor},
+        )["data"]["repository"]["vulnerabilityAlerts"]
+        packages.update(alert["securityVulnerability"]["package"]["name"] for alert in alerts["nodes"])
+        page = alerts["pageInfo"]
+        next_cursor = page["endCursor"]
+        if next_cursor and next_cursor in seen_cursors:
+            raise RuntimeError("Security-alert pagination returned a repeated cursor")
+        if not page["hasNextPage"]:
+            return packages
+        if not next_cursor:
+            raise RuntimeError("Security-alert pagination returned a missing cursor")
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
+    raise RuntimeError("Security-alert pagination exceeded 100 pages")
+
+
 def process_pr(token: str, repository: str, number: int, *, apply: bool, now: datetime) -> str:
     path = f"/repos/{repository}/pulls/{number}"
     pr = _github_rest(token=token, method="GET", path=path)
@@ -213,9 +245,9 @@ def process_pr(token: str, repository: str, number: int, *, apply: bool, now: da
         return "unsigned, major, mixed or non-pin update"
     if not github_signed_commit(token, repository, pr["head"]["sha"]):
         return "commit lacks a valid GitHub-generated signature"
-    alerts = _fetch_paginated(token, f"/repos/{repository}/dependabot/alerts?state=open")
+    alerts = open_alert_packages(token, repository)
     upstreams = {"/".join(action.split("/")[:2]).lower() for action in dependencies}
-    if any("/".join(alert["dependency"]["package"]["name"].split("/")[:2]).lower() in upstreams for alert in alerts):
+    if any("/".join(package.split("/")[:2]).lower() in upstreams for package in alerts):
         return "dependency has an open security alert; manual expedited review required"
     if blocker := release_blocker(token, dependencies, pins, now):
         return blocker
