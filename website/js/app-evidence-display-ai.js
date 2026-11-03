@@ -6,6 +6,8 @@
 (function () {
   'use strict';
 
+  let eudrRequestId = 0;
+
   function createCallout(type, message) {
     let helper = (window.CanopexHelpers || {}).createCallout;
     if (typeof helper === 'function') {
@@ -145,6 +147,12 @@
     let content = document.getElementById('app-evidence-eudr-content');
     let btn = document.getElementById('app-evidence-eudr-btn');
     if (!loading || !content || !state.manifest) return;
+    const manifest = state.manifest;
+    const instanceId = state.instanceId;
+    const selectedAoi = state.selectedAoi;
+    const source = activeEvidenceContext(state);
+    const requestId = ++eudrRequestId;
+    const isCurrent = () => requestId === eudrRequestId && state.manifest === manifest && state.instanceId === instanceId && state.selectedAoi === selectedAoi;
 
     if (btn) btn.disabled = true;
     loading.hidden = false;
@@ -153,7 +161,7 @@
     try {
       await (ctx.getApiReady ? ctx.getApiReady() : Promise.resolve());
 
-      let source = activeEvidenceContext(state);
+      if (!isCurrent()) return;
       let ndviTimeseries = buildEvidenceNdviTimeseries(source, ctx.em);
       let latLon = evidenceLatLon(source, ctx.em);
 
@@ -173,7 +181,12 @@
         body: JSON.stringify(body)
       });
 
+      if (!res.ok) throw new Error('Could not run EUDR screening. Try again. (HTTP ' + res.status + ')');
       let result = await res.json();
+      if (!isCurrent()) return;
+      if (!result || typeof result.screening_outcome !== 'string') {
+        throw new Error('Could not read the EUDR screening result. Try again.');
+      }
       let outcome = result && result.screening_outcome;
       let cls = 'screening-insufficient';
       let label = 'Insufficient evidence for screening';
@@ -202,12 +215,18 @@
         resultDiv.appendChild(p);
       }
       content.appendChild(resultDiv);
+      content.appendChild(createCallout('warning',
+        'On-demand screening is not saved and will be lost on reload. It does not replace the saved parcel determination or reviewer assessment. Screening evidence is not legal certification or an operator compliance conclusion.'));
     } catch (err) {
-      content.textContent = '';
-      content.appendChild(createCallout('error', (err && err.message) || 'Could not run EUDR assessment.'));
+      if (isCurrent()) {
+        content.textContent = '';
+        content.appendChild(createCallout('error', (err && err.message) || 'Could not run EUDR assessment.'));
+      }
     } finally {
-      loading.hidden = true;
-      if (btn) btn.disabled = false;
+      if (requestId === eudrRequestId) {
+        loading.hidden = true;
+        if (btn) btn.disabled = false;
+      }
     }
   }
 

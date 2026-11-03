@@ -250,6 +250,8 @@
     let savedEl = document.getElementById('app-evidence-notes-saved');
     let editEl = document.getElementById('app-evidence-notes-edit');
     let addBtn = document.getElementById('app-evidence-notes-add-btn');
+    const notesError = document.getElementById('app-evidence-notes-error');
+    if (notesError) { notesError.textContent = ''; notesError.hidden = true; }
     if (savedEl) savedEl.hidden = true;
     if (editEl) editEl.hidden = true;
     if (addBtn) { addBtn.hidden = false; addBtn.textContent = '+ Add note'; }

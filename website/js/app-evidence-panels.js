@@ -56,6 +56,9 @@
   var currentNoteParcelKey     = null;
   var currentOverrideParcelKey = null;
   var currentOverrideAoiData   = null;
+  let noteEditorGeneration = 0;
+  let reviewEditorGeneration = 0;
+  let reviewMutationPending = false;
 
   /* ---- review constants (must match backend _MIN_REVIEW_NOTE_LENGTH) ---- */
 
@@ -67,10 +70,24 @@
     return String(idx);
   }
 
+  function showPanelError(id, message) {
+    const errorEl = document.getElementById(id);
+    if (errorEl) {
+      errorEl.textContent = message;
+      errorEl.hidden = !message;
+    }
+  }
+
+  function isCurrentReview(manifest, instanceId, parcelKey, currentKey) {
+    return _getManifest() === manifest && _getInstanceId() === instanceId && parcelKey === currentKey;
+  }
+
   /* ---- parcel notes (#669) ---- */
 
   function renderParcelNotes(parcelKey) {
+    noteEditorGeneration++;
     currentNoteParcelKey = parcelKey;
+    showPanelError('app-evidence-notes-error', '');
 
     var notesEl = document.getElementById('app-evidence-notes');
     var savedEl = document.getElementById('app-evidence-notes-saved');
@@ -109,6 +126,7 @@
   }
 
   function showNoteEditor() {
+    noteEditorGeneration++;
     var editEl = document.getElementById('app-evidence-notes-edit');
     var addBtn = document.getElementById('app-evidence-notes-add-btn');
     var input  = document.getElementById('app-evidence-notes-input');
@@ -125,6 +143,7 @@
   }
 
   function hideNoteEditor() {
+    noteEditorGeneration++;
     var editEl = document.getElementById('app-evidence-notes-edit');
     var addBtn = document.getElementById('app-evidence-notes-add-btn');
     if (editEl) editEl.hidden = true;
@@ -132,47 +151,52 @@
   }
 
   async function saveParcelNote() {
-    var input = document.getElementById('app-evidence-notes-input');
-    var instanceId = _getInstanceId ? _getInstanceId() : null;
-    if (!input || !instanceId || currentNoteParcelKey === null) return;
-
-    var noteText = input.value.trim();
-    var saveBtn  = document.getElementById('app-evidence-notes-save-btn');
+    const input = document.getElementById('app-evidence-notes-input');
+    const instanceId = _getInstanceId ? _getInstanceId() : null;
+    const manifest = _getManifest ? _getManifest() : null;
+    const parcelKey = currentNoteParcelKey;
+    const saveBtn = document.getElementById('app-evidence-notes-save-btn');
+    if (saveBtn && saveBtn.disabled) return;
+    if (!input || !instanceId || !manifest || parcelKey === null) {
+      showPanelError('app-evidence-notes-error', 'Cannot save a note without an active parcel. Reopen the analysis and try again.');
+      return;
+    }
+    const noteText = input.value.trim();
+    const editorGeneration = noteEditorGeneration;
+    showPanelError('app-evidence-notes-error', '');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
 
     try {
       if (_getApiReady) await _getApiReady();
-      var res = await _apiFetch('/api/analysis/notes', {
+      const res = await _apiFetch('/api/analysis/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           instance_id: instanceId,
-          parcel_key: currentNoteParcelKey,
+          parcel_key: parcelKey,
           note: noteText,
         }),
       });
       if (!res.ok) {
-        var err = await res.json().catch(function() { return {}; });
-        console.warn('Note save failed:', err);
-        return;
+        throw new Error('Failed to save note. Your draft is unchanged; try again. (HTTP ' + res.status + ')');
       }
-      // Mutate the live manifest reference so the note appears immediately.
-      var manifest = _getManifest ? _getManifest() : null;
-      if (manifest) {
-        if (!manifest.parcel_notes) manifest.parcel_notes = {};
-        if (noteText) {
-          manifest.parcel_notes[currentNoteParcelKey] = {
-            text: noteText,
-            updated_at: new Date().toISOString(),
-          };
-        } else {
-          delete manifest.parcel_notes[currentNoteParcelKey];
-        }
+      if (!manifest.parcel_notes) manifest.parcel_notes = {};
+      if (noteText) {
+        manifest.parcel_notes[parcelKey] = { text: noteText, updated_at: new Date().toISOString() };
+      } else {
+        delete manifest.parcel_notes[parcelKey];
       }
-      hideNoteEditor();
-      renderParcelNotes(currentNoteParcelKey);
+      if (isCurrentReview(manifest, instanceId, parcelKey, currentNoteParcelKey) &&
+          editorGeneration === noteEditorGeneration && input.value.trim() === noteText) {
+        hideNoteEditor();
+        renderParcelNotes(parcelKey);
+      }
     } catch (e) {
       console.warn('Note save error:', e);
+      if (isCurrentReview(manifest, instanceId, parcelKey, currentNoteParcelKey) &&
+          editorGeneration === noteEditorGeneration) {
+        showPanelError('app-evidence-notes-error', 'Failed to save note. Your draft is unchanged; try again.');
+      }
     } finally {
       if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save note'; }
     }
@@ -181,8 +205,10 @@
   /* ---- human override determination (#672) + human review (#866) ---- */
 
   function renderParcelOverride(parcelKey, aoiData) {
+    reviewEditorGeneration++;
     currentOverrideParcelKey = parcelKey;
     currentOverrideAoiData   = aoiData;
+    showPanelError('app-evidence-override-error', '');
 
     var overrideEl  = document.getElementById('app-evidence-override');
     var badgeEl     = document.getElementById('app-evidence-override-badge');
@@ -266,6 +292,9 @@
   }
 
   function openOverrideModal(parcelKey, aoiData) {
+    reviewEditorGeneration++;
+    currentOverrideParcelKey = parcelKey;
+    currentOverrideAoiData = aoiData;
     var backdrop    = document.getElementById('app-override-backdrop');
     var reasonInput = document.getElementById('app-override-reason-input');
     var confirmBtn  = document.getElementById('app-override-confirm-btn');
@@ -289,7 +318,7 @@
     var existingLen = existingNote.length;
     var minRequired = existingOverride ? MIN_REVIEW_NOTE_LENGTH : 1;
     if (charCount)  charCount.textContent  = existingLen + ' / 1000';
-    if (confirmBtn) confirmBtn.disabled    = existingLen < minRequired;
+    if (confirmBtn) confirmBtn.disabled    = reviewMutationPending || existingLen < minRequired;
     if (errorEl)     { errorEl.hidden = true; errorEl.textContent = ''; }
     if (originalEl) {
       var det = aoiData && aoiData.determination;
@@ -301,6 +330,7 @@
   }
 
   function closeOverrideModal() {
+    reviewEditorGeneration++;
     var backdrop = document.getElementById('app-override-backdrop');
     if (backdrop) backdrop.hidden = true;
   }
@@ -314,7 +344,7 @@
     var len = reasonInput.value.trim().length;
     var minRequired = (overrideChk && overrideChk.checked) ? MIN_REVIEW_NOTE_LENGTH : 1;
     if (charCount)  charCount.textContent  = len + ' / 1000';
-    if (confirmBtn) confirmBtn.disabled    = len < minRequired;
+    if (confirmBtn) confirmBtn.disabled    = reviewMutationPending || len < minRequired;
   }
 
   async function confirmOverride() {
@@ -323,7 +353,14 @@
     var errorEl      = document.getElementById('app-override-error');
     var overrideChk  = document.getElementById('app-override-mark-compliant');
     var instanceId   = _getInstanceId ? _getInstanceId() : null;
-    if (!reasonInput || !instanceId || currentOverrideParcelKey === null) return;
+    const manifest = _getManifest ? _getManifest() : null;
+    const parcelKey = currentOverrideParcelKey;
+    const aoiData = currentOverrideAoiData;
+    if (reviewMutationPending || (confirmBtn && confirmBtn.disabled)) return;
+    if (!reasonInput || !instanceId || !manifest || parcelKey === null) {
+      showPanelError('app-override-error', 'Cannot save without an active assessment. Reopen the analysis and try again.');
+      return;
+    }
 
     var note       = reasonInput.value.trim();
     var doOverride = overrideChk ? overrideChk.checked : false;
@@ -337,73 +374,84 @@
     }
 
     var originalText = confirmBtn ? confirmBtn.textContent : 'Save assessment';
+    const editorGeneration = reviewEditorGeneration;
+    reviewMutationPending = true;
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Saving\u2026'; }
     if (errorEl)    { errorEl.hidden = true; errorEl.textContent = ''; }
 
     try {
       if (_getApiReady) await _getApiReady();
-      var url = '/api/analysis/' + instanceId + '/parcel/' + currentOverrideParcelKey + '/review';
+      var url = '/api/analysis/' + instanceId + '/parcel/' + parcelKey + '/review';
       var res = await _apiFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ override: doOverride, note: note }),
       });
       if (!res.ok) {
-        var err = await res.json().catch(function() { return {}; });
-        if (errorEl) {
-          errorEl.textContent = (err && err.message) || 'Failed to save assessment. Try again.';
-          errorEl.hidden = false;
-        }
-        return;
+        throw new Error('Failed to save assessment. Try again. (HTTP ' + res.status + ')');
       }
       // Update the in-memory manifest so UI reflects the change immediately
-      var manifest = _getManifest ? _getManifest() : null;
       if (manifest) {
         if (!manifest.parcel_reviews) manifest.parcel_reviews = {};
-        manifest.parcel_reviews[currentOverrideParcelKey] = {
+        manifest.parcel_reviews[parcelKey] = {
           override:    doOverride,
           note:        note,
           reviewed_at: new Date().toISOString(),
         };
       }
-      closeOverrideModal();
-      renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
+      if (isCurrentReview(manifest, instanceId, parcelKey, currentOverrideParcelKey) &&
+          editorGeneration === reviewEditorGeneration && reasonInput.value.trim() === note &&
+          (!overrideChk || overrideChk.checked === doOverride)) {
+        closeOverrideModal();
+        renderParcelOverride(parcelKey, aoiData);
+      }
     } catch (e) {
-      if (errorEl) { errorEl.textContent = 'Failed to save assessment. Try again.'; errorEl.hidden = false; }
       console.warn('Review save error:', e);
+      if (isCurrentReview(manifest, instanceId, parcelKey, currentOverrideParcelKey) &&
+          editorGeneration === reviewEditorGeneration) {
+        showPanelError('app-override-error', 'Failed to save assessment. Your draft is unchanged; try again.');
+      }
     } finally {
-      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = originalText; }
+      reviewMutationPending = false;
+      if (confirmBtn) confirmBtn.textContent = originalText;
+      onOverrideReasonInput();
     }
   }
 
   async function revertOverride() {
-    var instanceId = _getInstanceId ? _getInstanceId() : null;
-    if (!instanceId || currentOverrideParcelKey === null) return;
-
-    var revertBtn = document.getElementById('app-evidence-override-revert-btn');
+    const instanceId = _getInstanceId ? _getInstanceId() : null;
+    const parcelKey = currentOverrideParcelKey;
+    const manifest = _getManifest ? _getManifest() : null;
+    const aoiData = currentOverrideAoiData;
+    const revertBtn = document.getElementById('app-evidence-override-revert-btn');
+    if (reviewMutationPending || (revertBtn && revertBtn.disabled)) return;
+    if (!instanceId || !manifest || parcelKey === null) {
+      showPanelError('app-evidence-override-error', 'Cannot revert without an active assessment. Reopen the analysis and try again.');
+      return;
+    }
+    showPanelError('app-evidence-override-error', '');
+    reviewMutationPending = true;
+    onOverrideReasonInput();
     if (revertBtn) { revertBtn.disabled = true; revertBtn.textContent = 'Reverting\u2026'; }
 
     // When an active review exists (review layer, #866), revert via the review
     // endpoint so the audit history is updated.  Only fall back to the legacy
     // parcel_overrides endpoint when there is no active review.
-    var manifest  = _getManifest ? _getManifest() : null;
     var hasReview = manifest && manifest.parcel_reviews &&
-                    manifest.parcel_reviews[currentOverrideParcelKey];
+                    manifest.parcel_reviews[parcelKey];
 
     try {
       if (_getApiReady) await _getApiReady();
       if (hasReview) {
-        var url = '/api/analysis/' + instanceId + '/parcel/' + currentOverrideParcelKey + '/review';
+        var url = '/api/analysis/' + instanceId + '/parcel/' + parcelKey + '/review';
         var res = await _apiFetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'revert' }),
         });
-        if (res.ok) {
-          if (manifest && manifest.parcel_reviews) {
-            delete manifest.parcel_reviews[currentOverrideParcelKey];
-          }
-          renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
+        if (!res.ok) throw new Error('Failed to revert assessment. (HTTP ' + res.status + ')');
+        if (manifest.parcel_reviews) {
+          delete manifest.parcel_reviews[parcelKey];
         }
       } else {
         var legacyRes = await _apiFetch('/api/analysis/override', {
@@ -411,22 +459,28 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             instance_id: instanceId,
-            parcel_key: currentOverrideParcelKey,
+            parcel_key: parcelKey,
             reason: '',
             revert: true,
           }),
         });
-        if (legacyRes.ok) {
-          if (manifest && manifest.parcel_overrides) {
-            delete manifest.parcel_overrides[currentOverrideParcelKey];
-          }
-          renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
+        if (!legacyRes.ok) throw new Error('Failed to revert assessment. (HTTP ' + legacyRes.status + ')');
+        if (manifest.parcel_overrides) {
+          delete manifest.parcel_overrides[parcelKey];
         }
+      }
+      if (isCurrentReview(manifest, instanceId, parcelKey, currentOverrideParcelKey)) {
+        renderParcelOverride(parcelKey, aoiData);
       }
     } catch (e) {
       console.warn('Override revert error:', e);
+      if (isCurrentReview(manifest, instanceId, parcelKey, currentOverrideParcelKey)) {
+        showPanelError('app-evidence-override-error', 'Reversion outcome is unconfirmed. Reload this analysis to check the saved review before retrying.');
+      }
     } finally {
+      reviewMutationPending = false;
       if (revertBtn) { revertBtn.disabled = false; revertBtn.textContent = 'Revert to algorithmic'; }
+      onOverrideReasonInput();
     }
   }
 
