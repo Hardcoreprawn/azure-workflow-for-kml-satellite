@@ -103,6 +103,16 @@ analysis require the same selected org and current caller membership. Use the
 existing `org_id` query selector to choose an authorized workspace. Creator
 identity grants no bypass after leaving an org; unknown-origin records are
 excluded/denied. Origin filtering occurs before pagination, output and statistics.
+
+Parcel notes and reviewer assessments are persisted on the run record and loaded
+with its evidence manifest. The evidence UI retains the draft and shows a visible
+retryable error when saving or reverting fails; an unsuccessful write does not
+change the displayed saved review. Delayed save responses are associated with
+the original run and parcel, not whichever parcel is currently selected.
+The separate `/api/eudr-assessment` action performs on-demand screening only:
+its result is explicitly marked **not saved** and is lost on reload. It neither
+replaces the saved pipeline determination nor the human reviewer assessment.
+
 Absent/mismatched membership returns `403`; membership storage failures return
 `503`. Same-ID ticket reuse also verifies stored origin, never rebinds it to the
 caller's current default org, and preserves reviews. Export/timelapse manifest

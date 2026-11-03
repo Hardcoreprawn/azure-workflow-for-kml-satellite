@@ -408,12 +408,14 @@
                     <div class="app-evidence-flags" id="app-evidence-flags" hidden></div>
                     <!-- Human override (#672) -->
                     <div class="app-evidence-override" id="app-evidence-override" hidden>
+                      <p id="app-evidence-override-error" class="callout callout-error" role="alert" hidden></p>
                       <div class="app-evidence-override-badge" id="app-evidence-override-badge" hidden></div>
                       <button class="btn btn-secondary btn-sm app-evidence-override-btn" id="app-evidence-override-btn" type="button" hidden>Override determination</button>
                       <button class="btn btn-secondary btn-sm app-evidence-override-revert-btn" id="app-evidence-override-revert-btn" type="button" hidden>Revert to algorithmic</button>
                     </div>
                     <!-- Parcel notes (#669) -->
                     <div class="app-evidence-notes" id="app-evidence-notes">
+                      <p id="app-evidence-notes-error" class="callout callout-error" role="alert" hidden></p>
                       <div class="app-evidence-notes-saved" id="app-evidence-notes-saved" hidden>
                         <span class="app-evidence-notes-text" id="app-evidence-notes-text"></span>
                         <span class="app-evidence-notes-meta" id="app-evidence-notes-meta"></span>
@@ -456,7 +458,7 @@
                   </div>
                   <button class="btn btn-primary" id="app-evidence-eudr-btn" type="button">Assess EUDR</button>
                 </div>
-                <div id="app-evidence-eudr-content"></div>
+                <div id="app-evidence-eudr-content" aria-live="polite"></div>
                 <div class="app-evidence-ai-loading" id="app-evidence-eudr-loading" hidden>Running EUDR assessment&hellip;</div>
               </div>
             </div>
@@ -601,7 +603,7 @@
       <button class="btn btn-primary" id="app-override-confirm-btn" type="button" disabled>Confirm override</button>
       <button class="btn btn-secondary" id="app-override-cancel-btn" type="button">Cancel</button>
     </div>
-    <div class="app-override-error" id="app-override-error" hidden></div>
+    <div class="app-override-error" id="app-override-error" role="alert" hidden></div>
   </div>
 </div>
 </body>
