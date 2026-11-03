@@ -232,6 +232,69 @@ test('review saves finishing after selection never attach a review to another pa
   assert.equal(nodes.get('app-override-reason-input').value, 'Other parcel draft');
 });
 
+for (const legacy of [false, true]) {
+  for (const ok of [true, false]) {
+    test(`review saves block reversion until settled (legacy=${legacy}, ok=${ok})`, async () => {
+      const responses = [];
+      const { nodes, state, panels } = harness(() => new Promise(resolve => responses.push(resolve)));
+      const saved = { override: true, note: 'Previously saved assessment' };
+      state.manifest[legacy ? 'parcel_overrides' : 'parcel_reviews'] = { '0': saved };
+      panels.renderParcelOverride('0', {});
+      panels.openOverrideModal('0', {});
+      nodes.get('app-override-reason-input').value = 'New reviewer assessment';
+      panels.onOverrideReasonInput();
+      const saving = panels.confirmOverride();
+      await new Promise(resolve => setImmediate(resolve));
+      const reverting = panels.revertOverride();
+      await new Promise(resolve => setImmediate(resolve));
+      const calls = responses.length;
+      for (const finish of responses.splice(0)) finish({ ok, status: 500 });
+      await Promise.all([saving, reverting]);
+      assert.equal(calls, 1, 'reversion must not overlap a save');
+      assert.equal(nodes.get('app-override-confirm-btn').disabled, false);
+      assert.equal(state.manifest[legacy ? 'parcel_overrides' : 'parcel_reviews']['0'].note,
+        !legacy && ok ? 'New reviewer assessment' : saved.note);
+      const retrying = panels.revertOverride();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(responses.length, 1, 'reversion is available after the save settles');
+      responses[0]({ ok: true });
+      await retrying;
+    });
+
+    test(`review reversion blocks saves until settled (legacy=${legacy}, ok=${ok})`, async () => {
+      const responses = [];
+      const { nodes, state, panels } = harness(() => new Promise(resolve => responses.push(resolve)));
+      state.manifest[legacy ? 'parcel_overrides' : 'parcel_reviews'] = {
+        '0': { override: true, note: 'Previously saved assessment' }
+      };
+      panels.renderParcelOverride('0', {});
+      const reverting = panels.revertOverride();
+      await new Promise(resolve => setImmediate(resolve));
+      panels.openOverrideModal('0', {});
+      nodes.get('app-override-reason-input').value = 'New reviewer assessment';
+      panels.onOverrideReasonInput();
+      const disabledWhileReverting = nodes.get('app-override-confirm-btn').disabled;
+      nodes.get('app-override-confirm-btn').disabled = false;
+      const saving = panels.confirmOverride();
+      await new Promise(resolve => setImmediate(resolve));
+      const calls = responses.length;
+      for (const finish of responses.splice(0)) finish({ ok, status: 500 });
+      await Promise.all([reverting, saving]);
+      assert.equal(calls, 1, 'save must not overlap a reversion');
+      assert.equal(disabledWhileReverting, true);
+      assert.equal(nodes.get('app-override-confirm-btn').disabled, false);
+      assert.equal(nodes.get('app-evidence-override-revert-btn').disabled, false);
+      assert.equal(Boolean(state.manifest[legacy ? 'parcel_overrides' : 'parcel_reviews']['0']), !ok);
+      const retrying = panels.confirmOverride();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(responses.length, 1, 'save is available after the reversion settles');
+      responses[0]({ ok: true });
+      await retrying;
+      assert.equal(state.manifest.parcel_reviews['0'].note, 'New reviewer assessment');
+    });
+  }
+}
+
 test('review save failures after selection never display an error in another parcel modal', async () => {
   let finish;
   const { nodes, panels } = harness(() => new Promise(resolve => { finish = resolve; }));

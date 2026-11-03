@@ -58,7 +58,7 @@
   var currentOverrideAoiData   = null;
   let noteEditorGeneration = 0;
   let reviewEditorGeneration = 0;
-  let reviewSavePending = false;
+  let reviewMutationPending = false;
 
   /* ---- review constants (must match backend _MIN_REVIEW_NOTE_LENGTH) ---- */
 
@@ -318,7 +318,7 @@
     var existingLen = existingNote.length;
     var minRequired = existingOverride ? MIN_REVIEW_NOTE_LENGTH : 1;
     if (charCount)  charCount.textContent  = existingLen + ' / 1000';
-    if (confirmBtn) confirmBtn.disabled    = reviewSavePending || existingLen < minRequired;
+    if (confirmBtn) confirmBtn.disabled    = reviewMutationPending || existingLen < minRequired;
     if (errorEl)     { errorEl.hidden = true; errorEl.textContent = ''; }
     if (originalEl) {
       var det = aoiData && aoiData.determination;
@@ -344,7 +344,7 @@
     var len = reasonInput.value.trim().length;
     var minRequired = (overrideChk && overrideChk.checked) ? MIN_REVIEW_NOTE_LENGTH : 1;
     if (charCount)  charCount.textContent  = len + ' / 1000';
-    if (confirmBtn) confirmBtn.disabled    = reviewSavePending || len < minRequired;
+    if (confirmBtn) confirmBtn.disabled    = reviewMutationPending || len < minRequired;
   }
 
   async function confirmOverride() {
@@ -356,7 +356,7 @@
     const manifest = _getManifest ? _getManifest() : null;
     const parcelKey = currentOverrideParcelKey;
     const aoiData = currentOverrideAoiData;
-    if (reviewSavePending || (confirmBtn && confirmBtn.disabled)) return;
+    if (reviewMutationPending || (confirmBtn && confirmBtn.disabled)) return;
     if (!reasonInput || !instanceId || !manifest || parcelKey === null) {
       showPanelError('app-override-error', 'Cannot save without an active assessment. Reopen the analysis and try again.');
       return;
@@ -375,7 +375,7 @@
 
     var originalText = confirmBtn ? confirmBtn.textContent : 'Save assessment';
     const editorGeneration = reviewEditorGeneration;
-    reviewSavePending = true;
+    reviewMutationPending = true;
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Saving\u2026'; }
     if (errorEl)    { errorEl.hidden = true; errorEl.textContent = ''; }
 
@@ -412,7 +412,7 @@
         showPanelError('app-override-error', 'Failed to save assessment. Your draft is unchanged; try again.');
       }
     } finally {
-      reviewSavePending = false;
+      reviewMutationPending = false;
       if (confirmBtn) confirmBtn.textContent = originalText;
       onOverrideReasonInput();
     }
@@ -424,12 +424,14 @@
     const manifest = _getManifest ? _getManifest() : null;
     const aoiData = currentOverrideAoiData;
     const revertBtn = document.getElementById('app-evidence-override-revert-btn');
-    if (revertBtn && revertBtn.disabled) return;
+    if (reviewMutationPending || (revertBtn && revertBtn.disabled)) return;
     if (!instanceId || !manifest || parcelKey === null) {
       showPanelError('app-evidence-override-error', 'Cannot revert without an active assessment. Reopen the analysis and try again.');
       return;
     }
     showPanelError('app-evidence-override-error', '');
+    reviewMutationPending = true;
+    onOverrideReasonInput();
     if (revertBtn) { revertBtn.disabled = true; revertBtn.textContent = 'Reverting\u2026'; }
 
     // When an active review exists (review layer, #866), revert via the review
@@ -476,7 +478,9 @@
         showPanelError('app-evidence-override-error', 'Reversion outcome is unconfirmed. Reload this analysis to check the saved review before retrying.');
       }
     } finally {
+      reviewMutationPending = false;
       if (revertBtn) { revertBtn.disabled = false; revertBtn.textContent = 'Revert to algorithmic'; }
+      onOverrideReasonInput();
     }
   }
 
