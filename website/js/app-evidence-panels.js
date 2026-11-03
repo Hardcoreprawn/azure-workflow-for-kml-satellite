@@ -56,6 +56,9 @@
   var currentNoteParcelKey     = null;
   var currentOverrideParcelKey = null;
   var currentOverrideAoiData   = null;
+  let noteEditorGeneration = 0;
+  let reviewEditorGeneration = 0;
+  let reviewSavePending = false;
 
   /* ---- review constants (must match backend _MIN_REVIEW_NOTE_LENGTH) ---- */
 
@@ -82,6 +85,7 @@
   /* ---- parcel notes (#669) ---- */
 
   function renderParcelNotes(parcelKey) {
+    noteEditorGeneration++;
     currentNoteParcelKey = parcelKey;
     showPanelError('app-evidence-notes-error', '');
 
@@ -122,6 +126,7 @@
   }
 
   function showNoteEditor() {
+    noteEditorGeneration++;
     var editEl = document.getElementById('app-evidence-notes-edit');
     var addBtn = document.getElementById('app-evidence-notes-add-btn');
     var input  = document.getElementById('app-evidence-notes-input');
@@ -138,6 +143,7 @@
   }
 
   function hideNoteEditor() {
+    noteEditorGeneration++;
     var editEl = document.getElementById('app-evidence-notes-edit');
     var addBtn = document.getElementById('app-evidence-notes-add-btn');
     if (editEl) editEl.hidden = true;
@@ -156,6 +162,7 @@
       return;
     }
     const noteText = input.value.trim();
+    const editorGeneration = noteEditorGeneration;
     showPanelError('app-evidence-notes-error', '');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
 
@@ -179,13 +186,15 @@
       } else {
         delete manifest.parcel_notes[parcelKey];
       }
-      if (isCurrentReview(manifest, instanceId, parcelKey, currentNoteParcelKey)) {
+      if (isCurrentReview(manifest, instanceId, parcelKey, currentNoteParcelKey) &&
+          editorGeneration === noteEditorGeneration && input.value.trim() === noteText) {
         hideNoteEditor();
         renderParcelNotes(parcelKey);
       }
     } catch (e) {
       console.warn('Note save error:', e);
-      if (isCurrentReview(manifest, instanceId, parcelKey, currentNoteParcelKey)) {
+      if (isCurrentReview(manifest, instanceId, parcelKey, currentNoteParcelKey) &&
+          editorGeneration === noteEditorGeneration) {
         showPanelError('app-evidence-notes-error', 'Failed to save note. Your draft is unchanged; try again.');
       }
     } finally {
@@ -196,6 +205,7 @@
   /* ---- human override determination (#672) + human review (#866) ---- */
 
   function renderParcelOverride(parcelKey, aoiData) {
+    reviewEditorGeneration++;
     currentOverrideParcelKey = parcelKey;
     currentOverrideAoiData   = aoiData;
     showPanelError('app-evidence-override-error', '');
@@ -282,6 +292,7 @@
   }
 
   function openOverrideModal(parcelKey, aoiData) {
+    reviewEditorGeneration++;
     currentOverrideParcelKey = parcelKey;
     currentOverrideAoiData = aoiData;
     var backdrop    = document.getElementById('app-override-backdrop');
@@ -307,7 +318,7 @@
     var existingLen = existingNote.length;
     var minRequired = existingOverride ? MIN_REVIEW_NOTE_LENGTH : 1;
     if (charCount)  charCount.textContent  = existingLen + ' / 1000';
-    if (confirmBtn) confirmBtn.disabled    = existingLen < minRequired;
+    if (confirmBtn) confirmBtn.disabled    = reviewSavePending || existingLen < minRequired;
     if (errorEl)     { errorEl.hidden = true; errorEl.textContent = ''; }
     if (originalEl) {
       var det = aoiData && aoiData.determination;
@@ -319,6 +330,7 @@
   }
 
   function closeOverrideModal() {
+    reviewEditorGeneration++;
     var backdrop = document.getElementById('app-override-backdrop');
     if (backdrop) backdrop.hidden = true;
   }
@@ -332,7 +344,7 @@
     var len = reasonInput.value.trim().length;
     var minRequired = (overrideChk && overrideChk.checked) ? MIN_REVIEW_NOTE_LENGTH : 1;
     if (charCount)  charCount.textContent  = len + ' / 1000';
-    if (confirmBtn) confirmBtn.disabled    = len < minRequired;
+    if (confirmBtn) confirmBtn.disabled    = reviewSavePending || len < minRequired;
   }
 
   async function confirmOverride() {
@@ -344,7 +356,7 @@
     const manifest = _getManifest ? _getManifest() : null;
     const parcelKey = currentOverrideParcelKey;
     const aoiData = currentOverrideAoiData;
-    if (confirmBtn && confirmBtn.disabled) return;
+    if (reviewSavePending || (confirmBtn && confirmBtn.disabled)) return;
     if (!reasonInput || !instanceId || !manifest || parcelKey === null) {
       showPanelError('app-override-error', 'Cannot save without an active assessment. Reopen the analysis and try again.');
       return;
@@ -362,6 +374,8 @@
     }
 
     var originalText = confirmBtn ? confirmBtn.textContent : 'Save assessment';
+    const editorGeneration = reviewEditorGeneration;
+    reviewSavePending = true;
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Saving\u2026'; }
     if (errorEl)    { errorEl.hidden = true; errorEl.textContent = ''; }
 
@@ -385,17 +399,22 @@
           reviewed_at: new Date().toISOString(),
         };
       }
-      if (isCurrentReview(manifest, instanceId, parcelKey, currentOverrideParcelKey)) {
+      if (isCurrentReview(manifest, instanceId, parcelKey, currentOverrideParcelKey) &&
+          editorGeneration === reviewEditorGeneration && reasonInput.value.trim() === note &&
+          (!overrideChk || overrideChk.checked === doOverride)) {
         closeOverrideModal();
         renderParcelOverride(parcelKey, aoiData);
       }
     } catch (e) {
       console.warn('Review save error:', e);
-      if (isCurrentReview(manifest, instanceId, parcelKey, currentOverrideParcelKey)) {
+      if (isCurrentReview(manifest, instanceId, parcelKey, currentOverrideParcelKey) &&
+          editorGeneration === reviewEditorGeneration) {
         showPanelError('app-override-error', 'Failed to save assessment. Your draft is unchanged; try again.');
       }
     } finally {
-      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = originalText; }
+      reviewSavePending = false;
+      if (confirmBtn) confirmBtn.textContent = originalText;
+      onOverrideReasonInput();
     }
   }
 
@@ -454,7 +473,7 @@
     } catch (e) {
       console.warn('Override revert error:', e);
       if (isCurrentReview(manifest, instanceId, parcelKey, currentOverrideParcelKey)) {
-        showPanelError('app-evidence-override-error', 'Failed to revert assessment. Try again; the saved review is unchanged.');
+        showPanelError('app-evidence-override-error', 'Reversion outcome is unconfirmed. Reload this analysis to check the saved review before retrying.');
       }
     } finally {
       if (revertBtn) { revertBtn.disabled = false; revertBtn.textContent = 'Revert to algorithmic'; }

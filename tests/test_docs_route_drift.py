@@ -67,6 +67,15 @@ def _normalise(route: str) -> str:
     return re.sub(r"\{[^}]+\}", "{_}", route)
 
 
+def test_eudr_screening_contract_distinguishes_transient_results_from_saved_reviews() -> None:
+    spec = yaml.safe_load(OPENAPI.read_text())
+    operation = spec["paths"]["/eudr-assessment"]["post"]
+    assert "screening" in operation["summary"].lower()
+    description = operation.get("description", "").lower()
+    for required in ("not saved", "reload", "legal certification", "reviewer assessment"):
+        assert required in description, f"On-demand EUDR contract must state {required!r}"
+
+
 def _markdown_anchors(text: str) -> set[str]:
     """Return GitHub-style anchors for ATX headings in a Markdown document."""
     anchors: set[str] = set()

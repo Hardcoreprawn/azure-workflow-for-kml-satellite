@@ -1399,7 +1399,11 @@ paths:
     post:
       operationId: eudrAssessment
       tags: [analysis]
-      summary: EUDR compliance assessment (NDVI + WorldCover + WDPA)
+      summary: On-demand EUDR screening (NDVI + WorldCover + WDPA)
+      description: >-
+        Returns transient screening evidence that is not saved and is lost on reload.
+        The result is not legal certification or an operator compliance conclusion,
+        and does not replace the saved pipeline determination or reviewer assessment.
       security:
         - bearerAuth: []
       requestBody:
@@ -1410,7 +1414,7 @@ paths:
               type: object
       responses:
         "200":
-          description: EUDR assessment result
+          description: Transient EUDR screening result (not saved)
           content:
             application/json:
               schema:

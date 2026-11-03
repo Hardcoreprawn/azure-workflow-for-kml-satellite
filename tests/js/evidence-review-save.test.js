@@ -120,6 +120,100 @@ test('review reversion failures remain visible and do not erase the saved review
   assert.equal(nodes.get('app-evidence-override-revert-btn').disabled, false);
 });
 
+test('a lost reversion response reports an unconfirmed outcome rather than unchanged server state', async () => {
+  const { nodes, state, panels } = harness(async () => { throw new Error('Response lost after commit'); });
+  state.manifest.parcel_reviews = { '0': { override: true, note: 'Previously saved review' } };
+  panels.renderParcelOverride('0', {});
+  await panels.revertOverride();
+  const error = nodes.get('app-evidence-override-error').textContent;
+  assert.match(error, /unconfirmed|could not confirm/i);
+  assert.match(error, /reload/i);
+  assert.doesNotMatch(error, /saved review is unchanged/i);
+});
+
+test('a completed note save never closes a reopened editor for the same parcel', async () => {
+  let finish;
+  const { nodes, state, panels } = harness(() => new Promise(resolve => { finish = resolve; }));
+  const saving = panels.saveParcelNote();
+  await new Promise(resolve => setImmediate(resolve));
+  panels.hideNoteEditor();
+  panels.showNoteEditor();
+  nodes.get('app-evidence-notes-input').value = 'Review evidence before reporting';
+  finish({ ok: true });
+  await saving;
+  assert.equal(state.manifest.parcel_notes['0'].text, 'Review evidence before reporting');
+  assert.equal(nodes.get('app-evidence-notes-edit').hidden, false);
+  assert.equal(nodes.get('app-evidence-notes-input').value, 'Review evidence before reporting');
+});
+
+test('a completed note save never discards edits made while the same editor is saving', async () => {
+  let finish;
+  const { nodes, panels } = harness(() => new Promise(resolve => { finish = resolve; }));
+  const saving = panels.saveParcelNote();
+  await new Promise(resolve => setImmediate(resolve));
+  nodes.get('app-evidence-notes-input').value = 'Newer text typed during save';
+  finish({ ok: true });
+  await saving;
+  assert.equal(nodes.get('app-evidence-notes-edit').hidden, false);
+  assert.equal(nodes.get('app-evidence-notes-input').value, 'Newer text typed during save');
+});
+
+test('a completed review save never closes a reopened modal or discards its draft', async () => {
+  let finish;
+  const { nodes, state, panels } = harness(() => new Promise(resolve => { finish = resolve; }));
+  panels.openOverrideModal('0', {});
+  nodes.get('app-override-reason-input').value = 'Original reviewer assessment';
+  panels.onOverrideReasonInput();
+  const saving = panels.confirmOverride();
+  await new Promise(resolve => setImmediate(resolve));
+  panels.closeOverrideModal();
+  panels.openOverrideModal('0', {});
+  nodes.get('app-override-reason-input').value = 'Original reviewer assessment';
+  finish({ ok: true });
+  await saving;
+  assert.equal(state.manifest.parcel_reviews['0'].note, 'Original reviewer assessment');
+  assert.equal(nodes.get('app-override-backdrop').hidden, false);
+  assert.equal(nodes.get('app-override-reason-input').value, 'Original reviewer assessment');
+});
+
+test('returning to the original parcel cannot revive a stale note editor response', async () => {
+  let finish;
+  const { nodes, panels } = harness(() => new Promise(resolve => { finish = resolve; }));
+  const saving = panels.saveParcelNote();
+  await new Promise(resolve => setImmediate(resolve));
+  panels.renderParcelNotes('1');
+  panels.renderParcelNotes('0');
+  panels.showNoteEditor();
+  nodes.get('app-evidence-notes-input').value = 'Review evidence before reporting';
+  finish({ ok: true });
+  await saving;
+  assert.equal(nodes.get('app-evidence-notes-edit').hidden, false);
+  assert.equal(nodes.get('app-evidence-notes-input').value, 'Review evidence before reporting');
+});
+
+test('editing a pending review retains the draft and cannot submit overlapping writes', async () => {
+  let finish;
+  let calls = 0;
+  const { nodes, panels } = harness(() => {
+    calls++;
+    return new Promise(resolve => { finish = resolve; });
+  });
+  panels.openOverrideModal('0', {});
+  nodes.get('app-override-reason-input').value = 'Original reviewer assessment';
+  panels.onOverrideReasonInput();
+  const saving = panels.confirmOverride();
+  await new Promise(resolve => setImmediate(resolve));
+  nodes.get('app-override-reason-input').value = 'Edited while saving';
+  panels.onOverrideReasonInput();
+  await panels.confirmOverride();
+  assert.equal(calls, 1);
+  finish({ ok: true });
+  await saving;
+  assert.equal(nodes.get('app-override-backdrop').hidden, false);
+  assert.equal(nodes.get('app-override-reason-input').value, 'Edited while saving');
+  assert.equal(nodes.get('app-override-confirm-btn').disabled, false);
+});
+
 test('review saves finishing after selection never attach a review to another parcel', async () => {
   let finish;
   const { nodes, state, panels } = harness(() => new Promise(resolve => { finish = resolve; }));

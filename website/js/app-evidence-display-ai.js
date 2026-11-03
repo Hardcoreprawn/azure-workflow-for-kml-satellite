@@ -216,7 +216,7 @@
       }
       content.appendChild(resultDiv);
       content.appendChild(createCallout('warning',
-        'On-demand screening is not saved and will be lost on reload. It does not replace the saved parcel determination or reviewer assessment.'));
+        'On-demand screening is not saved and will be lost on reload. It does not replace the saved parcel determination or reviewer assessment. Screening evidence is not legal certification or an operator compliance conclusion.'));
     } catch (err) {
       if (isCurrent()) {
         content.textContent = '';
