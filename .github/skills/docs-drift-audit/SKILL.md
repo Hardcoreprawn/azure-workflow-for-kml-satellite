@@ -4,6 +4,10 @@ description: "Audit a PR, issue, or feature for docs, contract, and roadmap drif
 disable-model-invocation: true
 argument-hint: "PR, issue, feature, or changed files"
 ---
+Before auditing, read `.github/agents/contract-docs-keeper.agent.md` and follow its complete scope, constraints, approach, and output format.
+
+Use read/search operations only. Do not edit files or change GitHub or repository state; report recommendations instead of applying changes.
+
 Audit the supplied change for docs and contract drift.
 
 - Identify which source-of-truth docs should have moved.

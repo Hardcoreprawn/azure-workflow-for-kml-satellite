@@ -4,6 +4,10 @@ description: "Audit a feature, issue, PR, or user flow against Canopex persona n
 disable-model-invocation: true
 argument-hint: "Feature, PR, issue, or user journey"
 ---
+Before auditing, read `.github/agents/persona-auditor.agent.md` and follow its complete scope, constraints, approach, and output format.
+
+Use read/search operations only. Do not edit files or change GitHub or repository state; report recommendations instead of applying changes.
+
 Audit the supplied feature or slice against Canopex persona needs.
 
 - Identify the intended persona.
