@@ -1,9 +1,13 @@
 ---
-name: "Release Gate Audit"
+name: release-gate-audit
 description: "Audit a workflow, PR, or deployment-related change for rollout and promotion safety using the Release Safety Guard agent."
+disable-model-invocation: true
 argument-hint: "Workflow, PR, issue, or deploy change"
-agent: "Release Safety Guard"
 ---
+Before auditing, read `.github/agents/release-safety-guard.agent.md` and follow its complete scope, constraints, approach, and output format.
+
+Use read/search operations only. Do not edit files or change GitHub or repository state; report recommendations instead of applying changes.
+
 Audit the supplied deployment or promotion change for release safety.
 
 - Identify which environments and promotion paths it touches.
