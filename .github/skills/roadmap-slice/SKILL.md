@@ -1,8 +1,8 @@
 ---
-name: "Roadmap Slice"
+name: roadmap-slice
 description: "Create an execution brief for a roadmap item, issue, or overhaul using the Roadmap Orchestrator agent."
+disable-model-invocation: true
 argument-hint: "Issue number, roadmap item, or target capability"
-agent: "Roadmap Orchestrator"
 ---
 Build an execution brief for the supplied roadmap item or capability.
 

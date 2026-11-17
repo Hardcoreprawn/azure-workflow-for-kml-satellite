@@ -1,8 +1,8 @@
 ---
-name: "Release Gate Audit"
+name: release-gate-audit
 description: "Audit a workflow, PR, or deployment-related change for rollout and promotion safety using the Release Safety Guard agent."
+disable-model-invocation: true
 argument-hint: "Workflow, PR, issue, or deploy change"
-agent: "Release Safety Guard"
 ---
 Audit the supplied deployment or promotion change for release safety.
 

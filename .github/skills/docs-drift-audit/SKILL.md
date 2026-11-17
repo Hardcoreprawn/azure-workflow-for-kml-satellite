@@ -1,8 +1,8 @@
 ---
-name: "Docs Drift Audit"
+name: docs-drift-audit
 description: "Audit a PR, issue, or feature for docs, contract, and roadmap drift using the Contract and Docs Keeper agent."
+disable-model-invocation: true
 argument-hint: "PR, issue, feature, or changed files"
-agent: "Contract and Docs Keeper"
 ---
 Audit the supplied change for docs and contract drift.
 

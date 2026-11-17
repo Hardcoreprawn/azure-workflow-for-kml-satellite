@@ -1,8 +1,8 @@
 ---
-name: "Persona Gap Audit"
+name: persona-gap-audit
 description: "Audit a feature, issue, PR, or user flow against Canopex persona needs using the Persona Auditor agent."
+disable-model-invocation: true
 argument-hint: "Feature, PR, issue, or user journey"
-agent: "Persona Auditor"
 ---
 Audit the supplied feature or slice against Canopex persona needs.
 

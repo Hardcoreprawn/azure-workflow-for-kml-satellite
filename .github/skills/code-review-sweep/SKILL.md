@@ -1,8 +1,8 @@
 ---
-name: "Code Review Sweep"
+name: code-review-sweep
 description: "Run a second-opinion engineering review on a PR, diff, or risky change using the Code Review Critic agent."
+disable-model-invocation: true
 argument-hint: "PR, issue implementation, diff summary, or changed files"
-agent: "Code Review Critic"
 ---
 Review the supplied change as a read-only engineering critic.
 
