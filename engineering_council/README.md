@@ -230,8 +230,9 @@ python3 -m engineering_council.council decide \
   --output /tmp/council-decision.json
 ```
 
-Output paths must be new files. This avoids silently overwriting review
-evidence. Keep useful reports as local artifacts, not permanent agent memory.
+Output paths must be new files. Existing paths are rejected before adapter calls;
+exclusive final creation still protects against overwriting if a path appears
+during execution. Keep useful reports as local artifacts, not permanent agent memory.
 For the explicit 240-second cap use `--full --config engineering_council/config.full.json`.
 Never use `--full` to restart or bypass an exhausted review.
 
@@ -292,7 +293,9 @@ No majority vote and no numerical quality score:
    trigger conflict escalation or stop Delivery/Finisher from reviewing.
    Credible safety evidence from Feynman still needs human/Hamilton verification;
    advisory status is not permission to ignore a real defect.
-5. Identical target/action/recommendation findings are deduplicated. Different
+5. Identical full findings are deduplicated across agents. Different severity,
+   evidence or other finding fields are retained, even when the recommended
+   action matches, so blocker evidence is never hidden. Different
    non-advisory actions on the same exact target trigger human escalation,
    guided by the priority order, not another round.
    Semantic conflicts across different identifiers still require human review.
@@ -369,7 +372,10 @@ python3 -m unittest discover -s engineering_council -t . -v
 
 Tests cover the actual call/time/byte limits, simultaneous stream floods,
 descendant-held pipes, schema failures (including duplicate JSON keys), stale packets, safety precedence,
-deduplication/conflicts, CLI evidence persistence, and explicit installation.
+deduplication/conflicts, compact UTF-8 report budgets, CLI evidence persistence
+and output preflight, and explicit installation.
+Report count and each compact UTF-8 report's byte size bound native report input;
+the adapter additionally bounds actual combined stdout/stderr bytes.
 The host's focused command is
 `make test-fast TESTS="tests/test_engineering_council.py"`; handoff is `make check`.
 

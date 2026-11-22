@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 from engineering_council import council
 
@@ -140,6 +141,69 @@ class CouncilTests(unittest.TestCase):
         self.assertEqual(decision["findings"][0]["agent"], "Hamilton")
         self.assertEqual(decision["status"], "recommend")
         self.assertIn("human", decision["next_action"].lower())
+
+    def test_deduplication_preserves_distinct_blocker_evidence(self) -> None:
+        packet = self.packet()
+        reports = self.reports(packet)
+        reports[2] = self.report(packet, "Hamilton", severity="minor", category="safety")
+        reports[1] = self.report(
+            packet,
+            "Architect",
+            severity="blocker",
+            category="safety",
+            evidence="The outer retry has no deadline and can indefinitely retain resources.",
+        )
+        decision = council.decide(packet, reports)
+        self.assertEqual(decision["status"], "needs-human")
+        self.assertEqual(len(decision["findings"]), 2)
+        blocker = next(finding for finding in decision["findings"] if finding["severity"] == "blocker")
+        self.assertEqual(blocker["agent"], "Architect")
+        self.assertIn("no deadline", blocker["evidence"])
+
+    def test_compact_utf8_reports_preserve_native_and_adapter_findings(self) -> None:
+        packet = self.packet()
+        recommendation = "\u4e00" * 2_000
+        reports = [self.report(packet, agent, recommendation=recommendation) for agent in packet["roles"]]
+        findings = reports[0]["findings"]
+        code = (
+            "import json,sys; p=json.load(sys.stdin); "
+            f"f={findings!r}; "
+            "print(json.dumps({'request_id':p['packet']['request_id'],'agent':p['agent'],'findings':f}, "
+            "ensure_ascii=False, separators=(',',':')))"
+        )
+        for mode in ("native", "adapter"):
+            with self.subTest(mode=mode):
+                decision = (
+                    council.decide(packet, reports)
+                    if mode == "native"
+                    else council.run(packet, [sys.executable, "-c", code])
+                )
+                self.assertEqual(decision["status"], "recommend")
+                self.assertEqual(decision["completed"], packet["roles"])
+                self.assertEqual(decision["findings"][0]["recommendation"], recommendation)
+
+    def test_existing_output_is_rejected_before_running_adapters(self) -> None:
+        packet = self.packet()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packet_path, output = root / "packet.json", root / "decision.json"
+            packet_path.write_text(json.dumps(packet), encoding="utf-8")
+            output.write_text("preserve previous evidence", encoding="utf-8")
+            with patch.object(council, "run", return_value={"status": "recommend"}) as run:
+                result = council.main(
+                    [
+                        "run",
+                        "--packet",
+                        str(packet_path),
+                        "--output",
+                        str(output),
+                        "--adapter",
+                        sys.executable,
+                    ]
+                )
+                self.assertEqual(result, 1)
+                run.assert_not_called()
+            self.assertEqual(output.read_text(encoding="utf-8"), "preserve previous evidence")
 
     def test_packet_tampering_is_rejected(self) -> None:
         packet = self.packet()

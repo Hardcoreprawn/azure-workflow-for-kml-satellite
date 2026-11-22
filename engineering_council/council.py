@@ -192,13 +192,14 @@ def validate_packet(value: Packet | dict) -> Packet:
 def checked_reports(packet: Packet, reports: list[dict]) -> list[tuple[str, Finding]]:
     if not isinstance(reports, list):
         raise ValueError("reports must be a JSON array")
-    if len(json.dumps(reports).encode()) > len(packet["roles"]) * packet["config"]["max_output_bytes"]:
-        raise ValueError("reports exceed output budget")
     if len(reports) > len(packet["roles"]):
         raise ValueError("too many reports")
     findings = []
     for index, report in enumerate(reports):
-        if len(json.dumps(report).encode()) > packet["config"]["max_output_bytes"]:
+        if (
+            len(json.dumps(report, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+            > packet["config"]["max_output_bytes"]
+        ):
             raise ValueError("report exceeds output budget")
         if set(report) != {"request_id", "agent", "findings"}:
             raise ValueError("report must contain exactly request_id, agent and findings")
@@ -233,9 +234,8 @@ def decide(packet: Packet | dict, reports: list[dict]) -> dict:
     )
     unique = {}
     for agent, finding in ranked:
-        key = (finding.target, finding.action, finding.recommendation)
-        if key not in unique:
-            unique[key] = {"agent": agent, **asdict(finding)}
+        if finding not in unique:
+            unique[finding] = {"agent": agent, **asdict(finding)}
     authoritative = [(agent, finding) for agent, finding in findings if agent != "Feynman"]
     targets = sorted({finding.target for _, finding in authoritative})
     conflicts = [
@@ -428,6 +428,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.operation == "install":
             install_agents(args.repo, replace_old=args.replace_old)
             return 0
+        if args.output.exists() or args.output.is_symlink():
+            raise FileExistsError(f"output already exists: {args.output}")
         if args.operation == "packet":
             config = Config(**object_json(read_text(args.config))) if args.config else Config()
             result = make_packet(
