@@ -1,0 +1,10 @@
+*
+!__init__.py
+!council.py
+!test_council.py
+!config*.json
+!prompts/
+!prompts/**
+!.github/
+!.github/agents/
+!.github/agents/*.agent.md

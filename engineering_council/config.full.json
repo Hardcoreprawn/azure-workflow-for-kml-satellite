@@ -1,0 +1,8 @@
+{
+  "max_calls": 7,
+  "max_seconds": 240,
+  "max_input_bytes": 24000,
+  "max_output_bytes": 12000,
+  "max_findings": 3,
+  "review_fraction": 0.25
+}

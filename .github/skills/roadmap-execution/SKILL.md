@@ -24,10 +24,10 @@ Use this skill when you need one repeatable workflow for turning a roadmap item 
    - `docs/PID.md`
    - `docs/ARCHITECTURE_OVERVIEW.md`
 2. Fill the [execution brief template](./assets/execution-brief-template.md).
-3. Run the `Roadmap Orchestrator` agent or `/Roadmap Slice` prompt to produce ordered slices.
-4. Run the `Persona Auditor` agent or `/Persona Gap Audit` prompt to verify the slice materially serves the intended persona.
-5. If the work touches deployment, runtime config, auth, billing, or rollout, run the `Release Safety Guard` agent or `/Release Gate Audit` prompt.
-6. If the work changes public behavior, contracts, operations, or status, run the `Contract and Docs Keeper` agent or `/Docs Drift Audit` prompt.
+3. Run `Architect` or `/Roadmap Slice` to produce the smallest ordered slices.
+4. Run `Delivery` or `/Persona Gap Audit` to verify measurable persona/JTBD value.
+5. If the work touches deployment, runtime config, auth, billing, or rollout, include the `/Release Gate Audit` criteria in one `Hamilton` pass.
+6. If the work changes public behavior, contracts, operations, or status, include `/Docs Drift Audit` criteria in that same `Hamilton` pass rather than launching another reviewer. For a bounded packet review, use `Council`; stop on blockers or budget exhaustion. Single-role briefs do not require a full council.
 7. Only then implement the smallest slice that can be validated narrowly.
 8. Before PR merge, ensure the affected contract/operational docs and tests are updated and request Copilot review. Update the roadmap or GitHub Project board only when explicitly requested; neither is a per-merge requirement.
 

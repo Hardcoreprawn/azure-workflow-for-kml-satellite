@@ -17,6 +17,7 @@ See the [roadmap](docs/ROADMAP.md) for direction and delivery status.
 | Product requirements | [PID](docs/PID.md) |
 | Scientific interpretation | [EUDR methodology](website/docs/eudr-methodology.html) |
 | Isolated persistent Blob boundary (not activated) | [Foundation root and offline gates](infra/tofu/foundation/README.md) |
+| Bounded Copilot reviews and agent definitions | [Standalone engineering council](engineering_council/README.md) |
 
 The architecture, API reference and runbook describe checked-in behavior, not proof
 of live deployment. Requirements and design specifications are not a shipped-feature
