@@ -98,7 +98,7 @@ Simple docs/typo issues use the **Docs / typo / maintenance** template and are e
 - **Handoff:** run `make check` before declaring work complete or opening a ready PR.
 - **Merge:** required CI, integration, changed-lines coverage, and pipeline gates remain authoritative; local selection never replaces required full gates.
 - **Promotion:** deployed behavior requires the applicable authenticated smoke and operational release evidence.
-- For cross-cutting, deploy, auth, billing, API, or runtime changes, run the `Code Review Critic` after local validation and before requesting PR review.
+- For cross-cutting, deploy, auth, billing, API, or runtime changes, run `Hamilton` after local validation and before requesting PR review. Use `Council` only when multiple review lenses earn their cost; see `engineering_council/README.md` for bounded execution. Agents propose; human review and existing mechanical gates still decide.
 - Call out residual rollout risk when runtime validation is unavailable.
 
 ---
